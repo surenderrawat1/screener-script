@@ -298,10 +298,10 @@ Audit changes in `audit_log` with `action: settings.update`.
 | Manual `sync:indices` + Admin upload | ✅ Done | — |
 | `config/data-policy.yaml` | ✅ Example committed | DR-A |
 | `config/schedules.yaml` | ✅ Example committed | DR-A |
-| Config loader in `@sv/shared` | 🔲 Not built | DR-A |
-| `app_settings` table + API | 🔲 Not built | DR-B |
-| Daily 6 AM worker job | 🔲 Not built | DR-C |
-| Settings UI `/admin/settings` | 🔲 Not built | DR-D |
+| Config loader in `@sv/shared` | ✅ Done | DR-A |
+| `app_settings` table + API | ✅ Done | DR-B |
+| Daily 6 AM worker job + `pnpm daily:sync` | ✅ Done | DR-C |
+| Settings UI (cron + run sync on `/admin`) | ✅ Done | DR-D partial |
 | System presets from YAML seed | 🔲 Not built | DR-A + M11 |
 
 **Roadmap:** Add **Phase 9 — Data policy & daily sync** in [ROADMAP.md](ROADMAP.md) (parallel to cache admin).

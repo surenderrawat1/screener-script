@@ -44,11 +44,13 @@ export function ratiosToMetrics(ratios: Record<string, string>): ScreenerRatios 
   };
 }
 
-export async function fetchScreenerRatios(symbol: string): Promise<ScreenerRatios | null> {
+export async function fetchScreenerRatios(symbol: string, refresh = false): Promise<ScreenerRatios | null> {
   const slug = symbol.toLowerCase().replace(/\.(ns|bo)$/, '');
   const cacheKeyStr = cacheKey(CACHE_PREFIX.SCREENER_TABLE, slug);
-  const cached = await cacheGetJson<ScreenerRatios>(cacheKeyStr);
-  if (cached) return cached;
+  if (!refresh) {
+    const cached = await cacheGetJson<ScreenerRatios>(cacheKeyStr);
+    if (cached) return cached;
+  }
 
   const url = `https://www.screener.in/company/${encodeURIComponent(slug)}/consolidated/`;
   const html = await httpGet(url);

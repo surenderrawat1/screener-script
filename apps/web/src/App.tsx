@@ -10,6 +10,7 @@ import PositionsPage from './pages/PositionsPage';
 import SwingScanPage from './pages/SwingScanPage';
 import SwingAutoPage from './pages/SwingAutoPage';
 import IntradayPage from './pages/IntradayPage';
+import StockDetailsPage from './pages/StockDetailsPage';
 import { APP_NAME } from './brand';
 
 function Layout() {
@@ -23,6 +24,7 @@ function Layout() {
         <NavLink to="/" end>Dashboard</NavLink>
         <NavLink to="/screener">Screener</NavLink>
         <NavLink to="/verify">Verify</NavLink>
+        <NavLink to="/stock/TCS">Details</NavLink>
         <NavLink to="/watchlist">Watchlist</NavLink>
         <NavLink to="/positions">Positions</NavLink>
         <NavLink to="/swing">Swing</NavLink>
@@ -50,6 +52,7 @@ function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="screener" element={<ScreenerPage />} />
         <Route path="verify" element={<VerifyPage />} />
+        <Route path="stock/:symbol" element={<StockDetailsPage />} />
         <Route path="watchlist" element={<WatchlistPage />} />
         <Route path="positions" element={<PositionsPage />} />
         <Route path="swing" element={<SwingScanPage />} />

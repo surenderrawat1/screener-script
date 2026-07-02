@@ -11,6 +11,8 @@ import {
   connectRedis,
   pingRedis,
   cacheStats,
+  cacheListKeys,
+  cacheClearPrefix,
   getJobProgress,
   getRedis,
   hasActiveWorker,
@@ -26,6 +28,7 @@ import {
   swingPositionCloseSchema,
   swingScanSchema,
   PERMISSIONS,
+  initAppConfig,
 } from '@sv/shared';
 import { requirePermission } from './lib/auth.js';
 import { listUniverses, createCustomUniverse } from './services/universe.js';
@@ -33,6 +36,9 @@ import { createScreenerJob, getJob } from './services/screener.js';
 import { createSwingScanJob } from './services/swing.js';
 import { verifySymbol } from './services/verify.js';
 import { getAdminStats, importIndexCsv, importNseEquityCsv, importPromoterHoldingCsv, getIndexStatus, syncIndicesFromDisk } from './services/admin.js';
+import { bootstrapAppConfig, getEffectiveSettings, patchAppSettings } from './services/settings.js';
+import { fetchDailySyncStatus, runDailySyncJob } from './services/daily-sync.js';
+import { getStockSummary, getStockChart, getStockProfile, refreshStockCaches } from './services/stock-details.js';
 import { evaluateSwingSymbol } from '@sv/data-adapters';
 import {
   listWatchlist,
@@ -219,6 +225,73 @@ export async function buildApp() {
     return result;
   });
 
+  app.get('/api/v1/stock/:symbol', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const { symbol } = request.params as { symbol: string };
+    const refresh = (request.query as { refresh?: string }).refresh === 'true';
+    const normalized = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
+    if (!normalized || normalized.length > 20) {
+      return reply.status(400).send({ error: 'Invalid symbol' });
+    }
+    try {
+      return await getStockSummary(normalized, refresh);
+    } catch (err) {
+      return reply.status(404).send({
+        error: err instanceof Error ? err.message : 'Stock not found',
+      });
+    }
+  });
+
+  app.get('/api/v1/stock/:symbol/chart', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const { symbol } = request.params as { symbol: string };
+    const refresh = (request.query as { refresh?: string }).refresh === 'true';
+    const normalized = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
+    if (!normalized || normalized.length > 20) {
+      return reply.status(400).send({ error: 'Invalid symbol' });
+    }
+    try {
+      return await getStockChart(normalized, refresh);
+    } catch (err) {
+      return reply.status(500).send({
+        error: err instanceof Error ? err.message : 'Chart load failed',
+      });
+    }
+  });
+
+  app.get('/api/v1/stock/:symbol/profile', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const { symbol } = request.params as { symbol: string };
+    const refresh = (request.query as { refresh?: string }).refresh === 'true';
+    const normalized = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
+    if (!normalized || normalized.length > 20) {
+      return reply.status(400).send({ error: 'Invalid symbol' });
+    }
+    try {
+      return await getStockProfile(normalized, refresh);
+    } catch (err) {
+      return reply.status(500).send({
+        error: err instanceof Error ? err.message : 'Profile load failed',
+      });
+    }
+  });
+
+  app.post('/api/v1/stock/:symbol/refresh', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.REFRESH_DATA);
+    const { symbol } = request.params as { symbol: string };
+    const normalized = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
+    if (!normalized || normalized.length > 20) {
+      return reply.status(400).send({ error: 'Invalid symbol' });
+    }
+    try {
+      return await refreshStockCaches(normalized);
+    } catch (err) {
+      return reply.status(500).send({
+        error: err instanceof Error ? err.message : 'Refresh failed',
+      });
+    }
+  });
+
   app.post('/api/v1/swing/scan', { preHandler: [authPreHandler] }, async (request, reply) => {
     const user = requirePermission(request, PERMISSIONS.RUN_SCREENER);
     const parsed = swingScanSchema.safeParse(request.body);
@@ -336,6 +409,59 @@ export async function buildApp() {
     return { stats };
   });
 
+  app.get('/api/v1/admin/cache/keys', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    const { prefix = 'sv:', limit = '50' } = request.query as { prefix?: string; limit?: string };
+    if (!prefix.startsWith('sv:')) {
+      return reply.status(400).send({ error: 'prefix must start with sv:' });
+    }
+    const keys = await cacheListKeys(prefix, Math.min(500, parseInt(limit, 10) || 50));
+    return { prefix, keys, count: keys.length };
+  });
+
+  app.delete('/api/v1/admin/cache', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    const { prefix } = request.query as { prefix?: string };
+    if (!prefix?.startsWith('sv:')) {
+      return reply.status(400).send({ error: 'prefix query required (must start with sv:)' });
+    }
+    const deleted = await cacheClearPrefix(prefix);
+    return { success: true, prefix, deleted };
+  });
+
+  app.get('/api/v1/admin/settings', { preHandler: [authPreHandler] }, async (request) => {
+    requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    return getEffectiveSettings();
+  });
+
+  app.patch('/api/v1/admin/settings', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    const body = request.body as Record<string, unknown>;
+    if (!body || typeof body !== 'object') {
+      return reply.status(400).send({ error: 'JSON body required' });
+    }
+    try {
+      return await patchAppSettings(body, user.sub);
+    } catch (err) {
+      return reply.status(400).send({ error: err instanceof Error ? err.message : 'Invalid settings' });
+    }
+  });
+
+  app.get('/api/v1/admin/sync/status', { preHandler: [authPreHandler] }, async (request) => {
+    requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    return fetchDailySyncStatus();
+  });
+
+  app.post('/api/v1/admin/sync/daily', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    const body = (request.body as { force?: boolean } | null) ?? {};
+    try {
+      return await runDailySyncJob(user.sub, Boolean(body.force));
+    } catch (err) {
+      return reply.status(409).send({ error: err instanceof Error ? err.message : 'Daily sync failed' });
+    }
+  });
+
   app.get('/api/v1/admin/uploads/stats', { preHandler: [authPreHandler] }, async (request) => {
     requirePermission(request, PERMISSIONS.MANAGE_CACHE);
     return getAdminStats();
@@ -423,6 +549,7 @@ export async function buildApp() {
 
 async function main() {
   await connectRedis().catch(() => undefined);
+  await bootstrapAppConfig().catch(() => initAppConfig());
   const app = await buildApp();
   await app.listen({ port: PORT, host: '0.0.0.0' });
   app.log.info(`API listening on :${PORT}`);

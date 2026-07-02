@@ -2,9 +2,10 @@ import './load-env.js';
 
 import { hostname } from 'node:os';
 import { prisma, JobStatus } from '@sv/db';
-import { runLiveScreener, executeAutoScanPlan, runSwingScan, tickSwingAutoScan } from '@sv/data-adapters';
+import { runLiveScreener, executeAutoScanPlan, runSwingScan, tickSwingAutoScan, tickDailySync } from '@sv/data-adapters';
 import { connectRedis, setJobProgress, setWorkerHeartbeat } from '@sv/cache';
 import { createScreenerWorker, createSwingScanWorker } from '@sv/jobs';
+import { initAppConfig } from '@sv/shared';
 
 const WORKER_ID = `${hostname()}-${process.pid}`;
 const AUTO_SCAN_TICK_MS = 60_000;
@@ -22,7 +23,21 @@ async function processScreenerJob(data: {
     data: { status: JobStatus.running, startedAt: new Date() },
   });
 
-  const rows = await runLiveScreener(symbols, input.preset, filters);
+  const rows = await runLiveScreener(symbols, input.preset, filters, async (progress) => {
+    const snapshot = {
+      phase: 'analyze',
+      total: progress.total,
+      processed: progress.processed,
+      passed: progress.passed,
+    };
+    await setJobProgress(jobId, snapshot);
+    if (progress.processed % 10 === 0 || progress.processed === progress.total) {
+      await prisma.job.update({
+        where: { id: jobId },
+        data: { progress: snapshot },
+      });
+    }
+  });
 
   const result = { rows, total: symbols.length, passed: rows.length };
 
@@ -122,6 +137,7 @@ async function processSwingScanJob(data: {
 }
 
 async function main() {
+  await initAppConfig();
   await connectRedis().catch(() => undefined);
 
   const screenerWorker = createScreenerWorker(async (job) => {
@@ -160,6 +176,16 @@ async function main() {
   setInterval(() => {
     void tickSwingAutoScan().catch((err) => {
       console.error('Swing auto-scan tick failed:', err instanceof Error ? err.message : err);
+    });
+  }, AUTO_SCAN_TICK_MS);
+
+  setInterval(() => {
+    void tickDailySync().then((result) => {
+      if (result) {
+        console.log(`Daily sync completed — job ${result.job_id} (${result.ok ? 'ok' : 'failed'})`);
+      }
+    }).catch((err) => {
+      console.error('Daily sync tick failed:', err instanceof Error ? err.message : err);
     });
   }, AUTO_SCAN_TICK_MS);
 

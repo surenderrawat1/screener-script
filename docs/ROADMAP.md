@@ -81,20 +81,21 @@ Development phases for Script Screener. Phases 1–8 are **complete**. Phases 9+
 
 ### Phase 9 — Cache admin & job UX
 
-- [ ] Admin UI to browse/clear Redis keys by prefix
-- [ ] Chunked job progress with per-symbol status
-- [ ] `dev:all` script (API + web + worker in one command)
-- [ ] Wire `sv:verify` cache on verify endpoint (reduce duplicate fetches)
+- [x] Admin UI: browse keys by `sv:*` prefix, clear selected prefix
+- [x] Chunked job progress (per-symbol status in worker)
+- [x] `pnpm dev:all` — API + web + worker in one command
+- [x] Verify endpoint uses `sv:verify` cache to avoid duplicate fetches
+- [ ] Update [OPERATIONS.md](OPERATIONS.md) and [API.md](API.md)
 - **Doc:** [CFA-VERIFY.md](CFA-VERIFY.md) Phase V-A
 
 ### Data policy & daily sync (parallel track)
 
 Reference data in PostgreSQL; market cache warmed once at **06:00 IST**. Phases **DR-A** through **DR-D**.
 
-- [ ] Config loader (`config/*.yaml`) in `@sv/shared` (DR-A)
-- [ ] `app_settings` table + `GET/PATCH /api/v1/admin/settings` (DR-B)
-- [ ] Daily sync worker job + `pnpm daily:sync` CLI (DR-C)
-- [ ] Settings UI at `/admin/settings` (DR-D)
+- [x] Config loader (`config/*.yaml`) in `@sv/shared` (DR-A)
+- [x] `app_settings` table + `GET/PATCH /api/v1/admin/settings` (DR-B)
+- [x] Daily sync worker job + `pnpm daily:sync` CLI (DR-C)
+- [x] Settings UI at `/admin` — daily sync cron (DR-D partial)
 - **Doc:** [DATA-RULES.md](DATA-RULES.md)
 
 ### Full Verify (parallel track)
@@ -117,9 +118,9 @@ Full one-click memo UI + `VerificationEngine` port. Phases **V-B** through **V-D
 
 ### Stock Details (parallel track)
 
-Single-symbol research hub — fundamentals, valuation, chart, Screener profile, TA grid. Not started; phases **SD-A** through **SD-D**.
+Single-symbol research hub — fundamentals, valuation, chart, Screener profile, TA grid. **SD-A shipped** (summary API + page); SD-B–SD-D planned.
 
-- [ ] `GET /api/v1/stock/:symbol` summary API + `/stock/:symbol` page
+- [x] `GET /api/v1/stock/:symbol` summary API + `/stock/:symbol` page (SD-A)
 - [ ] Port `ScreenerCompanyProfile` + chart phase analysis
 - [ ] Lazy chart endpoint + Lightweight Charts UI
 - [ ] Admin per-symbol cache refresh + cross-page Details links

@@ -96,6 +96,7 @@ packages/shared   Types, schemas, constants
 | `pnpm build` | Production build |
 | `pnpm test` | Run all tests (66) |
 | `pnpm sync:indices` | Import Nifty index CSVs |
+| `pnpm daily:sync` | Daily 6 AM job (indices + OHLC/screener prefetch) |
 | `pnpm migrate:php -- --user admin@example.com` | Import PHP JSON data |
 
 ---

@@ -14,7 +14,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "sync:indices": "tsx src/sync-indices-cli.ts"
+    "test": "vitest run",
+    "sync:indices": "tsx src/sync-indices-cli.ts",
+    "daily:sync": "tsx src/daily-sync-cli.ts"
   },
   "dependencies": {
     "@sv/cache": "workspace:*",
@@ -28,6 +30,7 @@
   "devDependencies": {
     "@types/node": "^22.13.10",
     "tsx": "^4.19.3",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.9"
   }
 }

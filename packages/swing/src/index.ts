@@ -15,3 +15,6 @@ export * from './incremental-scan.js';
 export * from './swing-auto-snapshot.js';
 export * from './ranker.js';
 export * from './scanner.js';
+export * from './chart-series.js';
+export * from './chart-phase.js';
+export * from './detail-ta.js';

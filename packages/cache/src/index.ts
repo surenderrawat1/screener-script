@@ -97,6 +97,44 @@ export async function cacheDel(pattern: string): Promise<number> {
   return deleted;
 }
 
+export async function cacheDeleteKey(key: string): Promise<boolean> {
+  try {
+    const redis = getRedis();
+    return (await redis.del(key)) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Clear all warmed caches for one NSE symbol (stock, verify, TA, screener, Yahoo). */
+export async function cacheClearSymbol(symbol: string): Promise<number> {
+  const sym = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
+  if (!sym) return 0;
+  const slug = sym.toLowerCase();
+
+  const keys = [
+    cacheKey(CACHE_PREFIX.STOCK, sym),
+    cacheKey(CACHE_PREFIX.VERIFY, sym),
+    cacheKey(CACHE_PREFIX.TA, `bars:${sym}`),
+    cacheKey(CACHE_PREFIX.SCREENER_ROW, sym),
+    cacheKey(CACHE_PREFIX.SCREENER_TABLE, slug),
+    cacheKey(CACHE_PREFIX.SCREENER_TABLE, `profile:consolidated:${slug}`),
+    cacheKey(CACHE_PREFIX.SCREENER_TABLE, `profile:standalone:${slug}`),
+    cacheKey(CACHE_PREFIX.YAHOO, `${sym}.NS`),
+    cacheKey(CACHE_PREFIX.YAHOO, `${sym}.BO`),
+  ];
+
+  let deleted = 0;
+  for (const key of keys) {
+    try {
+      if (await cacheDeleteKey(key)) deleted += 1;
+    } catch {
+      // Redis unavailable — continue best-effort
+    }
+  }
+  return deleted;
+}
+
 export async function getStockCache(symbol: string): Promise<Record<string, unknown> | null> {
   const key = cacheKey(CACHE_PREFIX.STOCK, symbol);
   return cacheGetJson(key);
@@ -170,13 +208,59 @@ export async function cacheStats(): Promise<{
   connected: boolean;
   db: number;
   keysEstimate: number;
+  prefixes: { prefix: string; count: number }[];
 }> {
   const redis = getRedis();
   const info = await redis.info('keyspace');
   const dbMatch = info.match(/db1:keys=(\d+)/);
+
+  const prefixCounts = new Map<string, number>();
+  let cursor = '0';
+  do {
+    const [next, keys] = await redis.scan(cursor, 'MATCH', 'sv:*', 'COUNT', 200);
+    cursor = next;
+    for (const key of keys) {
+      const parts = key.split(':');
+      const prefix = parts.length >= 2 ? `${parts[0]}:${parts[1]}` : key;
+      prefixCounts.set(prefix, (prefixCounts.get(prefix) ?? 0) + 1);
+    }
+  } while (cursor !== '0');
+
+  const prefixes = [...prefixCounts.entries()]
+    .map(([prefix, count]) => ({ prefix, count }))
+    .sort((a, b) => b.count - a.count);
+
   return {
     connected: redis.status === 'ready',
     db: 1,
     keysEstimate: dbMatch ? parseInt(dbMatch[1], 10) : 0,
+    prefixes,
   };
+}
+
+export async function cacheListKeys(
+  pattern: string,
+  limit = 100,
+): Promise<{ key: string; ttl: number }[]> {
+  const redis = getRedis();
+  const safePattern = pattern.includes('*') ? pattern : `${pattern}*`;
+  const out: { key: string; ttl: number }[] = [];
+  let cursor = '0';
+
+  do {
+    const [next, keys] = await redis.scan(cursor, 'MATCH', safePattern, 'COUNT', 100);
+    cursor = next;
+    for (const key of keys) {
+      if (out.length >= limit) return out;
+      const ttl = await redis.ttl(key);
+      out.push({ key, ttl });
+    }
+  } while (cursor !== '0' && out.length < limit);
+
+  return out;
+}
+
+export async function cacheClearPrefix(prefix: string): Promise<number> {
+  const pattern = prefix.endsWith('*') ? prefix : `${prefix}*`;
+  return cacheDel(pattern);
 }

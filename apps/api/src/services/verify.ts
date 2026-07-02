@@ -23,15 +23,16 @@ export async function verifySymbol(symbol: string, refresh = false, userId?: str
       mode: 'auto',
       result: result as object,
     },
-  });
+  }).catch(() => undefined);
 
   if (userId) {
+    const a = analysis as { quality_score?: number; mos?: number; recommendation?: string };
     await syncWatchlistFromVerify(userId, metrics.symbol, {
       stock_name: String(metrics.name ?? metrics.symbol),
       sector: String(metrics.sector ?? ''),
-      last_score: Math.round(((analysis.quality_score ?? 0) * 56) / 100),
-      last_mos: analysis.mos ?? 0,
-      last_verdict: analysis.recommendation ?? '',
+      last_score: Math.round(((a.quality_score ?? 0) * 56) / 100),
+      last_mos: a.mos ?? 0,
+      last_verdict: a.recommendation ?? '',
     }).catch(() => undefined);
   }
 

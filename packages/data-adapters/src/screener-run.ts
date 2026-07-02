@@ -1,7 +1,16 @@
 import { buildStockMetrics, estimate, matrixVerdict, passesFilters, PRESET_FILTERS, screenSymbol } from '@sv/core';
 import type { ScreenerRow, StockMetrics } from '@sv/shared';
+import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
+import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
 import { prisma } from '@sv/db';
 import { fetchStockData } from './stock-data-fetcher.js';
+
+interface VerifyCachePayload {
+  metrics: StockMetrics;
+  analysis: Record<string, unknown>;
+  sources: string[];
+  cached_at: string;
+}
 
 export type ScreenerFilters = {
   min_roe?: number;
@@ -33,6 +42,21 @@ export async function resolveStockMetrics(
 }
 
 export async function verifyStock(symbol: string, refresh = false) {
+  const baseSymbol = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
+  const verifyKey = cacheKey(CACHE_PREFIX.VERIFY, baseSymbol);
+
+  if (!refresh) {
+    const cached = await cacheGetJson<VerifyCachePayload>(verifyKey);
+    if (cached?.metrics && cached.analysis) {
+      return {
+        metrics: cached.metrics,
+        analysis: cached.analysis,
+        sources: cached.sources,
+        from_cache: true,
+      };
+    }
+  }
+
   const { metrics, sources, from_cache } = await resolveStockMetrics(symbol, refresh);
   const est = estimate(metrics);
   const composite = est.quality_score ?? 0;
@@ -44,20 +68,38 @@ export async function verifyStock(symbol: string, refresh = false) {
     verify_score: verifyScore,
     recommendation: matrixVerdict(verifyScore, mos),
   };
+
+  if (!refresh || !from_cache) {
+    await cacheSetJson(
+      verifyKey,
+      {
+        metrics,
+        analysis,
+        sources,
+        cached_at: new Date().toISOString(),
+      } satisfies VerifyCachePayload,
+      getCacheTtl().verify,
+    ).catch(() => undefined);
+  }
+
   return { metrics, analysis, sources, from_cache };
 }
 
 async function applyPromoterHolding(metrics: StockMetrics): Promise<StockMetrics> {
   const sym = String(metrics.symbol ?? '').toUpperCase();
   if (!sym) return metrics;
-  const row = await prisma.promoterHolding.findUnique({ where: { symbol: sym } });
-  if (!row) return metrics;
-  return {
-    ...metrics,
-    promoter_holding: row.holdingPct,
-    promoter_holding_source: row.source,
-    promoter_holding_as_of: row.asOf.toISOString().slice(0, 10),
-  };
+  try {
+    const row = await prisma.promoterHolding.findUnique({ where: { symbol: sym } });
+    if (!row) return metrics;
+    return {
+      ...metrics,
+      promoter_holding: row.holdingPct,
+      promoter_holding_source: row.source,
+      promoter_holding_as_of: row.asOf.toISOString().slice(0, 10),
+    };
+  } catch {
+    return metrics;
+  }
 }
 
 export async function screenStock(symbol: string, refresh = false): Promise<ScreenerRow> {
@@ -69,15 +111,18 @@ export async function runLiveScreener(
   symbols: string[],
   preset?: string,
   customFilters: ScreenerFilters = {},
+  onProgress?: (progress: { processed: number; total: number; passed: number }) => void | Promise<void>,
 ): Promise<ScreenerRow[]> {
   const filters = { ...(preset ? PRESET_FILTERS[preset] ?? {} : {}), ...customFilters };
   const rows: ScreenerRow[] = [];
 
-  for (const sym of symbols) {
+  for (let i = 0; i < symbols.length; i++) {
+    const sym = symbols[i];
     const row = await screenStock(sym);
     if (passesFilters(row, filters)) {
       rows.push(row);
     }
+    await onProgress?.({ processed: i + 1, total: symbols.length, passed: rows.length });
   }
 
   return rows.sort((a, b) => (b.mos ?? -999) - (a.mos ?? -999));

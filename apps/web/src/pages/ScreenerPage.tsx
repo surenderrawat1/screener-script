@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { Page, PageHeader } from '../components/PageLayout';
 
@@ -184,7 +185,9 @@ export default function ScreenerPage() {
               {rows.map((r) => (
                 <tr key={r.symbol}>
                   <td>
-                    <strong>{r.symbol}</strong>
+                    <Link to={`/stock/${encodeURIComponent(r.symbol)}`}>
+                      <strong>{r.symbol}</strong>
+                    </Link>
                     <br />
                     <span className="muted">{r.name}</span>
                   </td>

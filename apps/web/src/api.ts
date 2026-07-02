@@ -24,9 +24,19 @@ export async function api<T>(
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(path, { ...options, headers });
-  const data = await res.json().catch(() => ({}));
+  const raw = await res.text();
+  let data: Record<string, unknown> = {};
+  try {
+    data = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+  } catch {
+    data = {};
+  }
   if (!res.ok) {
-    throw new Error(data.error ?? `HTTP ${res.status}`);
+    const msg =
+      typeof data.error === 'string'
+        ? data.error
+        : raw.trim().slice(0, 200) || `HTTP ${res.status}`;
+    throw new Error(msg);
   }
   return data as T;
 }

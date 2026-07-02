@@ -100,6 +100,20 @@ a {
   border: 1px solid var(--border);
 }
 
+.btn-danger {
+  background: #b42318;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+}
+
 input,
 select {
   background: var(--surface2);
@@ -328,4 +342,154 @@ input[type='checkbox'] {
   height: 100%;
   background: var(--accent);
   transition: width 0.3s;
+}
+
+.sd-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.65rem;
+}
+
+.sd-metric {
+  padding: 0.7rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-height: 4.7rem;
+}
+
+.sd-metric span {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+}
+
+.sd-metric strong {
+  display: block;
+  font-size: 1rem;
+  margin-top: 0.25rem;
+}
+
+.sd-metric small {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-top: 0.18rem;
+}
+
+.sd-metric.signal-bull {
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.sd-metric.signal-bear {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.sd-metric.signal-watch {
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.stock-chart {
+  width: 100%;
+  min-height: 420px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 0.35rem;
+  vertical-align: middle;
+}
+
+.phase-headline {
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+
+.phase-bias-bullish {
+  color: var(--success);
+}
+
+.phase-bias-bearish {
+  color: var(--danger);
+}
+
+.phase-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.phase-card {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.phase-card.signal-bull {
+  border-left: 3px solid var(--success);
+}
+
+.phase-card.signal-bear {
+  border-left: 3px solid var(--danger);
+}
+
+.phase-card.signal-watch {
+  border-left: 3px solid var(--warning);
+}
+
+.phase-num {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--muted);
+  min-width: 1.5rem;
+}
+
+.phase-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.phase-label {
+  font-weight: 600;
+  margin: 0.15rem 0;
+}
+
+.phase-detail {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.phase-obs {
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.iv-drift-warn {
+  color: var(--warning);
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
 }

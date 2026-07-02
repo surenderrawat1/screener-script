@@ -4,7 +4,9 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "build": "pnpm -r run build",
+    "predev": "pnpm -r --filter './packages/*' run build",
     "dev": "pnpm --parallel -r --filter @sv/api --filter @sv/web run dev",
+    "dev:all": "pnpm --parallel -r --filter @sv/api --filter @sv/web --filter @sv/worker run dev",
     "dev:api": "pnpm --filter @sv/api run dev",
     "dev:web": "pnpm --filter @sv/web run dev",
     "dev:worker": "pnpm --filter @sv/worker run dev",
@@ -14,6 +16,7 @@
     "db:seed": "pnpm --filter @sv/db run seed",
     "migrate:php": "pnpm --filter @sv/db run migrate:php",
     "sync:indices": "pnpm --filter @sv/data-adapters run sync:indices",
+    "daily:sync": "pnpm --filter @sv/data-adapters run daily:sync",
     "test": "pnpm -r run test",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck"

@@ -25,7 +25,7 @@ All routes except `/login` require authentication.
 | `/swing` | SwingScanPage | Manual swing TA scan |
 | `/swing/auto` | SwingAutoPage | Auto-radar tiers + manual scan trigger |
 | `/intraday` | IntradayPage | Nifty intraday direction (5m/15m) |
-| `/stock/:symbol` | StockDetailsPage | **Planned** — see [STOCK-DETAILS.md](STOCK-DETAILS.md) |
+| `/stock/:symbol` | StockDetailsPage | Summary — [STOCK-DETAILS.md](STOCK-DETAILS.md) (SD-A) |
 | `/admin` | AdminPage | Data uploads, index sync |
 | `/admin/settings` | SettingsPage | **Planned** — [DATA-RULES.md](DATA-RULES.md) |
 

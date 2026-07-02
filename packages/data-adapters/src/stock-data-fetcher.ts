@@ -1,6 +1,6 @@
 import type { StockMetrics } from '@sv/shared';
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
-import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
+import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import { fetchScreenerRatios } from './screener-in.js';
 import { fetchYahooFundamentals } from './yahoo.js';
 import { normalizeDebtToEquity } from './http.js';
@@ -42,6 +42,10 @@ export function mergeMetrics(
 
   const salesYoy = screener?.sales_yoy ?? yahoo?.revenue_growth ?? 0;
   const profitYoy = screener?.profit_yoy ?? yahoo?.eps_growth ?? 0;
+  const capexCr =
+    (yahoo?.cfo_cr ?? 0) > 0 && (yahoo?.fcf_cr ?? 0) !== 0
+      ? Math.round(((yahoo?.cfo_cr ?? 0) - (yahoo?.fcf_cr ?? 0)) * 100) / 100
+      : 0;
 
   return {
     symbol: baseSymbol,
@@ -50,17 +54,31 @@ export function mergeMetrics(
     pe,
     eps,
     book_value: bookValue,
+    pb_ratio: yahoo?.pb_ratio ?? (bookValue > 0 && price > 0 ? Math.round((price / bookValue) * 100) / 100 : 0),
+    peg_ratio: yahoo?.peg_ratio ?? 0,
     roe,
+    roa: yahoo?.roa ?? 0,
     roce,
     sales_yoy: salesYoy,
     profit_yoy: profitYoy,
     eps_growth: profitYoy,
     revenue_growth: salesYoy,
     sector: yahoo?.sector ?? 'general',
+    industry: yahoo?.industry ?? '',
     market_cap_cr: screener?.market_cap_cr ?? yahoo?.market_cap_cr ?? 0,
     debt_to_equity: de,
     div_yield: yahoo?.div_yield ?? 0,
     fcf_cr: yahoo?.fcf_cr ?? 0,
+    cfo_cr: yahoo?.cfo_cr ?? 0,
+    capex_cr: capexCr,
+    high_52w: yahoo?.high_52w ?? 0,
+    low_52w: yahoo?.low_52w ?? 0,
+    gross_margin: yahoo?.gross_margin ?? 0,
+    ebitda_margin: yahoo?.ebitda_margin ?? 0,
+    operating_margin: yahoo?.operating_margin ?? 0,
+    interest_coverage: yahoo?.interest_coverage ?? 0,
+    total_debt_cr: yahoo?.total_debt_cr ?? 0,
+    total_cash_cr: yahoo?.total_cash_cr ?? 0,
   };
 }
 
@@ -83,10 +101,11 @@ export async function fetchStockData(
   }
 
   const sources: string[] = [];
-  const yahoo = await fetchYahooFundamentals(baseSymbol);
+  const [yahoo, screener] = await Promise.all([
+    fetchYahooFundamentals(baseSymbol),
+    fetchScreenerRatios(baseSymbol, options.refresh ?? false),
+  ]);
   if (yahoo) sources.push(`Yahoo Finance (${yahoo.symbol})`);
-
-  const screener = await fetchScreenerRatios(baseSymbol);
   if (screener) sources.push(`Screener.in (${baseSymbol})`);
 
   if (!yahoo && !screener) {
@@ -117,6 +136,6 @@ export async function fetchStockData(
     from_cache: false,
   };
 
-  await cacheSetJson(stockKey, result, CACHE_TTL.stock);
+  await cacheSetJson(stockKey, result, getCacheTtl().stock).catch(() => undefined);
   return result;
 }

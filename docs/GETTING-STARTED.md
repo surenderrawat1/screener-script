@@ -133,6 +133,8 @@ docker compose up --build
 | `pnpm typecheck` | TypeScript check all packages |
 | `pnpm test` | Run all tests |
 | `pnpm sync:indices` | Re-import index CSVs |
+| `pnpm daily:sync` | Run daily data sync (indices + cache warm) |
+| `pnpm daily:sync -- --force` | Force re-run even if completed today |
 | `pnpm migrate:php -- --user admin@example.com` | Import PHP JSON data |
 
 ### Run specific test suites

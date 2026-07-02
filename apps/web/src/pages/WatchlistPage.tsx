@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState, Page, PageHeader } from '../components/PageLayout';
 
@@ -120,7 +121,9 @@ export default function WatchlistPage() {
                 return (
                   <tr key={item.id}>
                     <td>
-                      <strong>{item.symbol}</strong>
+                      <Link to={`/stock/${encodeURIComponent(item.symbol)}`}>
+                        <strong>{item.symbol}</strong>
+                      </Link>
                       {meta.stock_name ? (
                         <div className="muted">{String(meta.stock_name)}</div>
                       ) : null}

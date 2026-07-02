@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState, Page, PageHeader } from '../components/PageLayout';
 
@@ -30,7 +31,12 @@ interface HistoryRun {
 }
 
 export default function VerifyPage() {
-  const [symbol, setSymbol] = useState('TCS');
+  const location = useLocation();
+  const initialSymbol =
+    (location.state as { symbol?: string } | null)?.symbol ??
+    new URLSearchParams(location.search).get('symbol') ??
+    'TCS';
+  const [symbol, setSymbol] = useState(initialSymbol);
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [history, setHistory] = useState<HistoryRun[]>([]);
   const [loading, setLoading] = useState(false);
@@ -48,6 +54,11 @@ export default function VerifyPage() {
   useEffect(() => {
     void loadHistory();
   }, []);
+
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(location.search).get('symbol');
+    if (fromUrl) setSymbol(fromUrl.toUpperCase());
+  }, [location.search]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -95,7 +106,9 @@ export default function VerifyPage() {
       {result && (
         <div className="card">
           <h2>
-            {result.symbol} — {result.analysis.final_rating}
+            <Link to={`/stock/${encodeURIComponent(result.symbol)}`}>{result.symbol}</Link>
+            {' — '}
+            {result.analysis.final_rating}
           </h2>
           {result.sources && result.sources.length > 0 && (
             <p className="muted">
@@ -159,7 +172,9 @@ export default function VerifyPage() {
               {history.map((run) => (
                 <tr key={run.id}>
                   <td>{new Date(run.createdAt).toLocaleString()}</td>
-                  <td>{run.symbol}</td>
+                  <td>
+                    <Link to={`/stock/${encodeURIComponent(run.symbol)}`}>{run.symbol}</Link>
+                  </td>
                   <td>{run.mos !== null ? `${run.mos}%` : '—'}</td>
                   <td>{run.recommendation}</td>
                 </tr>

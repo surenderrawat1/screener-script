@@ -261,3 +261,12 @@ model SwingAutoSnapshotArchive {
   @@index([savedAt])
   @@map("swing_auto_snapshots")
 }
+
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by")
+
+  @@map("app_settings")
+}

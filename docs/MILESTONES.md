@@ -18,13 +18,13 @@ For high-level “what’s next,” see [Roadmap](ROADMAP.md). For setup and ope
 | M6 | Auto-radar, exit, intraday | ✅ Complete | 26 (`@sv/swing` + `@sv/intraday`) |
 | M7 | Live Nifty & auto-scan scheduler | ✅ Complete | 12 |
 | M8 | Data foundation | ✅ Complete | 7 |
-| M9 | Cache admin & job UX | 🔲 Planned | — |
+| M9 | Cache admin & job UX | 🟡 In progress | 6 (`@sv/shared` config) |
 | M10 | Morning dashboard & LTG auto | 🔲 Planned | — |
 | M11 | Strategy builder | 🔲 Planned | — |
 | M12 | Backtesting & parity expansion | 🔲 Planned | — |
 | M13 | Production hardening | 🔲 Planned | — |
 
-**Current baseline:** 66 tests passing · Phases 1–8 shipped · Next: **M9**
+**Current baseline:** 77 tests passing · Phases 1–8 shipped · **M9 in progress** (config, cache admin, daily sync DR-C)
 
 ---
 
