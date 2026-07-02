@@ -1,4 +1,10 @@
 import { prisma } from '@sv/db';
+import {
+  getIndexSyncStatus,
+  syncAllIndicesFromDirectory,
+  syncIndexFromUpload,
+} from '@sv/data-adapters';
+import { resolve } from 'node:path';
 
 export function parseCsvRows(content: string): string[][] {
   const lines = content.replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.trim());
@@ -142,4 +148,36 @@ export async function getAdminStats() {
       symbolCount: u._count.symbols,
     })),
   };
+}
+
+function defaultIndicesDir() {
+  return (
+    process.env.INDICES_DIR ??
+    resolve(process.cwd(), '../stock-verifier/data/indices')
+  );
+}
+
+export async function getIndexStatus() {
+  return getIndexSyncStatus();
+}
+
+export async function syncIndicesFromDisk(keys?: string[]) {
+  const dir = defaultIndicesDir();
+  const results = await syncAllIndicesFromDirectory(dir, keys);
+  const ok = results.filter((r) => r.ok);
+  return {
+    success: ok.length > 0,
+    indicesDir: dir,
+    results,
+    synced: ok.length,
+    total: results.length,
+  };
+}
+
+export async function importIndexCsv(filename: string, csv: string) {
+  const result = await syncIndexFromUpload(filename, csv);
+  if (!result.ok) {
+    return { success: false, error: result.error ?? 'Index sync failed', result };
+  }
+  return { success: true, ...result };
 }

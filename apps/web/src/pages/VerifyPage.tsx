@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { api } from '../api';
+import { EmptyState, Page, PageHeader } from '../components/PageLayout';
 
 interface VerifyResult {
   symbol: string;
@@ -68,21 +69,23 @@ export default function VerifyPage() {
   }
 
   return (
-    <div>
-      <h1>CFA Verify</h1>
-      <p className="disclaimer">One-click memo — confirm with full verify workflow before investing.</p>
+    <Page>
+      <PageHeader title="CFA Verify" subtitle="One-click valuation memo from live market data" />
+      <p className="disclaimer">Confirm with full verify workflow before investing.</p>
 
       <form className="card" onSubmit={onSubmit}>
-        <div className="form-group" style={{ maxWidth: 280 }}>
-          <label>Symbol</label>
-          <input
-            value={symbol}
-            onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-            placeholder="TCS"
-            style={{ width: '100%' }}
-          />
+        <div className="form-row">
+          <div className="form-group" style={{ maxWidth: 280 }}>
+            <label>Symbol</label>
+            <input
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+              placeholder="TCS"
+              style={{ width: '100%' }}
+            />
+          </div>
         </div>
-        <button type="submit" className="btn" disabled={loading} style={{ marginTop: '0.75rem' }}>
+        <button type="submit" className="btn" disabled={loading}>
           {loading ? 'Analyzing…' : 'Auto verify'}
         </button>
       </form>
@@ -95,12 +98,12 @@ export default function VerifyPage() {
             {result.symbol} — {result.analysis.final_rating}
           </h2>
           {result.sources && result.sources.length > 0 && (
-            <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+            <p className="muted">
               Sources: {result.sources.join(' · ')}
               {result.from_cache ? ' (cached)' : ''}
             </p>
           )}
-          <table>
+          <table className="data-table">
             <tbody>
               <tr>
                 <td>Intrinsic value</td>
@@ -138,10 +141,12 @@ export default function VerifyPage() {
         </div>
       )}
 
-      {history.length > 0 && (
-        <div className="card">
-          <h2>Recent verifications</h2>
-          <table>
+      <div className="card">
+        <h2>Recent verifications</h2>
+        {history.length === 0 ? (
+          <EmptyState>No verification history yet.</EmptyState>
+        ) : (
+          <table className="data-table">
             <thead>
               <tr>
                 <th>When</th>
@@ -161,8 +166,8 @@ export default function VerifyPage() {
               ))}
             </tbody>
           </table>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </Page>
   );
 }

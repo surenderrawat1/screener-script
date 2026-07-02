@@ -1,19 +1,18 @@
 import { prisma, JobStatus, JobType } from '@sv/db';
-import { buildSymbolContext, triggerSwingAutoScan as runAutoScan } from '@sv/data-adapters';
+import { buildSymbolContext, getSwingAutoSnapshotDurable, triggerSwingAutoScan as runAutoScan } from '@sv/data-adapters';
 import {
   buildState,
   checkAddPosition,
   scanInput,
   profile,
   refreshPosition,
-  getSwingAutoSnapshot,
 } from '@sv/swing';
 import { listSwingPositions } from './swing-positions.js';
 
 export { triggerSwingAutoScan, shouldStartAutoScan, buildAutoScanPlan } from '@sv/data-adapters';
 
 export async function getSwingAutoState(userId: string) {
-  const snapshot = await getSwingAutoSnapshot();
+  const snapshot = await getSwingAutoSnapshotDurable();
   const scanResult =
     snapshot?.scan ??
     (await latestSwingScanResult()) ?? {

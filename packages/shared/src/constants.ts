@@ -63,6 +63,7 @@ export const CACHE_PREFIX = {
   JOB_PROGRESS: 'sv:job:progress',
   WORKER_HEARTBEAT: 'sv:worker:heartbeat',
   SWING_AUTO: 'sv:swing:auto',
+  REGIME: 'sv:regime',
 } as const;
 
 export const CACHE_TTL = {
@@ -77,6 +78,7 @@ export const CACHE_TTL = {
   job_progress: 3600,
   intraday: 120,
   swing_auto_snapshot: 7200,
+  regime: 900,
 } as const;
 
 export const BUILTIN_UNIVERSES = [

@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { api } from '../api';
+import { Page, PageHeader } from '../components/PageLayout';
 
 interface Universe {
   key: string;
@@ -103,8 +104,8 @@ export default function ScreenerPage() {
   }
 
   return (
-    <div>
-      <h1>Screener</h1>
+    <Page>
+      <PageHeader title="Screener" subtitle="Universe scan with CFA preset filters" />
       <p className="disclaimer">Screening is research assistance — verify before allocating.</p>
 
       <form className="card" onSubmit={onSubmit}>
@@ -167,7 +168,7 @@ export default function ScreenerPage() {
       {rows.length > 0 && (
         <div className="card">
           <h2>Results ({rows.length})</h2>
-          <table>
+          <table className="data-table">
             <thead>
               <tr>
                 <th>Symbol</th>
@@ -185,7 +186,7 @@ export default function ScreenerPage() {
                   <td>
                     <strong>{r.symbol}</strong>
                     <br />
-                    <small style={{ color: 'var(--muted)' }}>{r.name}</small>
+                    <span className="muted">{r.name}</span>
                   </td>
                   <td>{r.price}</td>
                   <td>{r.pe}</td>
@@ -201,6 +202,6 @@ export default function ScreenerPage() {
           </table>
         </div>
       )}
-    </div>
+    </Page>
   );
 }

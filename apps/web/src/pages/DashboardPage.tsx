@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
+import { Page, PageHeader } from '../components/PageLayout';
 
 export default function DashboardPage() {
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
@@ -10,22 +12,37 @@ export default function DashboardPage() {
     api<Record<string, unknown>>('/health/ready').then(setReady).catch(() => setReady(null));
   }, []);
 
+  const checks = (ready?.checks as Record<string, { ok?: boolean; host?: string; detail?: string }> | undefined) ?? {};
+
   return (
-    <div>
-      <h1>Dashboard</h1>
+    <Page>
+      <PageHeader title="Dashboard" subtitle="System status and quick navigation" />
       <p className="disclaimer">
         Educational research tool only — not SEBI-registered investment advice.
       </p>
 
       <div className="card">
-        <h2>System Health</h2>
+        <h2>System health</h2>
         <p>
           API: <strong>{String(health?.status ?? '…')}</strong>
         </p>
         {ready && (
-          <pre style={{ fontSize: '0.8rem', overflow: 'auto' }}>
-            {JSON.stringify(ready, null, 2)}
-          </pre>
+          <table className="data-table">
+            <tbody>
+              <tr>
+                <td>PostgreSQL</td>
+                <td>{checks.postgres?.ok ? 'OK' : 'Down'} · {checks.postgres?.host ?? '—'}</td>
+              </tr>
+              <tr>
+                <td>Redis</td>
+                <td>{checks.redis?.ok ? 'OK' : 'Down'} · {checks.redis?.host ?? '—'}</td>
+              </tr>
+              <tr>
+                <td>Worker</td>
+                <td>{checks.worker?.ok ? 'Active' : 'Idle'} · {String(checks.worker?.detail ?? '—')}</td>
+              </tr>
+            </tbody>
+          </table>
         )}
       </div>
 
@@ -33,43 +50,25 @@ export default function DashboardPage() {
         <h2>Quick links</h2>
         <ul>
           <li>
-            <a href="/screener">Run screener</a> — universe + preset filters
+            <Link to="/screener">Run screener</Link> — universe + preset filters
           </li>
           <li>
-            <a href="/verify">CFA verify</a> — one-click symbol analysis
+            <Link to="/verify">CFA verify</Link> — one-click symbol analysis
           </li>
           <li>
-            <a href="/watchlist">Watchlist</a> — thesis & review dates
+            <Link to="/watchlist">Watchlist</Link> — thesis & review dates
           </li>
           <li>
-            <a href="/positions">Swing positions</a> — open/closed trades
+            <Link to="/positions">Swing positions</Link> — open/closed trades
+          </li>
+          <li>
+            <Link to="/swing/auto">Auto radar</Link> — incremental Nifty 250 scan
+          </li>
+          <li>
+            <Link to="/intraday">Intraday</Link> — Nifty 5m/15m playbook
           </li>
         </ul>
       </div>
-
-      <div className="card">
-        <h2>Stack</h2>
-        <table>
-          <tbody>
-            <tr>
-              <td>PostgreSQL</td>
-              <td>
-                <code>shared_postgres</code> on <code>shared_network</code>
-              </td>
-            </tr>
-            <tr>
-              <td>Redis</td>
-              <td>
-                <code>shared_redis</code> (DB 1)
-              </td>
-            </tr>
-            <tr>
-              <td>API</td>
-              <td>Fastify + Prisma + BullMQ</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+    </Page>
   );
 }

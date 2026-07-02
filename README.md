@@ -1,160 +1,120 @@
 # Script Screener
 
-Modern rewrite of the PHP **stock-verifier** toolkit, shipped as **Script Screener** — **Node.js**, **React**, **Redis**, and **PostgreSQL**.
+Modern rewrite of the PHP **[stock-verifier](../stock-verifier/)** toolkit — **Node.js**, **React**, **Redis**, and **PostgreSQL**.
 
-## Infrastructure
+Screen Indian equities with CFA valuation, swing technical analysis (GC9/E1–E11), and Nifty intraday signals.
 
-| Service    | Container         | Network          |
-|-----------|-------------------|------------------|
-| PostgreSQL | `shared_postgres` | `shared_network` |
-| Redis      | `shared_redis`    | `shared_network` |
+> Educational research tool only — not SEBI-registered investment advice.
 
-Connection strings (from app containers on `shared_network`):
-
-```
-DATABASE_URL=postgresql://platform:platform@shared_postgres:5432/stock_verifier
-REDIS_URL=redis://shared_redis:6379/1
-```
+---
 
 ## Quick start
 
-### 1. Create database (once)
-
-```bash
-docker exec shared_postgres psql -U platform -d market_research -c "CREATE DATABASE stock_verifier;"
-```
-
-### 2. Configure environment
-
 ```bash
 cp .env.example .env
-# Edit secrets for production
-```
-
-### 3. Install & migrate
-
-```bash
 pnpm install
-pnpm db:generate
-pnpm db:push
-pnpm db:seed
+pnpm db:push && pnpm db:seed
+pnpm sync:indices          # import Nifty CSVs from PHP data folder
+pnpm dev                   # API :3100 + Web :5173
+pnpm dev:worker            # background jobs + auto-radar (separate terminal)
 ```
 
-### 4. Run locally (host → shared containers via localhost ports)
+Open http://localhost:5173 — login: `admin@example.com` / `admin123`
 
-For local dev when Postgres/Redis are exposed on host ports:
+**Full setup guide:** [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md)
+
+---
+
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [**Documentation index**](docs/README.md) | Start here — map of all docs |
+| [Getting Started](docs/GETTING-STARTED.md) | Install, env vars, first run |
+| [Architecture](docs/ARCHITECTURE.md) | System design and data flows |
+| [API Reference](docs/API.md) | All REST endpoints |
+| [Web UI](docs/WEB-UI.md) | Pages and navigation |
+| [Swing Auto Radar](docs/SWING-AUTO.md) | Auto-radar architecture, PHP parity, speed plan |
+| [Swing Positions](docs/SWING-POSITIONS.md) | Position ledger, exit rules, P&L plan |
+| [CFA Screener](docs/SCREENER.md) | Fundamental screener, presets, jobs |
+| [Nifty Intraday](docs/INTRADAY.md) | 5m/15m direction, presets, intraday app |
+| [Nifty Positions](docs/NIFTY-POSITIONS.md) | Same-day intraday ledger (planned) |
+| [CFA Verify](docs/CFA-VERIFY.md) | One-click memo, 8-phase engine plan |
+| [Full Verify](docs/FULL-VERIFY.md) | 8-phase allocation gate, thesis (planned) |
+| [Morning Routine](docs/MORNING-ROUTINE.md) | Pre-market cockpit (planned) |
+| [Trading Presets](docs/TRADING-PRESETS.md) | Swing / ETF / intraday profiles (planned) |
+| [Trading Strategies](docs/TRADING-STRATEGIES.md) | 21 curated swing / screener / hybrid strategies (planned) |
+| [Stock Details](docs/STOCK-DETAILS.md) | Single-symbol research hub (planned) |
+| [Database](docs/DATABASE.md) | PostgreSQL schema |
+| [Data Rules](docs/DATA-RULES.md) | DB vs cache policy, 6 AM sync, config files |
+| [Redis & Cache](docs/REDIS-CACHE.md) | Key namespaces and TTLs |
+| [Packages](docs/PACKAGES.md) | Monorepo structure |
+| [Operations](docs/OPERATIONS.md) | Docker, worker, troubleshooting |
+| [PHP Migration](docs/MIGRATION.md) | Import data from old app |
+| [Development Milestones](docs/MILESTONES.md) | Goals, deliverables, acceptance criteria (M1–M13) |
+| [Roadmap](docs/ROADMAP.md) | Completed phases 1–8, planned 9+ |
+
+---
+
+## Stack
+
+| Layer | Tech |
+|-------|------|
+| API | Fastify + JWT |
+| Web | React + Vite |
+| Worker | BullMQ |
+| Database | PostgreSQL + Prisma |
+| Cache | Redis (DB 1, `sv:*` keys) |
+| Data | Yahoo Finance, Screener.in, NSE index CSVs |
+
+---
+
+## Monorepo
+
+```
+apps/api          Fastify REST + WebSocket
+apps/web          React SPA
+apps/worker       BullMQ + auto-scan scheduler
+packages/core     CFA valuation engine
+packages/swing    Swing TA rules (E1–E11, X1–X9, GC9)
+packages/intraday Nifty intraday analysis
+packages/data-adapters  Yahoo, Screener.in, index sync
+packages/db       Prisma + PostgreSQL
+packages/cache    Redis client
+packages/jobs     BullMQ queues
+packages/shared   Types, schemas, constants
+```
+
+---
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `pnpm dev` | API + Web (watch mode) |
+| `pnpm dev:worker` | Background worker |
+| `pnpm build` | Production build |
+| `pnpm test` | Run all tests (66) |
+| `pnpm sync:indices` | Import Nifty index CSVs |
+| `pnpm migrate:php -- --user admin@example.com` | Import PHP JSON data |
+
+---
+
+## Infrastructure
+
+| Service | Container (Docker) | Local dev |
+|---------|-------------------|-----------|
+| PostgreSQL | `shared_postgres` | `localhost:5432` |
+| Redis | `shared_redis` | `localhost:6379/1` |
 
 ```bash
-export DATABASE_URL=postgresql://platform:platform@localhost:5432/stock_verifier
-export REDIS_URL=redis://localhost:6379/1
-pnpm dev          # API + Web
-pnpm dev:worker   # Background screener worker (separate terminal)
+docker compose up --build   # sv_api + sv_worker + sv_web
 ```
 
-### 5. Run with Docker
+---
 
-```bash
-docker compose up --build
-```
+## Status
 
-- Web: http://localhost:5173  
-- API: http://localhost:3100  
-- Default login: `admin@example.com` / `admin123`
+Phases **1–8 complete** (milestones M1–M8) — auth, screener, verify, swing scanner, auto-radar, intraday, index sync, live regime, durable snapshots.
 
-## Monorepo layout
-
-```
-apps/api       Fastify REST + WebSocket
-apps/worker    BullMQ screener consumer
-apps/web       React SPA
-packages/core          CFA valuation & screener logic
-packages/swing         Swing TA rules engine (E1–E11, GC9)
-packages/data-adapters Yahoo + Screener.in + swing charts
-packages/db            Prisma + PostgreSQL
-packages/cache Redis client
-packages/jobs  BullMQ queue definitions
-packages/shared Types, Zod schemas, constants
-```
-
-## API endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Liveness |
-| GET | `/health/ready` | Postgres + Redis + worker |
-| POST | `/api/v1/auth/login` | JWT login |
-| GET | `/api/v1/universes` | List universes |
-| POST | `/api/v1/screener/run` | Run screener (sync or background) |
-| GET | `/api/v1/screener/jobs/:id` | Job status |
-| POST | `/api/v1/verify/auto` | One-click CFA verify |
-| GET | `/api/v1/admin/uploads/stats` | NSE + promoter row counts |
-| POST | `/api/v1/admin/uploads/nse-equity` | Upload NSE equity CSV |
-| POST | `/api/v1/admin/uploads/promoter-holding` | Upload promoter holding CSV |
-| GET | `/api/v1/watchlist` | User watchlist + summary |
-| PUT | `/api/v1/watchlist/items` | Add/update watchlist symbol |
-| GET | `/api/v1/verify/history` | Recent verification runs |
-| GET | `/api/v1/swing/positions` | Swing positions (open/closed) |
-| POST | `/api/v1/swing/scan` | Run swing TA scanner |
-| POST | `/api/v1/swing/evaluate` | Single-symbol swing entry eval |
-| WS | `/ws/jobs/:id` | Job progress stream |
-
-## Migration from PHP
-
-See [docs/MIGRATION.md](docs/MIGRATION.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Phase 2 — Live data (done)
-
-Verify and screener now fetch from **Yahoo Finance** + **Screener.in** via `@sv/data-adapters`, with Redis caching (7d stock, 24h screener ratios). Falls back to sample metrics if fetch fails.
-
-## Phase 3 — CFA engine parity + admin uploads (done)
-
-- Full `CfaValuationEngine` port in `@sv/core` (`estimate()` / `analyze()` — DCF, P/B, EV/EBITDA, Graham floor)
-- Golden parity tests vs PHP `validate-logic.php` (TCS MOS, banking P/B, ONGC Graham floor, MOS formula)
-- Admin CSV uploads: NSE `EQUITY_L.csv` → `total_nse` universe; promoter holding CSV → screener overlay
-- Web **Admin** page at `/admin` (requires login with `MANAGE_CACHE` permission)
-
-## Phase 4 — User data & PHP migration (done)
-
-- **Watchlists** — thesis/review meta in PostgreSQL; auto-snapshot on verify
-- **Verification history** — persisted runs + recent list on Verify page
-- **Swing positions** — open/closed trades from PHP `swing_positions.json`
-- **Migration CLI:** `pnpm migrate:php -- --user admin@example.com`
-
-## Phase 5 — Swing scanner engine (done)
-
-- New **`@sv/swing`** package — GC9/DC9, dynamic signals, E1–E11 entry rules, ranker, universe scanner
-- Yahoo **daily OHLC** fetch (2y) with Redis TA cache
-- API: `POST /api/v1/swing/scan`, `POST /api/v1/swing/evaluate`
-- BullMQ queue `sv-swing-scan` (worker handles alongside screener)
-- Web **Swing** page (`/swing`) — scan Nifty universe, SETUP+ / GC9 filters
-- Parity tests vs PHP `testSwingGc9Entry`
-
-## Phase 6 — Auto-radar, exit rules, intraday (done)
-
-- **`evaluateExit` (X1–X9)** — stop/trail/breakeven, profit target, trend break, RSI, time stop, PA exit, hourly EMA
-- **`SwingAutoDecision` + `SwingAutoScreener`** — tier categorization, position actions, heat gate, overlay held symbols
-- **`@sv/intraday`** — 13 entry presets, preflight checklist, live playbook (15m directional MVP)
-- API: `GET /api/v1/swing/auto/state`, `GET /api/v1/swing/positions?live=1`, `GET /api/v1/intraday/nifty/state`
-- Web: **Auto Radar** (`/swing/auto`), **Intraday** (`/intraday`)
-- Parity: `parity-exit.test.ts`, `parity-auto.test.ts`, `@sv/intraday` parity suite
-
-## Phase 7 — Live Nifty feed, auto-scan scheduler, incremental scan (done)
-
-- **Live Nifty intraday** — Yahoo 5m/15m charts (`fetchNiftyIntradayCharts`), `Nifty15mDirection`, MTF confluence, trade plan, signal quality grading
-- **Redis swing auto snapshot** — `getSwingAutoSnapshot` / `saveSwingAutoSnapshot` with tier summary
-- **Incremental scan** — `shouldRunFullScan`, `buildRefreshSet`, `mergeHits` (full every 30m, rotate batch 30)
-- **Auto-scan scheduler** — worker tick every 60s, `shouldStartAutoScan` (300s interval), background jobs via BullMQ
-- API: `POST /api/v1/swing/auto/scan`, `GET /api/v1/intraday/nifty/state?refresh=1&interval=5m`
-- Parity: `parity-incremental.test.ts`, `parity-direction.test.ts`
-
-## Tests
-
-```bash
-pnpm --filter @sv/core test
-pnpm --filter @sv/swing test
-pnpm --filter @sv/intraday test
-```
-
-## Disclaimer
-
-Educational research tool only — not SEBI-registered investment advice.
+See [Development Milestones](docs/MILESTONES.md) for deliverables and acceptance criteria · [Roadmap](docs/ROADMAP.md) for planned work (M9+).

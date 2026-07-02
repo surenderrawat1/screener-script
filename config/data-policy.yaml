@@ -1,0 +1,41 @@
+# Script Screener — data policy defaults
+# Override via Admin Settings (app_settings) without redeploy.
+# See docs/DATA-RULES.md
+
+version: 1
+
+timezone: Asia/Kolkata
+
+# Redis TTLs (seconds). Code reads these; do not hard-code in adapters.
+cache_ttl:
+  stock: 604800          # 7 days — Yahoo OHLC blob
+  yahoo_raw: 604800
+  screener_row: 86400    # 24 hours — Screener.in per symbol
+  screener_table: 86400
+  ta: 86400
+  universe: 86400
+  index_meta: 2592000    # 30 days
+  regime: 900            # 15 minutes — intraday regime
+  swing_auto: 7200       # 2 hours
+  intraday_chart: 300    # 5 minutes during session
+
+# Staleness warnings (admin UI)
+staleness:
+  index_max_age_days: 90
+  nse_equity_max_age_days: 30
+  holdings_max_age_days: 90
+
+# Daily 6 AM prefetch — symbols warmed after reference data sync
+prefetch:
+  enabled: true
+  universes:
+    - nifty50
+    - nifty500
+  include_open_positions: true
+  max_symbols_per_batch: 50
+  delay_ms_between_batches: 200
+
+# On-demand refresh — user must explicitly request
+on_demand:
+  allow_refresh_param: true
+  rate_limit_per_user_per_hour: 30

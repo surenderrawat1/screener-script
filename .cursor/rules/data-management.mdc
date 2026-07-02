@@ -1,0 +1,34 @@
+---
+description: Data storage, daily sync, and config rules for Script Screener
+globs: stock-verifier-v2/**/*
+alwaysApply: false
+---
+
+# Data Management Rules
+
+Follow [docs/DATA-RULES.md](../../docs/DATA-RULES.md) when adding data sources, caches, or schedules.
+
+## Storage
+
+- **PostgreSQL** — slow-changing reference data: index constituents, NSE equity list, promoter holdings, system presets, user records, `app_settings`.
+- **Redis** — hot cache only (OHLC, screener rows, TA, universes). Must be rebuildable from Postgres + APIs.
+- Never store the only copy of reference data in Redis or in code constants.
+
+## Daily sync
+
+- External/market data refreshes **once per day at 06:00 IST** by default (`config/schedules.yaml`).
+- Do not fetch Yahoo/Screener on every page load; use cache + explicit `refresh=true` or Admin "Run daily sync".
+- Add new batch refresh steps to `schedules.yaml`, not ad-hoc cron in random files.
+
+## Configuration
+
+- **Config files** (`config/*.yaml`) — version-controlled defaults: TTLs, schedules, system presets.
+- **Settings UI** (`app_settings` table) — operator overrides; wins over YAML.
+- **`.env`** — secrets and connection strings only.
+- Read TTLs/thresholds from config; avoid new hard-coded magic numbers in adapters.
+
+## Before shipping
+
+1. Classify data tier (Postgres / Redis / ephemeral).
+2. Document new keys in REDIS-CACHE.md or DATABASE.md.
+3. Expose tunable values in Settings when operators need to change them.

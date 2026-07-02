@@ -8,3 +8,5 @@ export * from './swing-scan.js';
 export * from './auto-swing-scan.js';
 export * from './auto-swing-scheduler.js';
 export * from './universe.js';
+export * from './index-sync.js';
+export * from './market-regime.js';

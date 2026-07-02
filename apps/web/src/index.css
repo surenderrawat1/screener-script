@@ -63,6 +63,10 @@ a {
   margin-right: auto;
 }
 
+.nav-user {
+  font-size: 0.85rem;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -178,7 +182,126 @@ th {
   color: var(--muted);
   border-left: 3px solid var(--warning);
   padding-left: 0.75rem;
-  margin: 1rem 0;
+  margin: 0 0 1.25rem;
+}
+
+.page {
+  width: 100%;
+}
+
+.page h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.65rem;
+  font-weight: 700;
+}
+
+.page h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.page h3 {
+  margin: 0 0 0.65rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.page-subtitle,
+.muted {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.page-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.page-loading {
+  color: var(--muted);
+  padding: 2rem 0;
+}
+
+.empty-state {
+  color: var(--muted);
+  margin: 0;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.segmented {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.segmented-meta {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.data-table th,
+.data-table td {
+  text-align: left;
+  padding: 0.6rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table th {
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.data-table.compact th,
+.data-table.compact td {
+  padding: 0.45rem 0.4rem;
+}
+
+.card h2:first-child,
+.card h3:first-child {
+  margin-top: 0;
+}
+
+.message-success {
+  color: var(--success);
+  margin: 0.5rem 0;
+}
+
+input[type='file'] {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+input[type='checkbox'] {
+  accent-color: var(--accent);
 }
 
 .login-page {

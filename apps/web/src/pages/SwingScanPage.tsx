@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { api } from '../api';
+import { Page, PageHeader } from '../components/PageLayout';
 
 interface Universe {
   key: string;
@@ -77,51 +78,52 @@ export default function SwingScanPage() {
   }
 
   return (
-    <div>
-      <h1>Swing Scanner</h1>
-      <p className="disclaimer">
-        Daily swing rules engine v3.9-gc9 — Yahoo chart TA, E1–E11 entry rules, GC9 filter.
-      </p>
+    <Page>
+      <PageHeader title="Swing Scanner" subtitle="Daily E1–E11 rules, GC9 filter, Yahoo chart TA" />
+      <p className="disclaimer">Swing engine v3.9-gc9 — research signals only.</p>
 
       <form className="card" onSubmit={onSubmit}>
-        <div className="form-group">
-          <label>Universe</label>
-          <select value={universe} onChange={(e) => setUniverse(e.target.value)} style={{ width: '100%', maxWidth: 320 }}>
-            {universes.map((u) => (
-              <option key={u.key} value={u.key}>
-                {u.name} ({u.symbolCount})
-              </option>
-            ))}
-          </select>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Universe</label>
+            <select value={universe} onChange={(e) => setUniverse(e.target.value)} style={{ width: '100%' }}>
+              {universes.map((u) => (
+                <option key={u.key} value={u.key}>
+                  {u.name} ({u.symbolCount})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Min verdict</label>
+            <select value={minVerdict} onChange={(e) => setMinVerdict(e.target.value)} style={{ width: '100%' }}>
+              <option value="ENTER">ENTER</option>
+              <option value="SETUP_PLUS">SETUP+</option>
+              <option value="WATCH">WATCH</option>
+              <option value="ALL">ALL</option>
+            </select>
+          </div>
         </div>
-        <div className="form-group" style={{ marginTop: '0.75rem' }}>
-          <label>Min verdict</label>
-          <select value={minVerdict} onChange={(e) => setMinVerdict(e.target.value)} style={{ width: '100%', maxWidth: 200 }}>
-            <option value="ENTER">ENTER</option>
-            <option value="SETUP_PLUS">SETUP+</option>
-            <option value="WATCH">WATCH</option>
-            <option value="ALL">ALL</option>
-          </select>
-        </div>
-        <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.75rem' }}>
+        <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem' }}>
           <input type="checkbox" checked={gc9Only} onChange={(e) => setGc9Only(e.target.checked)} />
           GC9 only
         </label>
-        <button type="submit" className="btn" disabled={loading} style={{ marginTop: '0.75rem' }}>
+        <button type="submit" className="btn" disabled={loading}>
           {loading ? 'Scanning…' : 'Run swing scan (max 50)'}
         </button>
       </form>
 
       {error && <p className="error">{error}</p>}
       {meta && (
-        <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+        <p className="muted">
           Scanned {String(meta.scanned)} · Skipped {String(meta.skipped)} · Hits {hits.length}
         </p>
       )}
 
       {hits.length > 0 && (
         <div className="card">
-          <table>
+          <h2>Hits ({hits.length})</h2>
+          <table className="data-table">
             <thead>
               <tr>
                 <th>Symbol</th>
@@ -153,6 +155,6 @@ export default function SwingScanPage() {
           </table>
         </div>
       )}
-    </div>
+    </Page>
   );
 }

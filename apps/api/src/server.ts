@@ -32,7 +32,7 @@ import { listUniverses, createCustomUniverse } from './services/universe.js';
 import { createScreenerJob, getJob } from './services/screener.js';
 import { createSwingScanJob } from './services/swing.js';
 import { verifySymbol } from './services/verify.js';
-import { getAdminStats, importNseEquityCsv, importPromoterHoldingCsv } from './services/admin.js';
+import { getAdminStats, importIndexCsv, importNseEquityCsv, importPromoterHoldingCsv, getIndexStatus, syncIndicesFromDisk } from './services/admin.js';
 import { evaluateSwingSymbol } from '@sv/data-adapters';
 import {
   listWatchlist,
@@ -357,6 +357,29 @@ export async function buildApp() {
     if (!file) return reply.status(400).send({ error: 'CSV file required' });
     const csv = (await file.toBuffer()).toString('utf8');
     const result = await importPromoterHoldingCsv(csv);
+    if (!result.success) return reply.status(400).send(result);
+    return result;
+  });
+
+  app.get('/api/v1/admin/indices/status', { preHandler: [authPreHandler] }, async (request) => {
+    requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    return { indices: await getIndexStatus() };
+  });
+
+  app.post('/api/v1/admin/indices/sync', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    const body = (request.body ?? {}) as { keys?: string[] };
+    const result = await syncIndicesFromDisk(body.keys);
+    if (!result.success) return reply.status(400).send(result);
+    return result;
+  });
+
+  app.post('/api/v1/admin/indices/upload', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    const file = await request.file();
+    if (!file) return reply.status(400).send({ error: 'CSV file required' });
+    const csv = (await file.toBuffer()).toString('utf8');
+    const result = await importIndexCsv(file.filename, csv);
     if (!result.success) return reply.status(400).send(result);
     return result;
   });

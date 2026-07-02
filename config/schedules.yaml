@@ -1,0 +1,69 @@
+# Script Screener — scheduled jobs (defaults)
+# Times are in timezone from data-policy.yaml (Asia/Kolkata).
+# Override daily_sync.cron via Admin Settings.
+# See docs/DATA-RULES.md
+
+version: 1
+
+daily_sync:
+  enabled: true
+  name: daily_data_sync
+  description: Refresh reference data and warm market caches once per day
+  cron: "0 6 * * *"       # 06:00 IST every day
+  timezone: Asia/Kolkata
+  skip_if_completed_today: true
+
+  steps:
+    - id: index_refresh
+      at: "06:00"
+      action: sync_indices_from_dir
+      enabled: true
+      params:
+        indices_dir_env: INDICES_DIR
+
+    - id: nse_equity_refresh
+      at: "06:05"
+      action: refresh_nse_equity_csv
+      enabled: false          # enable when automated EQUITY_L fetch exists
+      params:
+        source: upload_or_fetch
+
+    - id: holdings_refresh
+      at: "06:10"
+      action: refresh_promoter_holdings
+      enabled: false          # enable when automated holdings fetch exists
+      params:
+        source: upload_or_fetch
+
+    - id: ohlc_prefetch
+      at: "06:15"
+      action: prefetch_ohlc
+      enabled: true
+      params:
+        config_ref: prefetch    # reads config/data-policy.yaml prefetch section
+
+    - id: screener_prefetch
+      at: "06:30"
+      action: prefetch_screener_rows
+      enabled: true
+      params:
+        config_ref: prefetch
+
+    - id: regime_prewarm
+      at: "06:45"
+      action: warm_market_regime
+      enabled: true
+
+    - id: morning_cache_warm
+      at: "06:50"
+      action: warm_morning_briefing
+      enabled: false          # enable with MORNING-ROUTINE MR-F
+
+# Intraday jobs (separate from daily sync)
+intraday:
+  swing_auto_scan:
+    enabled: true
+    interval_sec: 300         # worker tick — see SWING-AUTO.md
+  regime_refresh:
+    enabled: true
+    interval_sec: 900

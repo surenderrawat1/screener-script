@@ -245,3 +245,19 @@ model ScreenerPreset {
 
   @@map("screener_presets")
 }
+
+model SwingAutoSnapshotArchive {
+  id             String   @id @default(cuid())
+  savedAt        DateTime @map("saved_at")
+  lastFullScanAt DateTime @map("last_full_scan_at")
+  scanMode       String   @default("full") @map("scan_mode")
+  rotateOffset   Int      @default(0) @map("rotate_offset")
+  regimeKey      String?  @map("regime_key")
+  scan           Json
+  tiers          Json
+  summary        Json
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([savedAt])
+  @@map("swing_auto_snapshots")
+}

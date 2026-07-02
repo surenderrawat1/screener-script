@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { EmptyState, Page, PageHeader } from '../components/PageLayout';
 
 interface SwingPosition {
   id: string;
@@ -38,14 +39,11 @@ export default function PositionsPage() {
   const positions = data?.positions ?? [];
 
   return (
-    <div>
-      <h1>Swing Positions</h1>
-      <p className="disclaimer">
-        Open/closed trades migrated from PHP <code>swing_positions.json</code>. Scanner logic comes in a
-        later phase.
-      </p>
+    <Page>
+      <PageHeader title="Swing Positions" subtitle="Open and closed trades with stops and targets" />
+      <p className="disclaimer">Use Auto Radar for live exit evaluation on open positions.</p>
 
-      <div className="card" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+      <div className="card segmented">
         <span>Filter:</span>
         {(['open', 'closed', 'all'] as const).map((f) => (
           <button
@@ -58,7 +56,7 @@ export default function PositionsPage() {
           </button>
         ))}
         {data && (
-          <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: '0.85rem' }}>
+          <span className="segmented-meta">
             {data.summary.open} open · {data.summary.closed} closed
           </span>
         )}
@@ -68,11 +66,9 @@ export default function PositionsPage() {
 
       <div className="card">
         {positions.length === 0 ? (
-          <p style={{ color: 'var(--muted)' }}>
-            No positions. Run <code>pnpm migrate:php</code> to import from PHP.
-          </p>
+          <EmptyState>No positions. Run pnpm migrate:php to import from PHP.</EmptyState>
         ) : (
-          <table>
+          <table className="data-table">
             <thead>
               <tr>
                 <th>Symbol</th>
@@ -89,14 +85,12 @@ export default function PositionsPage() {
                 <tr key={p.id}>
                   <td>
                     <strong>{p.symbol}</strong>
-                    {p.notes ? (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>{p.notes}</div>
-                    ) : null}
+                    {p.notes ? <div className="muted">{p.notes}</div> : null}
                   </td>
                   <td>{p.status}</td>
                   <td>
                     ₹{p.entry_price}
-                    <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>{p.entry_date}</div>
+                    <div className="muted">{p.entry_date}</div>
                   </td>
                   <td>{p.trailed_stop_loss ?? p.stop_loss ?? '—'}</td>
                   <td>{p.profit_target ?? '—'}</td>
@@ -104,9 +98,7 @@ export default function PositionsPage() {
                     {p.closed_price != null ? (
                       <>
                         ₹{p.closed_price}
-                        <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-                          {p.closed_at?.slice(0, 10)}
-                        </div>
+                        <div className="muted">{p.closed_at?.slice(0, 10)}</div>
                       </>
                     ) : (
                       '—'
@@ -119,6 +111,6 @@ export default function PositionsPage() {
           </table>
         )}
       </div>
-    </div>
+    </Page>
   );
 }

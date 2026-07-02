@@ -13,7 +13,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "sync:indices": "tsx src/sync-indices-cli.ts"
   },
   "dependencies": {
     "@sv/cache": "workspace:*",
@@ -21,10 +22,12 @@
     "@sv/db": "workspace:*",
     "@sv/jobs": "workspace:*",
     "@sv/shared": "workspace:*",
-    "@sv/swing": "workspace:*"
+    "@sv/swing": "workspace:*",
+    "dotenv": "^16.4.7"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
     "typescript": "^5.8.2"
   }
 }

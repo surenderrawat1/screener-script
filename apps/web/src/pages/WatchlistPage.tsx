@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { api } from '../api';
+import { EmptyState, Page, PageHeader } from '../components/PageLayout';
 
 interface WatchlistItem {
   id: string;
@@ -66,11 +67,9 @@ export default function WatchlistPage() {
   const summary = data?.summary;
 
   return (
-    <div>
-      <h1>Watchlist</h1>
-      <p className="disclaimer">
-        Thesis and review dates from PHP watchlist — auto-updated on verify (last MOS, verdict).
-      </p>
+    <Page>
+      <PageHeader title="Watchlist" subtitle="Thesis, review dates, and last verify snapshot" />
+      <p className="disclaimer">Auto-updated on verify with last MOS and verdict.</p>
 
       {summary && (
         <div className="card">
@@ -82,16 +81,18 @@ export default function WatchlistPage() {
       )}
 
       <form className="card" onSubmit={onAdd}>
-        <div className="form-group" style={{ maxWidth: 280 }}>
-          <label>Add symbol</label>
-          <input
-            value={symbol}
-            onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-            placeholder="TCS"
-            style={{ width: '100%' }}
-          />
+        <div className="form-row">
+          <div className="form-group" style={{ maxWidth: 280 }}>
+            <label>Add symbol</label>
+            <input
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+              placeholder="TCS"
+              style={{ width: '100%' }}
+            />
+          </div>
         </div>
-        <button type="submit" className="btn" disabled={loading} style={{ marginTop: '0.75rem' }}>
+        <button type="submit" className="btn" disabled={loading}>
           Add to watchlist
         </button>
       </form>
@@ -101,9 +102,9 @@ export default function WatchlistPage() {
       <div className="card">
         <h2>Entries</h2>
         {items.length === 0 ? (
-          <p style={{ color: 'var(--muted)' }}>No symbols yet. Verify a stock or run PHP migration.</p>
+          <EmptyState>No symbols yet. Verify a stock or run PHP migration.</EmptyState>
         ) : (
-          <table>
+          <table className="data-table">
             <thead>
               <tr>
                 <th>Symbol</th>
@@ -121,9 +122,7 @@ export default function WatchlistPage() {
                     <td>
                       <strong>{item.symbol}</strong>
                       {meta.stock_name ? (
-                        <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
-                          {String(meta.stock_name)}
-                        </div>
+                        <div className="muted">{String(meta.stock_name)}</div>
                       ) : null}
                     </td>
                     <td>{String(meta.review_date ?? '—')}</td>
@@ -145,6 +144,6 @@ export default function WatchlistPage() {
           </table>
         )}
       </div>
-    </div>
+    </Page>
   );
 }

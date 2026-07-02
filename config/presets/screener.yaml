@@ -1,0 +1,60 @@
+# System screener presets — seed source for screener_presets table
+# User custom presets are stored in DB only (not in this file).
+# See docs/DATA-RULES.md and docs/SCREENER.md
+
+version: 1
+
+presets:
+  quality:
+    label: Quality Compounders
+    filters:
+      min_roe: 15
+      min_roce: 12
+    is_system: true
+
+  strong_buy:
+    label: Strong Buy
+    filters:
+      min_roe: 18
+      min_mos: 25
+    is_system: true
+
+  buy_picks:
+    label: Buy Picks
+    filters:
+      min_roe: 12
+      min_mos: 10
+    is_system: true
+
+  fair_mos:
+    label: Fair MOS
+    filters:
+      min_mos: 0
+    is_system: true
+
+  value:
+    label: Value
+    filters:
+      max_pe: 20
+      min_roe: 12
+    is_system: true
+
+  growth:
+    label: GARP Growth
+    filters:
+      min_roe: 15
+    is_system: true
+
+  cfa_top:
+    label: CFA Top
+    filters:
+      min_roe: 18
+      min_roce: 15
+    is_system: true
+
+  # PHP parity presets — enable as TA enrichment ships (SCREENER S-B, TRADING-STRATEGIES TS-D)
+  # moat_compounders:
+  #   label: Wide Moat Compounders
+  #   filters: { ... }
+  #   is_system: true
+  #   enabled: false

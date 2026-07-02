@@ -29,7 +29,7 @@ export default function LoginPage() {
     <div className="login-page">
       <div className="card login-card">
         <h1>{APP_NAME}</h1>
-        <p style={{ color: 'var(--muted)' }}>CFA research toolkit — Node · React · Redis · PostgreSQL</p>
+        <p className="muted">CFA research toolkit — Node · React · Redis · PostgreSQL</p>
         <form onSubmit={onSubmit}>
           <div className="form-group" style={{ marginBottom: '1rem' }}>
             <label htmlFor="email">Email</label>

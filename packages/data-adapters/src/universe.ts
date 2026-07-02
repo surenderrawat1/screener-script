@@ -1,14 +1,19 @@
 import { prisma } from '@sv/db';
+import { cacheGetJson, cacheKey } from '@sv/cache';
+import { CACHE_PREFIX } from '@sv/shared';
 
-const DEFAULT_SYMBOLS: Record<string, string[]> = {
+const DEV_FALLBACK: Record<string, string[]> = {
   nifty50: ['TCS', 'INFY', 'RELIANCE', 'HDFCBANK', 'ITC', 'BHARTIARTL', 'ICICIBANK', 'SBIN', 'LT', 'AXISBANK'],
-  nifty100: ['TCS', 'INFY', 'RELIANCE', 'HDFCBANK', 'ITC', 'WIPRO', 'HCLTECH', 'MARUTI', 'SUNPHARMA', 'TITAN'],
-  nifty500: ['TCS', 'INFY', 'RELIANCE', 'HDFCBANK', 'ITC', 'BAJFINANCE', 'ASIANPAINT', 'NESTLEIND', 'ULTRACEMCO', 'POWERGRID'],
-  nifty250: ['TCS', 'INFY', 'RELIANCE', 'HDFCBANK', 'ITC', 'WIPRO', 'HCLTECH', 'MARUTI', 'SUNPHARMA', 'TITAN', 'BAJFINANCE', 'ASIANPAINT'],
 };
 
 export async function resolveUniverseSymbols(universeKey: string, maxScan: number): Promise<string[]> {
   const limit = maxScan > 0 ? maxScan : undefined;
+
+  const cached = await cacheGetJson<string[]>(cacheKey(CACHE_PREFIX.UNIVERSE, universeKey));
+  if (cached?.length) {
+    return limit ? cached.slice(0, limit) : cached;
+  }
+
   const universe = await prisma.universe.findUnique({
     where: { key: universeKey },
     include: { symbols: true },
@@ -21,6 +26,7 @@ export async function resolveUniverseSymbols(universeKey: string, maxScan: numbe
 
   const indexRows = await prisma.indexConstituent.findMany({
     where: { indexKey: universeKey, effectiveTo: null },
+    orderBy: { symbol: 'asc' },
     ...(limit ? { take: limit } : {}),
   });
   if (indexRows.length > 0) {
@@ -32,7 +38,11 @@ export async function resolveUniverseSymbols(universeKey: string, maxScan: numbe
     return nseRows.map((r) => r.symbol);
   }
 
-  const defaults = DEFAULT_SYMBOLS[universeKey] ?? DEFAULT_SYMBOLS.nifty50;
+  if (process.env.NODE_ENV === 'production') {
+    return [];
+  }
+
+  const defaults = DEV_FALLBACK[universeKey] ?? DEV_FALLBACK.nifty50;
   return limit ? defaults.slice(0, limit) : defaults;
 }
 

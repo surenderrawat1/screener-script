@@ -2,13 +2,12 @@ import { prisma, JobStatus, JobType } from '@sv/db';
 import { enqueueSwingScanJob, shouldRunSwingInBackground } from '@sv/jobs';
 import {
   buildRefreshSet,
-  defaultRegime,
   getSwingAutoSnapshot,
   scanInput,
   SCAN_INTERVAL_SEC,
   shouldRunFullScan,
 } from '@sv/swing';
-import { executeAutoScanPlan, type AutoScanPlan } from './auto-swing-scan.js';
+import { executeAutoScanPlan, resolveAutoScanRegime, type AutoScanPlan } from './auto-swing-scan.js';
 import { openSwingPositionSymbols, resolveUniverseSymbols } from './universe.js';
 
 export async function hasActiveAutoScanJob(): Promise<boolean> {
@@ -26,7 +25,7 @@ export async function hasActiveAutoScanJob(): Promise<boolean> {
 
 export async function buildAutoScanPlan(openSymbols?: string[]) {
   const snapshot = await getSwingAutoSnapshot();
-  const regime = defaultRegime();
+  const regime = await resolveAutoScanRegime(false);
   const regimeKey = String(regime.key ?? '');
   const base = scanInput();
   const positions = openSymbols ?? (await openSwingPositionSymbols());

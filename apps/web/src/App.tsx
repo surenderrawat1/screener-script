@@ -29,7 +29,7 @@ function Layout() {
         <NavLink to="/swing/auto">Auto Radar</NavLink>
         <NavLink to="/intraday">Intraday</NavLink>
         <NavLink to="/admin">Admin</NavLink>
-        <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>{user.email}</span>
+        <span className="nav-user muted">{user.email}</span>
         <button type="button" className="btn btn-secondary" onClick={logout}>
           Logout
         </button>

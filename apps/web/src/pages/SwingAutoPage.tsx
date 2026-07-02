@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
+import { EmptyState, Page, PageHeader, PageLoading } from '../components/PageLayout';
 
 interface AutoState {
   ok: boolean;
@@ -13,6 +14,7 @@ interface AutoState {
   };
   positions: { open: PositionRow[]; heat_pct: number; count: number };
   scan: { hit_count?: number; scanned?: number };
+  snapshot?: { saved_at?: string; summary?: Record<string, unknown> } | null;
 }
 
 interface HitRow {
@@ -37,7 +39,9 @@ interface PositionRow {
 export default function SwingAutoPage() {
   const [state, setState] = useState<AutoState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
   const [error, setError] = useState('');
+  const [scanMessage, setScanMessage] = useState('');
 
   const load = useCallback(async () => {
     setError('');
@@ -58,28 +62,73 @@ export default function SwingAutoPage() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (loading && !state) return <div className="page">Loading swing auto-radar…</div>;
-  if (error && !state) return <div className="page error">{error}</div>;
+  async function runScan() {
+    setScanMessage('');
+    setError('');
+    setScanning(true);
+    try {
+      const res = await api<{ ok: boolean; error?: string; scan_mode?: string; background?: boolean }>(
+        '/api/v1/swing/auto/scan',
+        { method: 'POST' },
+      );
+      if (!res.ok) {
+        setScanMessage(res.error ?? 'Scan not started');
+      } else {
+        setScanMessage(
+          res.background
+            ? `Background ${res.scan_mode ?? 'scan'} queued`
+            : `${res.scan_mode ?? 'Scan'} completed`,
+        );
+        await load();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Scan failed');
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  if (loading && !state) return <PageLoading label="Loading swing auto-radar…" />;
+  if (error && !state) {
+    return (
+      <Page>
+        <p className="error">{error}</p>
+      </Page>
+    );
+  }
   if (!state) return null;
 
-  return (
-    <div className="page">
-      <header className="page-header">
-        <div>
-          <h1>Swing Auto Radar</h1>
-          <p className="muted">{state.profile.title}</p>
-        </div>
-        <button type="button" className="btn" onClick={load} disabled={loading}>
-          {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
-      </header>
+  const savedAt = state.snapshot?.saved_at
+    ? new Date(state.snapshot.saved_at).toLocaleString()
+    : 'Never';
 
-      <section className="card" style={{ marginBottom: '1rem' }}>
+  return (
+    <Page>
+      <PageHeader
+        title="Swing Auto Radar"
+        subtitle={state.profile.title}
+        actions={
+          <>
+            <button type="button" className="btn btn-secondary" onClick={() => void load()} disabled={loading}>
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+            <button type="button" className="btn" onClick={() => void runScan()} disabled={scanning}>
+              {scanning ? 'Scanning…' : 'Run scan'}
+            </button>
+          </>
+        }
+      />
+      <p className="disclaimer">Incremental Nifty 250 radar — full scan every 30m, refresh every 5m.</p>
+
+      {scanMessage && <p className="muted">{scanMessage}</p>}
+      {error && <p className="error">{error}</p>}
+
+      <section className="card">
         <h2>{state.guidance.title}</h2>
         <p>{state.guidance.message}</p>
         <p className="muted">
           Deploy cap {state.guidance.deploy_pct}% · portfolio heat {state.positions.heat_pct}% ·{' '}
-          {state.positions.count} open · last scan {state.scan.hit_count ?? 0} hits
+          {state.positions.count} open · {state.scan.hit_count ?? 0} hits · last snapshot {savedAt}
         </p>
       </section>
 
@@ -90,10 +139,10 @@ export default function SwingAutoPage() {
         <TierTable title="Breakout surge" rows={state.tiers.breakout_surge} />
       </div>
 
-      <section className="card" style={{ marginTop: '1rem' }}>
+      <section className="card">
         <h2>Open positions (live exit eval)</h2>
         {state.positions.open.length === 0 ? (
-          <p className="muted">No open swing positions.</p>
+          <EmptyState>No open swing positions.</EmptyState>
         ) : (
           <table className="data-table">
             <thead>
@@ -119,16 +168,18 @@ export default function SwingAutoPage() {
           </table>
         )}
       </section>
-    </div>
+    </Page>
   );
 }
 
 function TierTable({ title, rows }: { title: string; rows: HitRow[] }) {
   return (
     <section className="card">
-      <h3>{title} ({rows.length})</h3>
+      <h3>
+        {title} ({rows.length})
+      </h3>
       {rows.length === 0 ? (
-        <p className="muted">None</p>
+        <EmptyState>None</EmptyState>
       ) : (
         <table className="data-table compact">
           <thead>
