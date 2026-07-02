@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+apps/web/dist/
+*.tsbuildinfo
+
+# Vite
+.vite/
+
+# Environment (secrets)
+.env
+.env.local
+.env.*.local
+
+# Logs & OS
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.DS_Store
+
+# Test / tooling
+coverage/
+.turbo/
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Prisma (keep schema + migrations; ignore local sqlite if any)
+*.db
+*.db-journal

@@ -1,0 +1,88 @@
+import { z } from 'zod';
+import { ROLES, SCREENER_PRESETS } from './constants.js';
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+});
+
+export const screenerRunSchema = z.object({
+  universe: z.string().min(1),
+  preset: z.enum(SCREENER_PRESETS).optional(),
+  maxScan: z.number().int().min(10).max(2000).default(200),
+  background: z.boolean().optional(),
+  filters: z.record(z.unknown()).optional(),
+});
+
+export const verifyAutoSchema = z.object({
+  symbol: z.string().min(1).max(32),
+  refresh: z.boolean().optional(),
+});
+
+export const createUniverseSchema = z.object({
+  name: z.string().min(1).max(120),
+  symbols: z.array(z.string().min(1)).optional(),
+});
+
+export const createUserSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+  role: z.enum([ROLES.ADMIN, ROLES.ANALYST, ROLES.VIEWER]),
+});
+
+export type LoginInput = z.infer<typeof loginSchema>;
+export type ScreenerRunInput = z.infer<typeof screenerRunSchema>;
+export type VerifyAutoInput = z.infer<typeof verifyAutoSchema>;
+export type CreateUniverseInput = z.infer<typeof createUniverseSchema>;
+
+export interface StockMetrics {
+  symbol: string;
+  name?: string;
+  price?: number;
+  pe?: number;
+  eps?: number;
+  book_value?: number;
+  roe?: number;
+  roce?: number;
+  sales_yoy?: number;
+  profit_yoy?: number;
+  eps_growth?: number;
+  revenue_growth?: number;
+  revenue_growth_3yr?: number;
+  sector?: string;
+  market_cap_cr?: number;
+  debt_to_equity?: number;
+  div_yield?: number;
+  [key: string]: unknown;
+}
+
+export interface MosEstimate {
+  intrinsic: number;
+  mos: number | null;
+  zone: string;
+  action: string;
+  fair_pe: number;
+  method: string;
+  graham: number;
+  quality_score?: number;
+  final_rating?: string;
+}
+
+export interface ScreenerRow extends MosEstimate {
+  symbol: string;
+  name: string;
+  price: number;
+  pe: number;
+  roe: number;
+  roce: number;
+  composite_score: number;
+  recommendation: string;
+  passed: boolean;
+}
+
+export interface JobProgress {
+  phase: string;
+  total: number;
+  processed: number;
+  passed: number;
+}

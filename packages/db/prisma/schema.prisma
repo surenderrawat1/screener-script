@@ -1,0 +1,213 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  analyst
+  viewer
+}
+
+enum JobStatus {
+  pending
+  running
+  done
+  failed
+}
+
+enum JobType {
+  screener
+  verify_batch
+  swing_scan
+  index_sync
+  daily_close
+}
+
+enum UniverseType {
+  builtin
+  custom
+  uploaded
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         UserRole  @default(viewer)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  lastLoginAt  DateTime? @map("last_login_at")
+
+  sessions         Session[]
+  universes        Universe[]
+  jobs             Job[]
+  watchlists       Watchlist[]
+  auditLogs        AuditLog[]
+  verificationRuns VerificationRun[]
+
+  @@map("users")
+}
+
+model Session {
+  id               String   @id @default(cuid())
+  userId           String   @map("user_id")
+  refreshTokenHash String   @map("refresh_token_hash")
+  expiresAt        DateTime @map("expires_at")
+  ip               String?
+  userAgent        String?  @map("user_agent")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?  @map("user_id")
+  action    String
+  resource  String
+  meta      Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+model Universe {
+  id          String       @id @default(cuid())
+  key         String       @unique
+  name        String
+  type        UniverseType @default(custom)
+  ownerUserId String?      @map("owner_user_id")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  owner   User?            @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  symbols UniverseSymbol[]
+
+  @@map("universes")
+}
+
+model UniverseSymbol {
+  id         String   @id @default(cuid())
+  universeId String   @map("universe_id")
+  symbol     String
+  addedAt    DateTime @default(now()) @map("added_at")
+
+  universe Universe @relation(fields: [universeId], references: [id], onDelete: Cascade)
+
+  @@unique([universeId, symbol])
+  @@index([symbol])
+  @@map("universe_symbols")
+}
+
+model IndexConstituent {
+  id            String    @id @default(cuid())
+  indexKey      String    @map("index_key")
+  symbol        String
+  effectiveFrom DateTime  @default(now()) @map("effective_from")
+  effectiveTo   DateTime? @map("effective_to")
+
+  @@index([indexKey, symbol])
+  @@map("index_constituents")
+}
+
+model NseEquity {
+  symbol     String   @id
+  name       String?
+  series     String?
+  isin       String?
+  uploadedAt DateTime @default(now()) @map("uploaded_at")
+
+  @@map("nse_equity_list")
+}
+
+model PromoterHolding {
+  id         String   @id @default(cuid())
+  symbol     String
+  holdingPct Float    @map("holding_pct")
+  asOf       DateTime @map("as_of")
+  source     String   @default("upload")
+  uploadedBy String?  @map("uploaded_by")
+
+  @@unique([symbol])
+  @@map("promoter_holdings")
+}
+
+model Job {
+  id         String    @id @default(cuid())
+  type       JobType
+  status     JobStatus @default(pending)
+  input      Json
+  result     Json?
+  error      String?
+  progress   Json?
+  createdBy  String?   @map("created_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  startedAt  DateTime? @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+
+  creator User? @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([status, type])
+  @@index([createdAt])
+  @@map("jobs")
+}
+
+model Watchlist {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items WatchlistItem[]
+
+  @@map("watchlists")
+}
+
+model WatchlistItem {
+  id          String   @id @default(cuid())
+  watchlistId String   @map("watchlist_id")
+  symbol      String
+  notes       String?
+  addedAt     DateTime @default(now()) @map("added_at")
+
+  watchlist Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+
+  @@unique([watchlistId, symbol])
+  @@map("watchlist_items")
+}
+
+model VerificationRun {
+  id        String   @id @default(cuid())
+  userId    String?  @map("user_id")
+  symbol    String
+  mode      String   @default("auto")
+  input     Json?
+  result    Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([symbol, createdAt])
+  @@map("verification_runs")
+}
+
+model ScreenerPreset {
+  id       String  @id @default(cuid())
+  userId   String? @map("user_id")
+  name     String
+  filters  Json
+  isSystem Boolean @default(false) @map("is_system")
+
+  @@map("screener_presets")
+}
