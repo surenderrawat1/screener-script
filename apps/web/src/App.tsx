@@ -10,6 +10,7 @@ import PositionsPage from './pages/PositionsPage';
 import SwingScanPage from './pages/SwingScanPage';
 import SwingAutoPage from './pages/SwingAutoPage';
 import IntradayPage from './pages/IntradayPage';
+import { APP_NAME } from './brand';
 
 function Layout() {
   const { user, logout } = useAuth();
@@ -18,7 +19,7 @@ function Layout() {
   return (
     <div className="app-shell">
       <nav className="nav">
-        <span className="brand">Stock Verifier v2</span>
+        <span className="brand">{APP_NAME}</span>
         <NavLink to="/" end>Dashboard</NavLink>
         <NavLink to="/screener">Screener</NavLink>
         <NavLink to="/verify">Verify</NavLink>

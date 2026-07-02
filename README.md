@@ -1,6 +1,6 @@
 # Script Screener
 
-Modern rewrite of the PHP stock-verifier using **Node.js**, **React**, **Redis**, and **PostgreSQL**.
+Modern rewrite of the PHP **stock-verifier** toolkit, shipped as **Script Screener** — **Node.js**, **React**, **Redis**, and **PostgreSQL**.
 
 ## Infrastructure
 

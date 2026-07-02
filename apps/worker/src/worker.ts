@@ -1,3 +1,5 @@
+import './load-env.js';
+
 import { hostname } from 'node:os';
 import { prisma, JobStatus } from '@sv/db';
 import { runLiveScreener, executeAutoScanPlan, runSwingScan, tickSwingAutoScan } from '@sv/data-adapters';

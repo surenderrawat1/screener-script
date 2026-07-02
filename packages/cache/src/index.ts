@@ -4,7 +4,15 @@ import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
 let client: Redis | null = null;
 
 export function getRedisUrl(): string {
-  return process.env.REDIS_URL ?? 'redis://shared_redis:6379/1';
+  return process.env.REDIS_URL ?? 'redis://127.0.0.1:6379/1';
+}
+
+export function redisHostLabel(): string {
+  try {
+    return new URL(getRedisUrl()).hostname;
+  } catch {
+    return 'unknown';
+  }
 }
 
 export function getRedis(): Redis {

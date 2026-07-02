@@ -1,4 +1,4 @@
-# Stock Verifier v2 — Architecture
+# Script Screener — Architecture
 
 ## Overview
 

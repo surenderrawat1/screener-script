@@ -1,8 +1,4 @@
-import { config } from 'dotenv';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-config({ path: resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env') });
+import './load-env.js';
 
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
@@ -18,6 +14,7 @@ import {
   getJobProgress,
   getRedis,
   hasActiveWorker,
+  redisHostLabel,
 } from '@sv/cache';
 import {
   loginSchema,
@@ -110,13 +107,19 @@ export async function buildApp() {
 
     const redisOk = await pingRedis();
     const workerOk = await hasActiveWorker();
+    let pgHost = 'unknown';
+    try {
+      pgHost = new URL(process.env.DATABASE_URL ?? '').hostname || pgHost;
+    } catch {
+      pgHost = 'unknown';
+    }
 
     const ok = pgOk && redisOk;
     return reply.status(ok ? 200 : 503).send({
       status: ok ? 'ready' : 'degraded',
       checks: {
-        postgres: { ok: pgOk, host: 'shared_postgres' },
-        redis: { ok: redisOk, host: 'shared_redis' },
+        postgres: { ok: pgOk, host: pgHost },
+        redis: { ok: redisOk, host: redisHostLabel() },
         worker: { ok: workerOk, detail: workerOk ? 'heartbeat seen' : 'no worker heartbeat' },
       },
       timestamp: new Date().toISOString(),

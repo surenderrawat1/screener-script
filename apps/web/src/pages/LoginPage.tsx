@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
+import { APP_NAME } from '../brand';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -27,7 +28,7 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <div className="card login-card">
-        <h1>Stock Verifier v2</h1>
+        <h1>{APP_NAME}</h1>
         <p style={{ color: 'var(--muted)' }}>CFA research toolkit — Node · React · Redis · PostgreSQL</p>
         <form onSubmit={onSubmit}>
           <div className="form-group" style={{ marginBottom: '1rem' }}>
