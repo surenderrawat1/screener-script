@@ -78,6 +78,7 @@ export interface ScreenerRow extends MosEstimate {
   composite_score: number;
   recommendation: string;
   passed: boolean;
+  promoter_holding?: number;
 }
 
 export interface JobProgress {

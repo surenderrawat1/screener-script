@@ -7,6 +7,7 @@ config({ path: resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env')
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
+import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@sv/db';
@@ -29,6 +30,7 @@ import { requirePermission } from './lib/auth.js';
 import { listUniverses, createCustomUniverse } from './services/universe.js';
 import { createScreenerJob, getJob } from './services/screener.js';
 import { verifySymbol } from './services/verify.js';
+import { getAdminStats, importNseEquityCsv, importPromoterHoldingCsv } from './services/admin.js';
 
 const PORT = parseInt(process.env.API_PORT ?? '3100', 10);
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? 'http://localhost:5173';
@@ -48,6 +50,8 @@ export async function buildApp() {
   await app.register(jwt, {
     secret: process.env.JWT_ACCESS_SECRET ?? 'dev-access-secret-change-in-production',
   });
+
+  await app.register(multipart, { limits: { fileSize: 2 * 1024 * 1024 } });
 
   await app.register(websocket);
 
@@ -197,6 +201,31 @@ export async function buildApp() {
     requirePermission(request, PERMISSIONS.MANAGE_CACHE);
     const stats = await cacheStats();
     return { stats };
+  });
+
+  app.get('/api/v1/admin/uploads/stats', { preHandler: [authPreHandler] }, async (request) => {
+    requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    return getAdminStats();
+  });
+
+  app.post('/api/v1/admin/uploads/nse-equity', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    const file = await request.file();
+    if (!file) return reply.status(400).send({ error: 'CSV file required' });
+    const csv = (await file.toBuffer()).toString('utf8');
+    const result = await importNseEquityCsv(csv);
+    if (!result.success) return reply.status(400).send(result);
+    return result;
+  });
+
+  app.post('/api/v1/admin/uploads/promoter-holding', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    const file = await request.file();
+    if (!file) return reply.status(400).send({ error: 'CSV file required' });
+    const csv = (await file.toBuffer()).toString('utf8');
+    const result = await importPromoterHoldingCsv(csv);
+    if (!result.success) return reply.status(400).send(result);
+    return result;
   });
 
   app.get('/api/v1/presets', async () => ({

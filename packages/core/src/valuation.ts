@@ -153,7 +153,7 @@ export function calculateFairPe(
   };
 }
 
-export function resolveGrowthContext(stock: StockMetrics) {
+export function resolveGrowthContext(stock: Partial<StockMetrics>) {
   const epsGrowth = Number(stock.eps_growth ?? stock.profit_yoy ?? 0);
   const rev1y = Number(stock.sales_yoy ?? stock.revenue_growth ?? 0);
   const rev3y = Number(stock.revenue_growth_3yr ?? 0);
@@ -199,7 +199,7 @@ export function finalRating(mos: number | null): { label: string; tier: string }
   return { label: zone, tier };
 }
 
-export function qualityScore(stock: StockMetrics): number {
+export function qualityScore(stock: Partial<StockMetrics>): number {
   let score = 0;
   const roe = Number(stock.roe ?? 0);
   const roce = Number(stock.roce ?? 0);
@@ -220,7 +220,7 @@ export function qualityScore(stock: StockMetrics): number {
   return Math.min(100, score);
 }
 
-export function analyzeValuation(stock: StockMetrics) {
+export function analyzeValuation(stock: Partial<StockMetrics>) {
   const price = Number(stock.price ?? stock.current_price ?? 0);
   let pe = Number(stock.pe ?? stock.pe_ratio ?? 0);
   let eps = Number(stock.eps ?? 0);
@@ -300,7 +300,7 @@ export function matrixVerdict(score: number, mos: number): string {
   return matrix[scoreBand][mosBand];
 }
 
-export function analyzeSymbol(stock: StockMetrics) {
+export function analyzeSymbol(stock: Partial<StockMetrics>) {
   const valuation = analyzeValuation(stock);
   const composite = valuation.quality_score;
   const verifyScore = Math.round(Math.max(0, Math.min(56, composite * 56 / 100)));

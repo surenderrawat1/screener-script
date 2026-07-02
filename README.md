@@ -85,6 +85,9 @@ packages/shared Types, Zod schemas, constants
 | POST | `/api/v1/screener/run` | Run screener (sync or background) |
 | GET | `/api/v1/screener/jobs/:id` | Job status |
 | POST | `/api/v1/verify/auto` | One-click CFA verify |
+| GET | `/api/v1/admin/uploads/stats` | NSE + promoter row counts |
+| POST | `/api/v1/admin/uploads/nse-equity` | Upload NSE equity CSV |
+| POST | `/api/v1/admin/uploads/promoter-holding` | Upload promoter holding CSV |
 | WS | `/ws/jobs/:id` | Job progress stream |
 
 ## Migration from PHP
@@ -94,6 +97,13 @@ See [docs/MIGRATION.md](docs/MIGRATION.md) and [docs/ARCHITECTURE.md](docs/ARCHI
 ## Phase 2 — Live data (done)
 
 Verify and screener now fetch from **Yahoo Finance** + **Screener.in** via `@sv/data-adapters`, with Redis caching (7d stock, 24h screener ratios). Falls back to sample metrics if fetch fails.
+
+## Phase 3 — CFA engine parity + admin uploads (done)
+
+- Full `CfaValuationEngine` port in `@sv/core` (`estimate()` / `analyze()` — DCF, P/B, EV/EBITDA, Graham floor)
+- Golden parity tests vs PHP `validate-logic.php` (TCS MOS, banking P/B, ONGC Graham floor, MOS formula)
+- Admin CSV uploads: NSE `EQUITY_L.csv` → `total_nse` universe; promoter holding CSV → screener overlay
+- Web **Admin** page at `/admin` (requires login with `MANAGE_CACHE` permission)
 
 ## Tests
 

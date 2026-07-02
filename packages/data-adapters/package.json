@@ -18,6 +18,7 @@
   "dependencies": {
     "@sv/cache": "workspace:*",
     "@sv/core": "workspace:*",
+    "@sv/db": "workspace:*",
     "@sv/shared": "workspace:*"
   },
   "devDependencies": {
