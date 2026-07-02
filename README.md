@@ -88,6 +88,10 @@ packages/shared Types, Zod schemas, constants
 | GET | `/api/v1/admin/uploads/stats` | NSE + promoter row counts |
 | POST | `/api/v1/admin/uploads/nse-equity` | Upload NSE equity CSV |
 | POST | `/api/v1/admin/uploads/promoter-holding` | Upload promoter holding CSV |
+| GET | `/api/v1/watchlist` | User watchlist + summary |
+| PUT | `/api/v1/watchlist/items` | Add/update watchlist symbol |
+| GET | `/api/v1/verify/history` | Recent verification runs |
+| GET | `/api/v1/swing/positions` | Swing positions (open/closed) |
 | WS | `/ws/jobs/:id` | Job progress stream |
 
 ## Migration from PHP
@@ -104,6 +108,13 @@ Verify and screener now fetch from **Yahoo Finance** + **Screener.in** via `@sv/
 - Golden parity tests vs PHP `validate-logic.php` (TCS MOS, banking P/B, ONGC Graham floor, MOS formula)
 - Admin CSV uploads: NSE `EQUITY_L.csv` → `total_nse` universe; promoter holding CSV → screener overlay
 - Web **Admin** page at `/admin` (requires login with `MANAGE_CACHE` permission)
+
+## Phase 4 — User data & PHP migration (done)
+
+- **Watchlists** — thesis/review meta in PostgreSQL; auto-snapshot on verify
+- **Verification history** — persisted runs + recent list on Verify page
+- **Swing positions** — open/closed trades from PHP `swing_positions.json`
+- **Migration CLI:** `pnpm migrate:php -- --user admin@example.com`
 
 ## Tests
 

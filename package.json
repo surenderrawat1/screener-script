@@ -12,6 +12,7 @@
     "db:migrate": "pnpm --filter @sv/db run migrate",
     "db:push": "pnpm --filter @sv/db run push",
     "db:seed": "pnpm --filter @sv/db run seed",
+    "migrate:php": "pnpm --filter @sv/db run migrate:php",
     "test": "pnpm -r run test",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck"

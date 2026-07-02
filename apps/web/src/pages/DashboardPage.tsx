@@ -38,6 +38,12 @@ export default function DashboardPage() {
           <li>
             <a href="/verify">CFA verify</a> — one-click symbol analysis
           </li>
+          <li>
+            <a href="/watchlist">Watchlist</a> — thesis & review dates
+          </li>
+          <li>
+            <a href="/positions">Swing positions</a> — open/closed trades
+          </li>
         </ul>
       </div>
 

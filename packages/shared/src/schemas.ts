@@ -30,10 +30,34 @@ export const createUserSchema = z.object({
   role: z.enum([ROLES.ADMIN, ROLES.ANALYST, ROLES.VIEWER]),
 });
 
+export const watchlistUpsertSchema = z.object({
+  symbol: z.string().min(1).max(32),
+  notes: z.string().max(2000).optional(),
+  meta: z.record(z.unknown()).optional(),
+});
+
+export const swingPositionCreateSchema = z.object({
+  symbol: z.string().min(1).max(32),
+  entry_price: z.number().positive(),
+  entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  shares: z.number().nonnegative().optional(),
+  stop_loss: z.number().positive().optional(),
+  profit_target: z.number().positive().optional(),
+  notes: z.string().max(500).optional(),
+  source: z.string().max(64).optional(),
+});
+
+export const swingPositionCloseSchema = z.object({
+  closed_price: z.number().positive(),
+  closed_reason: z.string().max(120).optional(),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ScreenerRunInput = z.infer<typeof screenerRunSchema>;
 export type VerifyAutoInput = z.infer<typeof verifyAutoSchema>;
 export type CreateUniverseInput = z.infer<typeof createUniverseSchema>;
+export type WatchlistUpsertInput = z.infer<typeof watchlistUpsertSchema>;
+export type SwingPositionCreateInput = z.infer<typeof swingPositionCreateSchema>;
 
 export interface StockMetrics {
   symbol: string;

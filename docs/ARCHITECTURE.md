@@ -40,5 +40,6 @@ Prefix `sv:` — see `packages/shared/src/constants.ts` (`CACHE_PREFIX`, `CACHE_
 
 1. **Done (MVP)** — Auth, screener, verify, worker, Docker on `shared_network`
 2. **Done** — Yahoo + Screener.in adapters (`@sv/data-adapters`), live verify/screener with Redis cache
-3. **Next** — Full `CfaValuationEngine` port, golden parity tests from PHP
-4. **Later** — Swing trading, intraday modules, data migration from PHP JSON files
+3. **Done** — Full `CfaValuationEngine` port, golden parity tests, admin CSV uploads
+4. **Done** — Watchlists, verification history, swing positions + PHP JSON migration
+5. **Next** — Swing scanner engine port, intraday modules

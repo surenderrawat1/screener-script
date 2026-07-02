@@ -5,6 +5,8 @@ import DashboardPage from './pages/DashboardPage';
 import ScreenerPage from './pages/ScreenerPage';
 import VerifyPage from './pages/VerifyPage';
 import AdminPage from './pages/AdminPage';
+import WatchlistPage from './pages/WatchlistPage';
+import PositionsPage from './pages/PositionsPage';
 
 function Layout() {
   const { user, logout } = useAuth();
@@ -17,6 +19,8 @@ function Layout() {
         <NavLink to="/" end>Dashboard</NavLink>
         <NavLink to="/screener">Screener</NavLink>
         <NavLink to="/verify">Verify</NavLink>
+        <NavLink to="/watchlist">Watchlist</NavLink>
+        <NavLink to="/positions">Positions</NavLink>
         <NavLink to="/admin">Admin</NavLink>
         <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>{user.email}</span>
         <button type="button" className="btn btn-secondary" onClick={logout}>
@@ -39,6 +43,8 @@ function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="screener" element={<ScreenerPage />} />
         <Route path="verify" element={<VerifyPage />} />
+        <Route path="watchlist" element={<WatchlistPage />} />
+        <Route path="positions" element={<PositionsPage />} />
         <Route path="admin" element={<AdminPage />} />
       </Route>
     </Routes>

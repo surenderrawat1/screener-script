@@ -48,6 +48,7 @@ model User {
   watchlists       Watchlist[]
   auditLogs        AuditLog[]
   verificationRuns VerificationRun[]
+  swingPositions   SwingPosition[]
 
   @@map("users")
 }
@@ -179,12 +180,45 @@ model WatchlistItem {
   watchlistId String   @map("watchlist_id")
   symbol      String
   notes       String?
+  meta        Json?
   addedAt     DateTime @default(now()) @map("added_at")
 
   watchlist Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
 
   @@unique([watchlistId, symbol])
   @@map("watchlist_items")
+}
+
+enum SwingPositionStatus {
+  open
+  closed
+}
+
+model SwingPosition {
+  id                String              @id
+  userId            String?             @map("user_id")
+  symbol            String
+  status            SwingPositionStatus @default(open)
+  entryPrice        Float               @map("entry_price")
+  entryDate         DateTime            @map("entry_date") @db.Date
+  shares            Float?
+  stopLoss          Float?              @map("stop_loss")
+  profitTarget      Float?              @map("profit_target")
+  notes             String?
+  highestSinceEntry Float?              @map("highest_since_entry")
+  trailedStopLoss   Float?              @map("trailed_stop_loss")
+  closedAt          DateTime?           @map("closed_at")
+  closedPrice       Float?              @map("closed_price")
+  closedReason      String?             @map("closed_reason")
+  source            String?
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([symbol])
+  @@map("swing_positions")
 }
 
 model VerificationRun {

@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { api } from '../api';
 
 interface VerifyResult {
@@ -20,11 +20,33 @@ interface VerifyResult {
   disclaimer: string;
 }
 
+interface HistoryRun {
+  id: string;
+  symbol: string;
+  createdAt: string;
+  mos: number | null;
+  recommendation: string;
+}
+
 export default function VerifyPage() {
   const [symbol, setSymbol] = useState('TCS');
   const [result, setResult] = useState<VerifyResult | null>(null);
+  const [history, setHistory] = useState<HistoryRun[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  async function loadHistory() {
+    try {
+      const res = await api<{ runs: HistoryRun[] }>('/api/v1/verify/history?limit=10');
+      setHistory(res.runs);
+    } catch {
+      setHistory([]);
+    }
+  }
+
+  useEffect(() => {
+    void loadHistory();
+  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -37,6 +59,7 @@ export default function VerifyPage() {
         body: JSON.stringify({ symbol, refresh: true }),
       });
       setResult(res);
+      await loadHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verify failed');
     } finally {
@@ -112,6 +135,32 @@ export default function VerifyPage() {
             </tbody>
           </table>
           <p className="disclaimer">{result.disclaimer}</p>
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div className="card">
+          <h2>Recent verifications</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Symbol</th>
+                <th>MOS</th>
+                <th>Verdict</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((run) => (
+                <tr key={run.id}>
+                  <td>{new Date(run.createdAt).toLocaleString()}</td>
+                  <td>{run.symbol}</td>
+                  <td>{run.mos !== null ? `${run.mos}%` : '—'}</td>
+                  <td>{run.recommendation}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

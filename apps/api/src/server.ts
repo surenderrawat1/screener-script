@@ -24,6 +24,9 @@ import {
   screenerRunSchema,
   verifyAutoSchema,
   createUniverseSchema,
+  watchlistUpsertSchema,
+  swingPositionCreateSchema,
+  swingPositionCloseSchema,
   PERMISSIONS,
 } from '@sv/shared';
 import { requirePermission } from './lib/auth.js';
@@ -31,6 +34,17 @@ import { listUniverses, createCustomUniverse } from './services/universe.js';
 import { createScreenerJob, getJob } from './services/screener.js';
 import { verifySymbol } from './services/verify.js';
 import { getAdminStats, importNseEquityCsv, importPromoterHoldingCsv } from './services/admin.js';
+import {
+  listWatchlist,
+  upsertWatchlistItem,
+  removeWatchlistItem,
+} from './services/watchlist.js';
+import { listVerificationHistory, getVerificationRun } from './services/verification-history.js';
+import {
+  listSwingPositions,
+  createSwingPosition,
+  closeSwingPosition,
+} from './services/swing-positions.js';
 
 const PORT = parseInt(process.env.API_PORT ?? '3100', 10);
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? 'http://localhost:5173';
@@ -194,6 +208,62 @@ export async function buildApp() {
       parsed.data.refresh,
       user.sub !== 'system' ? user.sub : undefined,
     );
+    return result;
+  });
+
+  app.get('/api/v1/watchlist', { preHandler: [authPreHandler] }, async (request) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    return listWatchlist(user.sub);
+  });
+
+  app.put('/api/v1/watchlist/items', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const parsed = watchlistUpsertSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    return upsertWatchlistItem(user.sub, parsed.data);
+  });
+
+  app.delete('/api/v1/watchlist/items/:symbol', { preHandler: [authPreHandler] }, async (request) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const { symbol } = request.params as { symbol: string };
+    return removeWatchlistItem(user.sub, symbol);
+  });
+
+  app.get('/api/v1/verify/history', { preHandler: [authPreHandler] }, async (request) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const limit = Number((request.query as { limit?: string }).limit ?? 50);
+    return listVerificationHistory(user.sub !== 'system' ? user.sub : undefined, limit);
+  });
+
+  app.get('/api/v1/verify/history/:id', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const { id } = request.params as { id: string };
+    const run = await getVerificationRun(id, user.sub !== 'system' ? user.sub : undefined);
+    if (!run) return reply.status(404).send({ error: 'Not found' });
+    return { run };
+  });
+
+  app.get('/api/v1/swing/positions', { preHandler: [authPreHandler] }, async (request) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const status = (request.query as { status?: string }).status;
+    const filter = status === 'open' || status === 'closed' ? status : undefined;
+    return listSwingPositions(user.sub !== 'system' ? user.sub : undefined, filter);
+  });
+
+  app.post('/api/v1/swing/positions', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const parsed = swingPositionCreateSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    return createSwingPosition(user.sub, parsed.data);
+  });
+
+  app.post('/api/v1/swing/positions/:id/close', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const { id } = request.params as { id: string };
+    const parsed = swingPositionCloseSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    const result = await closeSwingPosition(user.sub, id, parsed.data.closed_price, parsed.data.closed_reason);
+    if (!result) return reply.status(404).send({ error: 'Open position not found' });
     return result;
   });
 
