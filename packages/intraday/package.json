@@ -16,6 +16,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@sv/swing": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "^5.8.2",
     "vitest": "^3.0.9"

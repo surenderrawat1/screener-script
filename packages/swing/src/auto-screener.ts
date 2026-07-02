@@ -13,11 +13,12 @@ import {
   portfolioHeatPct,
   suggestedShares,
 } from './portfolio-risk.js';
+import { FULL_SCAN_INTERVAL_SEC } from './incremental-scan.js';
 
+export { FULL_SCAN_INTERVAL_SEC };
 export const UNIVERSE = 'nifty250';
 export const POSITION_REFRESH_INTERVAL_SEC = 60;
 export const SCAN_INTERVAL_SEC = 300;
-export const FULL_SCAN_INTERVAL_SEC = 1800;
 
 export function scanInput() {
   return {

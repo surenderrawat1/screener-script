@@ -11,5 +11,7 @@ export * from './portfolio-risk.js';
 export * from './auto-decision.js';
 export * from './auto-screener.js';
 export * from './position-tracker.js';
+export * from './incremental-scan.js';
+export * from './swing-auto-snapshot.js';
 export * from './ranker.js';
 export * from './scanner.js';

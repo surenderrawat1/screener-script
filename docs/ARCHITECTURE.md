@@ -43,4 +43,5 @@ Prefix `sv:` — see `packages/shared/src/constants.ts` (`CACHE_PREFIX`, `CACHE_
 3. **Done** — Full `CfaValuationEngine` port, golden parity tests, admin CSV uploads
 4. **Done** — Watchlists, verification history, swing positions + PHP JSON migration
 5. **Done** — `@sv/swing` engine (E1–E11, GC9, scanner), Yahoo daily chart TA, BullMQ swing scan
-6. **Next** — Swing auto-radar, exit rules on positions, Nifty intraday modules
+6. **Done** — Swing auto-radar, exit rules on positions, Nifty intraday modules
+7. **Done** — Live Nifty 5m/15m feed, Redis auto snapshot, incremental scan scheduler

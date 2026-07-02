@@ -19,6 +19,7 @@
     "@sv/cache": "workspace:*",
     "@sv/core": "workspace:*",
     "@sv/db": "workspace:*",
+    "@sv/jobs": "workspace:*",
     "@sv/shared": "workspace:*",
     "@sv/swing": "workspace:*"
   },

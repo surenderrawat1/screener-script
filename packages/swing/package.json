@@ -17,6 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@sv/cache": "workspace:*",
     "@sv/shared": "workspace:*"
   },
   "devDependencies": {

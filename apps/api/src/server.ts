@@ -48,7 +48,7 @@ import {
   createSwingPosition,
   closeSwingPosition,
 } from './services/swing-positions.js';
-import { getSwingAutoState, getSwingAutoProfile, validateSwingAddPosition, refreshOpenPositions } from './services/swing-auto.js';
+import { getSwingAutoState, getSwingAutoProfile, validateSwingAddPosition, refreshOpenPositions, startSwingAutoScan } from './services/swing-auto.js';
 import { getNiftyIntradayState } from './services/intraday.js';
 
 const PORT = parseInt(process.env.API_PORT ?? '3100', 10);
@@ -296,7 +296,19 @@ export async function buildApp() {
     return validateSwingAddPosition(user.sub, body, regime);
   });
 
-  app.get('/api/v1/intraday/nifty/state', { preHandler: [authPreHandler] }, async () => getNiftyIntradayState());
+  app.post('/api/v1/swing/auto/scan', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const result = await startSwingAutoScan(user.sub);
+    if (!result.ok) return reply.status(409).send(result);
+    return result;
+  });
+
+  app.get('/api/v1/intraday/nifty/state', { preHandler: [authPreHandler] }, async (request) => {
+    const query = request.query as { interval?: string; refresh?: string };
+    const interval = query.interval === '5m' ? '5m' : '15m';
+    const refresh = query.refresh === '1';
+    return getNiftyIntradayState(interval, refresh);
+  });
 
   app.post('/api/v1/swing/positions', { preHandler: [authPreHandler] }, async (request, reply) => {
     const user = requirePermission(request, PERMISSIONS.VIEW);

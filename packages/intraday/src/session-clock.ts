@@ -37,6 +37,13 @@ export function entryWindow(barMinutes: number, options: Record<string, unknown>
   };
 }
 
+export function barMinutesIst(bar: { time_label?: string }): number {
+  const label = String(bar.time_label ?? '');
+  const m = label.match(/\d{4}-\d{2}-\d{2} (\d{2}):(\d{2})/);
+  if (!m) return 0;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
 export function gateReasons(barMinutes: number, options: Record<string, unknown>): string[] {
   const window = entryWindow(barMinutes, options);
   return window.open ? [] : [window.message];

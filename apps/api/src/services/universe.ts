@@ -1,5 +1,8 @@
 import { prisma } from '@sv/db';
 import { BUILTIN_UNIVERSES } from '@sv/shared';
+import { resolveUniverseSymbols } from '@sv/data-adapters';
+
+export { resolveUniverseSymbols };
 
 const DEFAULT_SYMBOLS: Record<string, string[]> = {
   nifty50: ['TCS', 'INFY', 'RELIANCE', 'HDFCBANK', 'ITC', 'BHARTIARTL', 'ICICIBANK', 'SBIN', 'LT', 'AXISBANK'],
@@ -29,33 +32,6 @@ export async function listUniverses() {
     type: u.type,
     symbolCount: u._count.symbols,
   }));
-}
-
-export async function resolveUniverseSymbols(universeKey: string, maxScan: number): Promise<string[]> {
-  const universe = await prisma.universe.findUnique({
-    where: { key: universeKey },
-    include: { symbols: true },
-  });
-
-  if (universe && universe.symbols.length > 0) {
-    return universe.symbols.map((s) => s.symbol).slice(0, maxScan);
-  }
-
-  const indexRows = await prisma.indexConstituent.findMany({
-    where: { indexKey: universeKey, effectiveTo: null },
-    take: maxScan,
-  });
-  if (indexRows.length > 0) {
-    return indexRows.map((r) => r.symbol);
-  }
-
-  const nseRows = await prisma.nseEquity.findMany({ take: maxScan });
-  if (universeKey === 'total_nse' && nseRows.length > 0) {
-    return nseRows.map((r) => r.symbol);
-  }
-
-  const defaults = DEFAULT_SYMBOLS[universeKey] ?? DEFAULT_SYMBOLS.nifty50;
-  return defaults.slice(0, maxScan);
 }
 
 export async function createCustomUniverse(

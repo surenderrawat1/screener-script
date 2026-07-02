@@ -171,6 +171,9 @@ importers:
       '@sv/db':
         specifier: workspace:*
         version: link:../db
+      '@sv/jobs':
+        specifier: workspace:*
+        version: link:../jobs
       '@sv/shared':
         specifier: workspace:*
         version: link:../shared
@@ -211,6 +214,10 @@ importers:
         version: 5.9.3
 
   packages/intraday:
+    dependencies:
+      '@sv/swing':
+        specifier: workspace:*
+        version: link:../swing
     devDependencies:
       typescript:
         specifier: ^5.8.2
@@ -250,6 +257,9 @@ importers:
 
   packages/swing:
     dependencies:
+      '@sv/cache':
+        specifier: workspace:*
+        version: link:../cache
       '@sv/shared':
         specifier: workspace:*
         version: link:../shared

@@ -36,6 +36,12 @@ export function matchesMinVerdict(strictVerdict: string, discoveryVerdict: strin
 
 export function rankHits<T extends SwingScanHit>(hits: T[]): T[] {
   const ranked = hits.map((h) => ({ ...h, swing_rank: scoreHit(h) }));
-  ranked.sort((a, b) => (b.swing_rank ?? 0) - (a.swing_rank ?? 0) || (b.r_multiple ?? 0) - (a.r_multiple ?? 0));
+  ranked.sort((a, b) => {
+    const byRank = (b.swing_rank ?? 0) - (a.swing_rank ?? 0);
+    if (byRank !== 0) return byRank;
+    const byR = (b.r_multiple ?? 0) - (a.r_multiple ?? 0);
+    if (byR !== 0) return byR;
+    return Number(b.rules_passed ?? 0) - Number(a.rules_passed ?? 0);
+  });
   return ranked;
 }

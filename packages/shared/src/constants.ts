@@ -62,6 +62,7 @@ export const CACHE_PREFIX = {
   RATELIMIT: 'sv:ratelimit',
   JOB_PROGRESS: 'sv:job:progress',
   WORKER_HEARTBEAT: 'sv:worker:heartbeat',
+  SWING_AUTO: 'sv:swing:auto',
 } as const;
 
 export const CACHE_TTL = {
@@ -74,6 +75,8 @@ export const CACHE_TTL = {
   verify: 604800,
   yahoo: 604800,
   job_progress: 3600,
+  intraday: 120,
+  swing_auto_snapshot: 7200,
 } as const;
 
 export const BUILTIN_UNIVERSES = [

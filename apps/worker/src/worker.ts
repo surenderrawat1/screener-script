@@ -1,10 +1,11 @@
 import { hostname } from 'node:os';
 import { prisma, JobStatus } from '@sv/db';
-import { runLiveScreener, runSwingScan } from '@sv/data-adapters';
+import { runLiveScreener, executeAutoScanPlan, runSwingScan, tickSwingAutoScan } from '@sv/data-adapters';
 import { connectRedis, setJobProgress, setWorkerHeartbeat } from '@sv/cache';
 import { createScreenerWorker, createSwingScanWorker } from '@sv/jobs';
 
 const WORKER_ID = `${hostname()}-${process.pid}`;
+const AUTO_SCAN_TICK_MS = 60_000;
 
 async function processScreenerJob(data: {
   jobId: string;
@@ -54,6 +55,13 @@ async function processSwingScanJob(data: {
     gc9_only?: boolean;
     breakout_volume?: boolean;
     refresh?: boolean;
+    auto_radar?: boolean;
+    scan_mode?: string;
+    symbols?: string[];
+    refresh_symbols?: string[];
+    rotate_offset?: number;
+    universe?: string;
+    regime?: Record<string, unknown>;
   };
   symbols: string[];
 }) {
@@ -64,16 +72,29 @@ async function processSwingScanJob(data: {
     data: { status: JobStatus.running, startedAt: new Date() },
   });
 
-  const result = await runSwingScan(
-    symbols,
-    {
-      min_verdict: input.min_verdict,
-      zone_52w: input.zone_52w,
-      gc9_only: input.gc9_only,
-      breakout_volume: input.breakout_volume,
-    },
-    input.refresh,
-  );
+  const result = input.auto_radar
+    ? await executeAutoScanPlan(
+        {
+          ...input,
+          symbols: input.symbols ?? symbols,
+        },
+        Boolean(input.refresh),
+      )
+    : await runSwingScan(
+        symbols,
+        {
+          min_verdict: input.min_verdict,
+          zone_52w: input.zone_52w,
+          gc9_only: input.gc9_only,
+          breakout_volume: input.breakout_volume,
+          regime: input.regime,
+        },
+        input.refresh,
+      );
+
+  const hits = Array.isArray((result as { hits?: unknown }).hits)
+    ? (result as { hits: unknown[] }).hits
+    : [];
 
   await prisma.job.update({
     where: { id: jobId },
@@ -85,7 +106,7 @@ async function processSwingScanJob(data: {
         phase: 'done',
         total: symbols.length,
         processed: symbols.length,
-        passed: result.hits.length,
+        passed: hits.length,
       },
     },
   });
@@ -94,7 +115,7 @@ async function processSwingScanJob(data: {
     phase: 'done',
     total: symbols.length,
     processed: symbols.length,
-    passed: result.hits.length,
+    passed: hits.length,
   });
 }
 
@@ -134,8 +155,14 @@ async function main() {
     void setWorkerHeartbeat(WORKER_ID);
   }, 30_000);
 
+  setInterval(() => {
+    void tickSwingAutoScan().catch((err) => {
+      console.error('Swing auto-scan tick failed:', err instanceof Error ? err.message : err);
+    });
+  }, AUTO_SCAN_TICK_MS);
+
   await setWorkerHeartbeat(WORKER_ID);
-  console.log(`Worker ${WORKER_ID} started — queues: sv-screener, sv-swing-scan`);
+  console.log(`Worker ${WORKER_ID} started — queues: sv-screener, sv-swing-scan (auto tick ${AUTO_SCAN_TICK_MS / 1000}s)`);
 }
 
 main().catch((err) => {

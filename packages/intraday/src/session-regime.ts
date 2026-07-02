@@ -11,6 +11,15 @@ function ema(values: number[], period: number): number | null {
 export const MIN_BARS_15M = 6;
 export const MIN_BARS_5M = 18;
 
+export function currentSessionBars(bars: Array<{ time_label?: string }>) {
+  if (!bars.length) return [];
+  const lastLabel = String(bars[bars.length - 1].time_label ?? '');
+  const sessionDate = lastLabel.slice(0, 10);
+  if (!sessionDate) return bars;
+  const session = bars.filter((b) => String(b.time_label ?? '').startsWith(sessionDate));
+  return session.length ? session : bars;
+}
+
 export function classify(sessionBars: Record<string, unknown>[], interval = '15m') {
   const iv = interval.toLowerCase();
   const minBars = iv === '5m' ? MIN_BARS_5M : MIN_BARS_15M;

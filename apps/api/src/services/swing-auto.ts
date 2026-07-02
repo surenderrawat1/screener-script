@@ -1,26 +1,51 @@
 import { prisma, JobStatus, JobType } from '@sv/db';
-import { buildState, checkAddPosition, scanInput, profile, refreshPosition } from '@sv/swing';
-import { buildSymbolContext } from '@sv/data-adapters';
+import { buildSymbolContext, triggerSwingAutoScan as runAutoScan } from '@sv/data-adapters';
+import {
+  buildState,
+  checkAddPosition,
+  scanInput,
+  profile,
+  refreshPosition,
+  getSwingAutoSnapshot,
+} from '@sv/swing';
 import { listSwingPositions } from './swing-positions.js';
 
-export async function getSwingAutoState(userId: string) {
-  const latestJob = await prisma.job.findFirst({
-    where: { type: JobType.swing_scan, status: JobStatus.done },
-    orderBy: { finishedAt: 'desc' },
-  });
+export { triggerSwingAutoScan, shouldStartAutoScan, buildAutoScanPlan } from '@sv/data-adapters';
 
-  const scanResult = (latestJob?.result as Record<string, unknown> | null) ?? {
-    hits: [],
-    hit_count: 0,
-    scanned: 0,
-    engine_version: 'v3.9-gc9',
-  };
+export async function getSwingAutoState(userId: string) {
+  const snapshot = await getSwingAutoSnapshot();
+  const scanResult =
+    snapshot?.scan ??
+    (await latestSwingScanResult()) ?? {
+      hits: [],
+      hit_count: 0,
+      scanned: 0,
+      engine_version: 'v3.9-gc9',
+    };
 
   const { positions } = await listSwingPositions(userId, 'open');
   const livePositions = await refreshOpenPositions(positions);
 
   const regime = (scanResult.regime as Record<string, unknown> | undefined) ?? null;
-  return buildState(scanResult, livePositions, regime);
+  const state = buildState(scanResult, livePositions, regime);
+  return {
+    ...state,
+    snapshot: snapshot
+      ? {
+          saved_at: snapshot.saved_at,
+          last_full_scan_at: snapshot.last_full_scan_at,
+          summary: snapshot.summary,
+        }
+      : null,
+  };
+}
+
+async function latestSwingScanResult() {
+  const latestJob = await prisma.job.findFirst({
+    where: { type: JobType.swing_scan, status: JobStatus.done },
+    orderBy: { finishedAt: 'desc' },
+  });
+  return (latestJob?.result as Record<string, unknown> | null) ?? null;
 }
 
 export async function refreshOpenPositions(
@@ -76,4 +101,8 @@ export async function validateSwingAddPosition(
 ) {
   const { positions } = await listSwingPositions(userId, 'open');
   return checkAddPosition(input, positions, regime ?? null);
+}
+
+export async function startSwingAutoScan(userId: string) {
+  return runAutoScan(userId);
 }

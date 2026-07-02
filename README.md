@@ -138,6 +138,15 @@ Verify and screener now fetch from **Yahoo Finance** + **Screener.in** via `@sv/
 - Web: **Auto Radar** (`/swing/auto`), **Intraday** (`/intraday`)
 - Parity: `parity-exit.test.ts`, `parity-auto.test.ts`, `@sv/intraday` parity suite
 
+## Phase 7 — Live Nifty feed, auto-scan scheduler, incremental scan (done)
+
+- **Live Nifty intraday** — Yahoo 5m/15m charts (`fetchNiftyIntradayCharts`), `Nifty15mDirection`, MTF confluence, trade plan, signal quality grading
+- **Redis swing auto snapshot** — `getSwingAutoSnapshot` / `saveSwingAutoSnapshot` with tier summary
+- **Incremental scan** — `shouldRunFullScan`, `buildRefreshSet`, `mergeHits` (full every 30m, rotate batch 30)
+- **Auto-scan scheduler** — worker tick every 60s, `shouldStartAutoScan` (300s interval), background jobs via BullMQ
+- API: `POST /api/v1/swing/auto/scan`, `GET /api/v1/intraday/nifty/state?refresh=1&interval=5m`
+- Parity: `parity-incremental.test.ts`, `parity-direction.test.ts`
+
 ## Tests
 
 ```bash
