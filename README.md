@@ -1,4 +1,4 @@
-# Stock Verifier v2
+# Script Screener
 
 Modern rewrite of the PHP stock-verifier using **Node.js**, **React**, **Redis**, and **PostgreSQL**.
 
@@ -67,8 +67,10 @@ docker compose up --build
 apps/api       Fastify REST + WebSocket
 apps/worker    BullMQ screener consumer
 apps/web       React SPA
-packages/core  CFA valuation & screener logic
-packages/db    Prisma + PostgreSQL
+packages/core          CFA valuation & screener logic
+packages/swing         Swing TA rules engine (E1–E11, GC9)
+packages/data-adapters Yahoo + Screener.in + swing charts
+packages/db            Prisma + PostgreSQL
 packages/cache Redis client
 packages/jobs  BullMQ queue definitions
 packages/shared Types, Zod schemas, constants
@@ -92,6 +94,8 @@ packages/shared Types, Zod schemas, constants
 | PUT | `/api/v1/watchlist/items` | Add/update watchlist symbol |
 | GET | `/api/v1/verify/history` | Recent verification runs |
 | GET | `/api/v1/swing/positions` | Swing positions (open/closed) |
+| POST | `/api/v1/swing/scan` | Run swing TA scanner |
+| POST | `/api/v1/swing/evaluate` | Single-symbol swing entry eval |
 | WS | `/ws/jobs/:id` | Job progress stream |
 
 ## Migration from PHP
@@ -116,10 +120,20 @@ Verify and screener now fetch from **Yahoo Finance** + **Screener.in** via `@sv/
 - **Swing positions** — open/closed trades from PHP `swing_positions.json`
 - **Migration CLI:** `pnpm migrate:php -- --user admin@example.com`
 
+## Phase 5 — Swing scanner engine (done)
+
+- New **`@sv/swing`** package — GC9/DC9, dynamic signals, E1–E11 entry rules, ranker, universe scanner
+- Yahoo **daily OHLC** fetch (2y) with Redis TA cache
+- API: `POST /api/v1/swing/scan`, `POST /api/v1/swing/evaluate`
+- BullMQ queue `sv-swing-scan` (worker handles alongside screener)
+- Web **Swing** page (`/swing`) — scan Nifty universe, SETUP+ / GC9 filters
+- Parity tests vs PHP `testSwingGc9Entry`
+
 ## Tests
 
 ```bash
 pnpm --filter @sv/core test
+pnpm --filter @sv/swing test
 ```
 
 ## Disclaimer

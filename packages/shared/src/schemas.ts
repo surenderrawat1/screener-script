@@ -56,6 +56,19 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type ScreenerRunInput = z.infer<typeof screenerRunSchema>;
 export type VerifyAutoInput = z.infer<typeof verifyAutoSchema>;
 export type CreateUniverseInput = z.infer<typeof createUniverseSchema>;
+export const swingScanSchema = z.object({
+  universe: z.string().min(1).optional(),
+  symbols: z.array(z.string().min(1)).optional(),
+  maxScan: z.number().int().min(5).max(200).default(50),
+  background: z.boolean().optional(),
+  min_verdict: z.enum(['ENTER', 'SETUP_PLUS', 'WATCH', 'ALL']).optional(),
+  zone_52w: z.string().optional(),
+  gc9_only: z.boolean().optional(),
+  breakout_volume: z.boolean().optional(),
+  refresh: z.boolean().optional(),
+});
+
+export type SwingScanInput = z.infer<typeof swingScanSchema>;
 export type WatchlistUpsertInput = z.infer<typeof watchlistUpsertSchema>;
 export type SwingPositionCreateInput = z.infer<typeof swingPositionCreateSchema>;
 

@@ -168,6 +168,9 @@ importers:
       '@sv/shared':
         specifier: workspace:*
         version: link:../shared
+      '@sv/swing':
+        specifier: workspace:*
+        version: link:../swing
     devDependencies:
       '@types/node':
         specifier: ^22.13.10
@@ -222,6 +225,19 @@ importers:
       zod:
         specifier: ^3.24.2
         version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.8.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.9
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(tsx@4.22.4)
+
+  packages/swing:
+    dependencies:
+      '@sv/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       typescript:
         specifier: ^5.8.2

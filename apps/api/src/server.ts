@@ -27,13 +27,16 @@ import {
   watchlistUpsertSchema,
   swingPositionCreateSchema,
   swingPositionCloseSchema,
+  swingScanSchema,
   PERMISSIONS,
 } from '@sv/shared';
 import { requirePermission } from './lib/auth.js';
 import { listUniverses, createCustomUniverse } from './services/universe.js';
 import { createScreenerJob, getJob } from './services/screener.js';
+import { createSwingScanJob } from './services/swing.js';
 import { verifySymbol } from './services/verify.js';
 import { getAdminStats, importNseEquityCsv, importPromoterHoldingCsv } from './services/admin.js';
+import { evaluateSwingSymbol } from '@sv/data-adapters';
 import {
   listWatchlist,
   upsertWatchlistItem,
@@ -208,6 +211,28 @@ export async function buildApp() {
       parsed.data.refresh,
       user.sub !== 'system' ? user.sub : undefined,
     );
+    return result;
+  });
+
+  app.post('/api/v1/swing/scan', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.RUN_SCREENER);
+    const parsed = swingScanSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    try {
+      const result = await createSwingScanJob(parsed.data, user.sub !== 'system' ? user.sub : undefined);
+      return result;
+    } catch (err) {
+      return reply.status(400).send({ error: err instanceof Error ? err.message : 'Scan failed' });
+    }
+  });
+
+  app.post('/api/v1/swing/evaluate', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const body = request.body as { symbol?: string; refresh?: boolean };
+    const symbol = String(body.symbol ?? '').trim();
+    if (!symbol) return reply.status(400).send({ error: 'symbol required' });
+    const result = await evaluateSwingSymbol(symbol, Boolean(body.refresh));
+    if (!result.ok) return reply.status(404).send(result);
     return result;
   });
 
