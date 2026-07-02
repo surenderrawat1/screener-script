@@ -1,26 +1,27 @@
 {
-  "name": "@sv/worker",
+  "name": "@sv/data-adapters",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsx watch src/worker.ts",
-    "start": "node dist/worker.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@sv/cache": "workspace:*",
     "@sv/core": "workspace:*",
-    "@sv/data-adapters": "workspace:*",
-    "@sv/db": "workspace:*",
-    "@sv/jobs": "workspace:*",
-    "@sv/shared": "workspace:*",
-    "bullmq": "^5.44.0"
+    "@sv/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
-    "tsx": "^4.19.3",
     "typescript": "^5.8.2"
   }
 }

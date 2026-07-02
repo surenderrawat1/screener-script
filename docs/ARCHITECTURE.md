@@ -39,5 +39,6 @@ Prefix `sv:` — see `packages/shared/src/constants.ts` (`CACHE_PREFIX`, `CACHE_
 ## Phase roadmap
 
 1. **Done (MVP)** — Auth, screener, verify, worker, Docker on `shared_network`
-2. **Next** — Yahoo/Screener.in adapters, full `CfaValuationEngine` port, golden parity tests
-3. **Later** — Swing trading, intraday modules, data migration from PHP JSON files
+2. **Done** — Yahoo + Screener.in adapters (`@sv/data-adapters`), live verify/screener with Redis cache
+3. **Next** — Full `CfaValuationEngine` port, golden parity tests from PHP
+4. **Later** — Swing trading, intraday modules, data migration from PHP JSON files

@@ -91,6 +91,10 @@ packages/shared Types, Zod schemas, constants
 
 See [docs/MIGRATION.md](docs/MIGRATION.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## Phase 2 — Live data (done)
+
+Verify and screener now fetch from **Yahoo Finance** + **Screener.in** via `@sv/data-adapters`, with Redis caching (7d stock, 24h screener ratios). Falls back to sample metrics if fetch fails.
+
 ## Tests
 
 ```bash

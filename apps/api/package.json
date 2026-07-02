@@ -15,6 +15,7 @@
     "@fastify/websocket": "^11.0.2",
     "@sv/cache": "workspace:*",
     "@sv/core": "workspace:*",
+    "@sv/data-adapters": "workspace:*",
     "@sv/db": "workspace:*",
     "@sv/jobs": "workspace:*",
     "@sv/shared": "workspace:*",

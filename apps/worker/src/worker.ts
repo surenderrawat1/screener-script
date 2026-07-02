@@ -1,11 +1,10 @@
 import { hostname } from 'node:os';
 import { prisma, JobStatus } from '@sv/db';
+import { runLiveScreener } from '@sv/data-adapters';
 import { connectRedis, setJobProgress, setWorkerHeartbeat } from '@sv/cache';
-import { runScreener } from '@sv/core';
 import { createScreenerWorker } from '@sv/jobs';
 
 const WORKER_ID = `${hostname()}-${process.pid}`;
-const CHUNK_SIZE = 25;
 
 async function processScreenerJob(data: {
   jobId: string;
@@ -13,7 +12,6 @@ async function processScreenerJob(data: {
   symbols: string[];
 }) {
   const { jobId, input, symbols } = data;
-  const rows: ReturnType<typeof runScreener> = [];
   const filters = (input.filters ?? {}) as Record<string, number>;
 
   await prisma.job.update({
@@ -21,26 +19,7 @@ async function processScreenerJob(data: {
     data: { status: JobStatus.running, startedAt: new Date() },
   });
 
-  for (let i = 0; i < symbols.length; i += CHUNK_SIZE) {
-    const chunk = symbols.slice(i, i + CHUNK_SIZE);
-    const chunkRows = runScreener(chunk, input.preset, filters);
-    rows.push(...chunkRows);
-
-    const processed = Math.min(i + CHUNK_SIZE, symbols.length);
-    const progress = {
-      phase: 'running',
-      total: symbols.length,
-      processed,
-      passed: rows.length,
-    };
-
-    await prisma.job.update({
-      where: { id: jobId },
-      data: { progress },
-    });
-    await setJobProgress(jobId, progress);
-    await setWorkerHeartbeat(WORKER_ID);
-  }
+  const rows = await runLiveScreener(symbols, input.preset, filters);
 
   const result = { rows, total: symbols.length, passed: rows.length };
 
@@ -68,7 +47,7 @@ async function processScreenerJob(data: {
 }
 
 async function main() {
-  await connectRedis();
+  await connectRedis().catch(() => undefined);
 
   const worker = createScreenerWorker(async (job) => {
     try {

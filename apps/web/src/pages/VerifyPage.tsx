@@ -4,6 +4,8 @@ import { api } from '../api';
 interface VerifyResult {
   symbol: string;
   success: boolean;
+  sources?: string[];
+  from_cache?: boolean;
   analysis: {
     intrinsic: number;
     mos: number | null;
@@ -69,6 +71,12 @@ export default function VerifyPage() {
           <h2>
             {result.symbol} — {result.analysis.final_rating}
           </h2>
+          {result.sources && result.sources.length > 0 && (
+            <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+              Sources: {result.sources.join(' · ')}
+              {result.from_cache ? ' (cached)' : ''}
+            </p>
+          )}
           <table>
             <tbody>
               <tr>

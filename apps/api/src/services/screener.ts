@@ -1,10 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { prisma, JobStatus, JobType } from '@sv/db';
-import { runScreener } from '@sv/core';
 import { setJobProgress } from '@sv/cache';
 import { enqueueScreenerJob, shouldRunInBackground } from '@sv/jobs';
 import type { ScreenerRunInput } from '@sv/shared';
 import { resolveUniverseSymbols } from './universe.js';
+import { runLiveScreener } from './screener-run.js';
 
 export async function createScreenerJob(
   input: ScreenerRunInput,
@@ -40,7 +40,11 @@ export async function createScreenerJob(
     data: { status: JobStatus.running, startedAt: new Date() },
   });
 
-  const rows = runScreener(symbols, input.preset, input.filters as Record<string, number>);
+  const rows = await runLiveScreener(
+    symbols,
+    input.preset,
+    input.filters as Record<string, number>,
+  );
   const result = { rows, total: symbols.length, passed: rows.length };
 
   await prisma.job.update({
