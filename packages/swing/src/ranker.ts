@@ -1,5 +1,14 @@
 import type { SwingScanHit } from './types.js';
 
+export const MIN_LIQUIDITY_CR = 8.0;
+
+export function tier(score: number): string {
+  if (score >= 75) return 'A';
+  if (score >= 60) return 'B';
+  if (score >= 45) return 'C';
+  return 'D';
+}
+
 export function scoreHit(hit: SwingScanHit): number {
   let score = hit.entry_score > 0 ? Math.round(hit.entry_score * 0.65) : 0;
   const discovery = String(hit.verdict ?? '');

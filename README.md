@@ -129,11 +129,21 @@ Verify and screener now fetch from **Yahoo Finance** + **Screener.in** via `@sv/
 - Web **Swing** page (`/swing`) — scan Nifty universe, SETUP+ / GC9 filters
 - Parity tests vs PHP `testSwingGc9Entry`
 
+## Phase 6 — Auto-radar, exit rules, intraday (done)
+
+- **`evaluateExit` (X1–X9)** — stop/trail/breakeven, profit target, trend break, RSI, time stop, PA exit, hourly EMA
+- **`SwingAutoDecision` + `SwingAutoScreener`** — tier categorization, position actions, heat gate, overlay held symbols
+- **`@sv/intraday`** — 13 entry presets, preflight checklist, live playbook (15m directional MVP)
+- API: `GET /api/v1/swing/auto/state`, `GET /api/v1/swing/positions?live=1`, `GET /api/v1/intraday/nifty/state`
+- Web: **Auto Radar** (`/swing/auto`), **Intraday** (`/intraday`)
+- Parity: `parity-exit.test.ts`, `parity-auto.test.ts`, `@sv/intraday` parity suite
+
 ## Tests
 
 ```bash
 pnpm --filter @sv/core test
 pnpm --filter @sv/swing test
+pnpm --filter @sv/intraday test
 ```
 
 ## Disclaimer

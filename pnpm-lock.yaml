@@ -34,12 +34,18 @@ importers:
       '@sv/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@sv/intraday':
+        specifier: workspace:*
+        version: link:../../packages/intraday
       '@sv/jobs':
         specifier: workspace:*
         version: link:../../packages/jobs
       '@sv/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@sv/swing':
+        specifier: workspace:*
+        version: link:../../packages/swing
       bcryptjs:
         specifier: ^3.0.2
         version: 3.0.3
@@ -203,6 +209,15 @@ importers:
       typescript:
         specifier: ^5.8.2
         version: 5.9.3
+
+  packages/intraday:
+    devDependencies:
+      typescript:
+        specifier: ^5.8.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.9
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(tsx@4.22.4)
 
   packages/jobs:
     dependencies:

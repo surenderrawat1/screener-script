@@ -20,6 +20,12 @@ export function priceActionMetrics(bars: OhlcBar[]) {
   const supportRejection = curr.low < curr.open && curr.close > (curr.high + curr.low) / 2;
   const entrySignal = higherLow && (higherHigh || bullishCandle || supportRejection);
 
+  const lowerHigh = lastHigh !== null && prevHigh !== null && lastHigh < prevHigh;
+  const lowerLow = lastLow !== null && prevLow !== null && lastLow < prevLow;
+  const bearishBreak = lowerHigh || lowerLow;
+  const bearishCandle = prev ? curr.close < curr.open && curr.close < prev.close : curr.close < curr.open;
+  const exitSignal = bearishBreak || bearishCandle;
+
   return {
     has_data: true,
     higher_low: higherLow,
@@ -27,9 +33,10 @@ export function priceActionMetrics(bars: OhlcBar[]) {
     bullish_candle: bullishCandle,
     support_rejection: supportRejection,
     entry_signal: entrySignal,
+    exit_signal: exitSignal,
     broke_swing_high: higherHigh,
-    structure_detail: higherLow ? 'Higher low — pullback holding support.' : 'No clear HL structure.',
-    candle_detail: bullishCandle ? 'Bullish session.' : '',
+    structure_detail: higherLow ? 'Higher low — pullback holding support.' : bearishBreak ? 'Lower high/low — structure weakening.' : 'No clear HL structure.',
+    candle_detail: bullishCandle ? 'Bullish session.' : bearishCandle ? 'Bearish session.' : '',
   };
 }
 
@@ -41,6 +48,7 @@ function emptyMetrics() {
     bullish_candle: false,
     support_rejection: false,
     entry_signal: false,
+    exit_signal: false,
     broke_swing_high: false,
     structure_detail: 'Insufficient bars for swing structure.',
     candle_detail: '',

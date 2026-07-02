@@ -48,6 +48,8 @@ import {
   createSwingPosition,
   closeSwingPosition,
 } from './services/swing-positions.js';
+import { getSwingAutoState, getSwingAutoProfile, validateSwingAddPosition, refreshOpenPositions } from './services/swing-auto.js';
+import { getNiftyIntradayState } from './services/intraday.js';
 
 const PORT = parseInt(process.env.API_PORT ?? '3100', 10);
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? 'http://localhost:5173';
@@ -270,10 +272,31 @@ export async function buildApp() {
 
   app.get('/api/v1/swing/positions', { preHandler: [authPreHandler] }, async (request) => {
     const user = requirePermission(request, PERMISSIONS.VIEW);
-    const status = (request.query as { status?: string }).status;
-    const filter = status === 'open' || status === 'closed' ? status : undefined;
-    return listSwingPositions(user.sub !== 'system' ? user.sub : undefined, filter);
+    const query = request.query as { status?: string; live?: string };
+    const status = query.status === 'open' || query.status === 'closed' ? query.status : undefined;
+    const result = await listSwingPositions(user.sub !== 'system' ? user.sub : undefined, status);
+    if (query.live === '1' && status === 'open') {
+      const live = await refreshOpenPositions(result.positions, true);
+      return { ...result, positions: live };
+    }
+    return result;
   });
+
+  app.get('/api/v1/swing/auto/state', { preHandler: [authPreHandler] }, async (request) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    return getSwingAutoState(user.sub);
+  });
+
+  app.get('/api/v1/swing/auto/profile', { preHandler: [authPreHandler] }, async () => getSwingAutoProfile());
+
+  app.post('/api/v1/swing/auto/check-add', { preHandler: [authPreHandler] }, async (request) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const regime = (body.regime as Record<string, unknown> | undefined) ?? null;
+    return validateSwingAddPosition(user.sub, body, regime);
+  });
+
+  app.get('/api/v1/intraday/nifty/state', { preHandler: [authPreHandler] }, async () => getNiftyIntradayState());
 
   app.post('/api/v1/swing/positions', { preHandler: [authPreHandler] }, async (request, reply) => {
     const user = requirePermission(request, PERMISSIONS.VIEW);

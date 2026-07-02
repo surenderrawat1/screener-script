@@ -8,6 +8,8 @@ import AdminPage from './pages/AdminPage';
 import WatchlistPage from './pages/WatchlistPage';
 import PositionsPage from './pages/PositionsPage';
 import SwingScanPage from './pages/SwingScanPage';
+import SwingAutoPage from './pages/SwingAutoPage';
+import IntradayPage from './pages/IntradayPage';
 
 function Layout() {
   const { user, logout } = useAuth();
@@ -23,6 +25,8 @@ function Layout() {
         <NavLink to="/watchlist">Watchlist</NavLink>
         <NavLink to="/positions">Positions</NavLink>
         <NavLink to="/swing">Swing</NavLink>
+        <NavLink to="/swing/auto">Auto Radar</NavLink>
+        <NavLink to="/intraday">Intraday</NavLink>
         <NavLink to="/admin">Admin</NavLink>
         <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>{user.email}</span>
         <button type="button" className="btn btn-secondary" onClick={logout}>
@@ -48,6 +52,8 @@ function AppRoutes() {
         <Route path="watchlist" element={<WatchlistPage />} />
         <Route path="positions" element={<PositionsPage />} />
         <Route path="swing" element={<SwingScanPage />} />
+        <Route path="swing/auto" element={<SwingAutoPage />} />
+        <Route path="intraday" element={<IntradayPage />} />
         <Route path="admin" element={<AdminPage />} />
       </Route>
     </Routes>
