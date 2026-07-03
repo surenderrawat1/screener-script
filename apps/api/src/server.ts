@@ -76,7 +76,7 @@ import {
   reopenSwingPosition,
 } from './services/swing-positions.js';
 import { getSwingAutoState, getSwingAutoPositions, getSwingAutoProfile, validateSwingAddPosition, refreshOpenPositions, startSwingAutoScan } from './services/swing-auto.js';
-import { getNiftyIntradayState } from './services/intraday.js';
+import { getNiftyIntradayState, getIntradayInstruments } from './services/intraday.js';
 import {
   listIntradayPositions,
   createIntradayPosition,
@@ -610,6 +610,10 @@ export async function buildApp() {
     const result = await startSwingAutoScan(user.sub);
     if (!result.ok) return reply.status(409).send(result);
     return result;
+  });
+
+  app.get('/api/v1/intraday/instruments', { preHandler: [authPreHandler] }, async () => {
+    return getIntradayInstruments();
   });
 
   app.get('/api/v1/intraday/nifty/state', { preHandler: [authPreHandler] }, async (request) => {

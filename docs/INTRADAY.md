@@ -62,7 +62,7 @@ Script Screener has ported the **analysis engine** to `@sv/intraday` with Redis-
 | Aspect | PHP | Script Screener |
 |--------|-----|-----------------|
 | **Analysis engine** | `Nifty15mDirection.php` + 12 includes | `@sv/intraday` package |
-| **Instruments** | Nifty50, BankNifty, Sensex, FinNifty, stocks | **Nifty 50 only** |
+| **Instruments** | Nifty50, BankNifty, Sensex, FinNifty, stocks | **Indices + 12 liquid stocks**; F&O for indices + 7 stocks |
 | **Charts** | Lightweight Charts in browser (full OHLC) | API returns **metadata only** (bar count) |
 | **Chart cache** | SQLite 90s/120s | Redis `sv:ta:intraday:nifty50:{5m\|15m}` |
 | **Dual fetch** | Often sequential in page | `Promise.all` 5m + 15m |
@@ -308,7 +308,8 @@ GET /api/v1/intraday/nifty/state?interval=15m&refresh=0
 | Chart UI | ✓ | ✗ | Phase I-C |
 | Preset table UI | ✓ | ✗ | Phase I-C |
 | Scalp setup | ✓ | ✗ | Phase I-B |
-| Multi-instrument | ✓ | ✗ | Phase I-D |
+| Multi-instrument | ✓ | ✓ partial | Sensex/FinNifty not yet |
+| Stock F&O plans | ✓ | ✓ partial | 7 liquid names; monthly expiry |
 | Intraday App PWA | ✓ | ✗ | Phase I-D |
 | Instrument-aware preset | ✓ | ✗ | Phase I-B |
 | Intraday positions | ✓ | ✗ | [NIFTY-POSITIONS.md](NIFTY-POSITIONS.md) |

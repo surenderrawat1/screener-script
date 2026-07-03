@@ -2,8 +2,9 @@ import {
   atmStrike,
   fnoSpecForInstrument,
   futuresSymbolLabel,
-  nextWeeklyExpiry,
+  nextExpiry,
   optionSymbolLabel,
+  type FnoExpiryInfo,
   type FnoUnderlyingSpec,
 } from './fno-specs.js';
 
@@ -19,7 +20,20 @@ export function buildFnoTradePlans(
 ) {
   const spec = fnoSpecForInstrument(instrumentId);
   const spot = Number(analysis.price ?? 0);
-  const expiry = nextWeeklyExpiry(spec);
+
+  if (!spec) {
+    return {
+      ok: false,
+      message: 'F&O plans are available for Nifty, Bank Nifty, and select F&O stocks only.',
+      underlying: String(analysis.symbol ?? instrumentId),
+      expiry: null,
+      futures: null,
+      options: null,
+      risk_notes: ['Use spot/equity tab for stocks without F&O specs in this build.'],
+    };
+  }
+
+  const expiry = nextExpiry(spec);
   const confidence = Number(analysis.confidence ?? 0);
   const mtfDeploy = Number(mtf?.deploy_pct ?? 50);
 
@@ -31,7 +45,7 @@ export function buildFnoTradePlans(
       expiry,
       futures: null,
       options: null,
-      risk_notes: defaultRiskNotes(expiry),
+      risk_notes: defaultRiskNotes(spec, expiry),
     };
   }
 
@@ -49,7 +63,7 @@ export function buildFnoTradePlans(
       expiry,
       futures: null,
       options: null,
-      risk_notes: defaultRiskNotes(expiry),
+      risk_notes: defaultRiskNotes(spec, expiry),
     };
   }
 
@@ -69,8 +83,10 @@ export function buildFnoTradePlans(
     futures,
     options,
     risk_notes: [
-      ...defaultRiskNotes(expiry),
-      'Futures/options P&L uses lot size × index points (futures) or premium (options).',
+      ...defaultRiskNotes(spec, expiry),
+      spec.kind === 'stock'
+        ? 'Stock F&O P&L uses lot size × price move (futures) or premium (options).'
+        : 'Index F&O P&L uses lot size × index points (futures) or premium (options).',
       'Margin and premiums are estimates — check broker terminal before entry.',
       expiry.is_today ? 'Expiry day: avoid new option buys after 14:00 IST unless scalping.' : null,
     ].filter(Boolean) as string[],
@@ -85,7 +101,7 @@ function buildFuturesPlan(
   stop: number,
   riskPts: number,
   exits: Array<Record<string, unknown>>,
-  expiry: ReturnType<typeof nextWeeklyExpiry>,
+  expiry: ReturnType<typeof nextExpiry>,
   confidence: number,
   mtfDeploy: number,
 ) {
@@ -106,6 +122,9 @@ function buildFuturesPlan(
   });
 
   const lotsSuggested = suggestLots(mtfDeploy, confidence, marginEst);
+
+  const ptsLabel = spec.kind === 'stock' ? '₹' : 'pts';
+  const moveLabel = spec.kind === 'stock' ? 'price' : 'index';
 
   return {
     ok: true,
@@ -128,9 +147,13 @@ function buildFuturesPlan(
     time_stop_ist: spotPlan.time_stop_ist ?? '15:15',
     trigger: spotPlan.trigger ?? null,
     notes: [
-      `1 lot = ${lot} units · ₹${riskInr.toLocaleString('en-IN')} risk per lot for ${Math.round(riskPts)} pts`,
-      'Futures track spot; small basis vs index LTP is normal.',
-      isLong ? 'Long fut: profit when index rises above entry.' : 'Short fut: profit when index falls below entry.',
+      `1 lot = ${lot} units · ₹${riskInr.toLocaleString('en-IN')} risk per lot for ${Math.round(riskPts)} ${ptsLabel}`,
+      spec.kind === 'stock'
+        ? 'Stock futures track the equity; basis vs cash is usually small.'
+        : 'Futures track spot; small basis vs index LTP is normal.',
+      isLong
+        ? `Long fut: profit when ${moveLabel} rises above entry.`
+        : `Short fut: profit when ${moveLabel} falls below entry.`,
     ],
   };
 }
@@ -144,7 +167,7 @@ function buildOptionsPlan(
   riskPts: number,
   exits: Array<Record<string, unknown>>,
   spot: number,
-  expiry: ReturnType<typeof nextWeeklyExpiry>,
+  expiry: ReturnType<typeof nextExpiry>,
   confidence: number,
   mtfDeploy: number,
 ) {
@@ -231,12 +254,20 @@ function suggestLots(mtfDeploy: number, confidence: number, capitalPerLot: numbe
   return Math.min(lots, isOption ? 2 : 3);
 }
 
-function defaultRiskNotes(expiry: ReturnType<typeof nextWeeklyExpiry>): string[] {
+function defaultRiskNotes(spec: FnoUnderlyingSpec, expiry: FnoExpiryInfo): string[] {
+  const product = spec.kind === 'stock' ? 'Stock F&O' : 'Index F&O';
+  const expiryLine =
+    expiry.schedule === 'monthly'
+      ? expiry.is_today
+        ? 'Monthly expiry today — elevated gamma/theta; reduce size.'
+        : `Next monthly expiry: ${expiry.label}.`
+      : expiry.is_today
+        ? 'Weekly expiry today — elevated gamma/theta; reduce size.'
+        : `Next weekly expiry: ${expiry.label}.`;
+
   return [
-    'Index F&O only — verify lot size and margin on NSE/broker before trading.',
-    expiry.is_today
-      ? 'Weekly expiry today — elevated gamma/theta; reduce size.'
-      : `Next weekly expiry: ${expiry.label}.`,
+    `${product} — verify lot size and margin on NSE/broker before trading.`,
+    expiryLine,
     'This is not live option-chain data — strikes and premiums are modelled from spot plan.',
   ];
 }

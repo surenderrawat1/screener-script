@@ -437,13 +437,19 @@ Triggers manual auto-scan (same pipeline as worker scheduler).
 
 ## Intraday
 
+### `GET /api/v1/intraday/instruments`
+
+Permission: `view_app`
+
+Returns index and liquid stock tabs for the intraday radar: `indices`, `stocks`, and combined `instruments` with `fno_supported`, `recommended_preset_5m`, and `recommended_preset_15m`.
+
 ### `GET /api/v1/intraday/nifty/state`
 
 Permission: `view_app`
 
-Query: `?refresh=0&interval=15m`
+Query: `?refresh=0&interval=15m&instrument=nifty50`
 
-Returns Nifty direction, MTF confluence, trade plan, signal quality. Use `interval=5m` for 5-minute bars.
+Returns direction, MTF confluence, trade plan, live playbook, and F&O plans. `instrument` accepts index ids (`nifty50`, `banknifty`) or liquid stock ids (`tcs`, `reliance`, …). Response includes `fno_supported` and `fno` (futures/options from spot plan).
 
 ### `GET /api/v1/intraday/positions`
 

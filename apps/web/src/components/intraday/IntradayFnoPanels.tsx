@@ -269,15 +269,19 @@ export function IntradayPresetTable({
 export function IntradayProductTabs({
   mode,
   onChange,
+  kind = 'index',
+  fnoSupported = true,
 }: {
   mode: ProductMode;
   onChange: (m: ProductMode) => void;
+  kind?: 'index' | 'stock';
+  fnoSupported?: boolean;
 }) {
-  const tabs: { id: ProductMode; label: string }[] = [
-    { id: 'spot', label: 'Spot / Index' },
-    { id: 'futures', label: 'Futures' },
-    { id: 'options', label: 'Options' },
-  ];
+  const spotLabel = kind === 'stock' ? 'Spot / Equity' : 'Spot / Index';
+  const tabs: { id: ProductMode; label: string }[] = [{ id: 'spot', label: spotLabel }];
+  if (fnoSupported) {
+    tabs.push({ id: 'futures', label: 'Futures' }, { id: 'options', label: 'Options' });
+  }
   return (
     <div className="intraday-product-tabs">
       {tabs.map((t) => (
@@ -297,11 +301,14 @@ export function IntradayProductTabs({
 export function IntradayLedgerLink({
   instrumentId,
   plan,
+  product = 'spot',
 }: {
   instrumentId: string;
   plan?: Record<string, unknown> | null;
+  product?: ProductMode;
 }) {
   const params = new URLSearchParams({ instrument: instrumentId });
+  if (product !== 'spot') params.set('product', product);
   const entry = (plan?.entry as Record<string, unknown> | undefined)?.price;
   const stop = (plan?.stop_loss as Record<string, unknown> | undefined)?.price;
   const exits = (plan?.exits as Array<Record<string, unknown>>) ?? [];

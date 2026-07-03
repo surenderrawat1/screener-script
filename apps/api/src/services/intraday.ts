@@ -5,6 +5,8 @@ import {
   buildLivePlaybook,
   evaluatePresets,
   gradeSignalQuality,
+  hasFnoSupport,
+  listIntradayInstruments,
   mtfConfluence,
   NIFTY_INTRADAY_REFRESH_SEC,
   normalizeInstrumentId,
@@ -60,6 +62,22 @@ export async function getNiftyIntradayState(
     playbook: livePlaybook,
     preset_eval: presetEval,
     fno,
+    fno_supported: hasFnoSupport(instrumentKey),
     server_time: new Date().toISOString(),
+  };
+}
+
+export function getIntradayInstruments() {
+  const instruments = listIntradayInstruments().map((meta) => ({
+    ...meta,
+    fno_supported: hasFnoSupport(meta.id),
+    recommended_preset_15m: recommendedPresetForInstrument(meta.id, '15m'),
+    recommended_preset_5m: recommendedPresetForInstrument(meta.id, '5m'),
+  }));
+  return {
+    ok: true,
+    indices: instruments.filter((i) => i.kind === 'index'),
+    stocks: instruments.filter((i) => i.kind === 'stock'),
+    instruments,
   };
 }

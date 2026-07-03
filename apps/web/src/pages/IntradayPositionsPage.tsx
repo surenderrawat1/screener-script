@@ -38,6 +38,9 @@ export default function IntradayPositionsPage() {
   const prefillInstrument = searchParams.get('instrument') ?? 'nifty50';
   const prefillSide = searchParams.get('side') === 'short' ? 'short' : 'long';
   const prefillTf = searchParams.get('timeframe') === '5m' ? '5m' : '15m';
+  const prefillProductRaw = searchParams.get('product');
+  const prefillProduct: 'spot' | 'futures' | 'options' =
+    prefillProductRaw === 'futures' || prefillProductRaw === 'options' ? prefillProductRaw : 'spot';
 
   const [data, setData] = useState<PositionsResponse | null>(null);
   const [filter, setFilter] = useState<'all' | 'open' | 'closed'>('open');
@@ -45,7 +48,7 @@ export default function IntradayPositionsPage() {
   const [error, setError] = useState('');
   const [form, setForm] = useState({
     instrument_id: prefillInstrument,
-    product_type: 'spot' as 'spot' | 'futures' | 'options',
+    product_type: prefillProduct,
     side: prefillSide as 'long' | 'short',
     timeframe: prefillTf as '5m' | '15m',
     entry_price: searchParams.get('entry') ?? '',

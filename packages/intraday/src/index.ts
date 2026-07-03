@@ -35,16 +35,23 @@ export {
   normalizeInstrumentId,
   instrumentIds,
   indexInstrumentIds,
+  stockInstrumentIds,
+  listIntradayInstruments,
+  instrumentKind,
   recommendedPresetForInstrument,
   type IntradayInstrumentMeta,
 } from './instruments.js';
 export { buildFnoTradePlans } from './fno-trade-plan.js';
 export {
   fnoSpecForInstrument,
+  hasFnoSupport,
   FNO_UNDERLYINGS,
   atmStrike,
   nextWeeklyExpiry,
+  nextMonthlyExpiry,
+  nextExpiry,
   type FnoUnderlyingSpec,
+  type FnoExpiryInfo,
 } from './fno-specs.js';
 export {
   evaluateIntradayPosition,

@@ -13,10 +13,17 @@ import {
 
 type Interval = '5m' | '15m';
 
-const INDEX_TABS = [
-  { id: 'nifty50', label: 'Nifty 50' },
-  { id: 'banknifty', label: 'Bank Nifty' },
-] as const;
+interface InstrumentTab {
+  id: string;
+  label: string;
+  kind: 'index' | 'stock';
+  fno_supported?: boolean;
+}
+
+const INDEX_TABS: InstrumentTab[] = [
+  { id: 'nifty50', label: 'Nifty 50', kind: 'index', fno_supported: true },
+  { id: 'banknifty', label: 'Bank Nifty', kind: 'index', fno_supported: true },
+];
 
 export default function IntradayPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -25,11 +32,18 @@ export default function IntradayPage() {
   const initialInstrument = searchParams.get('instrument') ?? searchParams.get('index') ?? 'nifty50';
 
   const [state, setState] = useState<Record<string, unknown> | null>(null);
+  const [stockTabs, setStockTabs] = useState<InstrumentTab[]>([]);
   const [interval, setInterval] = useState<Interval>(initialInterval);
   const [instrument, setInstrument] = useState(initialInstrument);
   const [productMode, setProductMode] = useState<ProductMode>('spot');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    void api<{ stocks: InstrumentTab[] }>('/api/v1/intraday/instruments')
+      .then((data) => setStockTabs(data.stocks ?? []))
+      .catch(() => setStockTabs([]));
+  }, []);
 
   useEffect(() => {
     const next = searchParams.get('interval') === '5m' ? '5m' : searchParams.get('interval') === '15m' ? '15m' : null;
@@ -62,6 +76,17 @@ export default function IntradayPage() {
     return () => window.clearInterval(id);
   }, [load]);
 
+  const allTabs = [...INDEX_TABS, ...stockTabs];
+  const activeTab = allTabs.find((t) => t.id === instrument);
+  const instrumentKind = (activeTab?.kind ?? (state?.instrument as Record<string, unknown> | undefined)?.kind ?? 'index') as
+    | 'index'
+    | 'stock';
+  const fnoSupported = Boolean(state?.fno_supported ?? activeTab?.fno_supported);
+
+  useEffect(() => {
+    if (!fnoSupported && productMode !== 'spot') setProductMode('spot');
+  }, [fnoSupported, productMode]);
+
   function selectInstrument(id: string) {
     setInstrument(id);
     const next = new URLSearchParams(searchParams);
@@ -69,7 +94,7 @@ export default function IntradayPage() {
     setSearchParams(next);
   }
 
-  if (loading && !state) return <PageLoading label="Loading Nifty intraday playbook…" />;
+  if (loading && !state) return <PageLoading label="Loading intraday playbook…" />;
   if (error && !state) {
     return (
       <Page>
@@ -89,12 +114,19 @@ export default function IntradayPage() {
   const recommendedPreset = String(state.recommended_preset ?? 'cfa_precision');
   const indexLabel = String(state.index_label ?? 'Nifty 50');
   const expiry = fno?.expiry as Record<string, unknown> | undefined;
+  const pageTitle = instrumentKind === 'stock' ? `${indexLabel} Intraday` : 'Index Intraday';
+  const pageSubtitle =
+    instrumentKind === 'stock'
+      ? fnoSupported
+        ? `${indexLabel} · equity, futures & options playbook`
+        : `${indexLabel} · equity intraday (spot only)`
+      : `${indexLabel} · spot, futures & options playbook`;
 
   return (
     <Page>
       <PageHeader
-        title="Nifty Intraday"
-        subtitle={`${indexLabel} · spot, futures & options playbook`}
+        title={pageTitle}
+        subtitle={pageSubtitle}
         actions={
           <>
             <div className="segmented">
@@ -116,17 +148,41 @@ export default function IntradayPage() {
         }
       />
 
-      <div className="intraday-idx-tabs">
-        {INDEX_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            className={instrument === tab.id ? 'intraday-idx-tab active' : 'intraday-idx-tab'}
-            onClick={() => selectInstrument(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="intraday-instrument-pickers">
+        <div className="intraday-picker-group">
+          <span className="intraday-picker-label">Indices</span>
+          <div className="intraday-idx-tabs">
+            {INDEX_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className={instrument === tab.id ? 'intraday-idx-tab active' : 'intraday-idx-tab'}
+                onClick={() => selectInstrument(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {stockTabs.length > 0 && (
+          <div className="intraday-picker-group">
+            <span className="intraday-picker-label">Stocks</span>
+            <div className="intraday-idx-tabs intraday-stock-tabs">
+              {stockTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={instrument === tab.id ? 'intraday-idx-tab active' : 'intraday-idx-tab'}
+                  onClick={() => selectInstrument(tab.id)}
+                  title={tab.fno_supported ? 'Spot + F&O' : 'Spot only'}
+                >
+                  {tab.label}
+                  {tab.fno_supported ? <span className="intraday-fno-dot" aria-hidden> ◆</span> : null}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <p className="disclaimer">
@@ -167,16 +223,21 @@ export default function IntradayPage() {
       </section>
 
       <section className="card">
-        <IntradayProductTabs mode={productMode} onChange={setProductMode} />
+        <IntradayProductTabs
+          mode={productMode}
+          onChange={setProductMode}
+          kind={instrumentKind}
+          fnoSupported={fnoSupported}
+        />
         {productMode === 'spot' ? (
           <>
             <IntradayTradePlanCard plan={plan} />
-            <IntradayLedgerLink instrumentId={instrument} plan={plan} />
+            <IntradayLedgerLink instrumentId={instrument} plan={plan} product="spot" />
           </>
         ) : (
           <>
             <IntradayFnoPanel fno={fno} mode={productMode} />
-            <IntradayLedgerLink instrumentId={instrument} plan={plan} />
+            <IntradayLedgerLink instrumentId={instrument} plan={plan} product={productMode} />
             {((fno?.risk_notes as string[]) ?? []).length > 0 && (
               <ul className="intraday-risk-notes">
                 {((fno?.risk_notes as string[]) ?? []).map((n) => (

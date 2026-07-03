@@ -1877,6 +1877,36 @@ input[type='checkbox'] {
 }
 
 /* Nifty Intraday — F&O panels */
+.intraday-instrument-pickers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+}
+
+.intraday-picker-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.intraday-picker-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #9aa0a6);
+}
+
+.intraday-stock-tabs .intraday-idx-tab {
+  font-size: 0.8rem;
+}
+
+.intraday-fno-dot {
+  color: var(--accent, #4a7cff);
+  font-size: 0.55rem;
+  vertical-align: middle;
+}
+
 .intraday-idx-tabs {
   display: flex;
   gap: 0.4rem;
