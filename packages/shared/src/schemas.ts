@@ -52,6 +52,27 @@ export const swingPositionCloseSchema = z.object({
   closed_reason: z.string().max(120).optional(),
 });
 
+export const niftyIntradayPositionCreateSchema = z.object({
+  instrument_id: z.string().min(1).max(32),
+  symbol: z.string().min(1).max(32).optional(),
+  side: z.enum(['long', 'short']).default('long'),
+  timeframe: z.enum(['5m', '15m']).default('15m'),
+  entry_price: z.number().positive(),
+  entry_time: z.string().datetime().optional(),
+  quantity: z.number().positive().optional(),
+  stop_loss: z.number().positive().optional(),
+  target_t1: z.number().positive().optional(),
+  target_t2: z.number().positive().optional(),
+  target_t3: z.number().positive().optional(),
+  notes: z.string().max(500).optional(),
+  source: z.string().max(64).optional(),
+});
+
+export const niftyIntradayPositionCloseSchema = z.object({
+  closed_price: z.number().positive(),
+  closed_reason: z.string().max(120).optional(),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ScreenerRunInput = z.infer<typeof screenerRunSchema>;
 export type VerifyAutoInput = z.infer<typeof verifyAutoSchema>;
@@ -71,6 +92,7 @@ export const swingScanSchema = z.object({
 export type SwingScanInput = z.infer<typeof swingScanSchema>;
 export type WatchlistUpsertInput = z.infer<typeof watchlistUpsertSchema>;
 export type SwingPositionCreateInput = z.infer<typeof swingPositionCreateSchema>;
+export type NiftyIntradayPositionCreateInput = z.infer<typeof niftyIntradayPositionCreateSchema>;
 
 export interface StockMetrics {
   symbol: string;

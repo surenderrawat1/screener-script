@@ -49,6 +49,7 @@ model User {
   auditLogs        AuditLog[]
   verificationRuns VerificationRun[]
   swingPositions   SwingPosition[]
+  niftyIntradayPositions NiftyIntradayPosition[]
 
   @@map("users")
 }
@@ -219,6 +220,46 @@ model SwingPosition {
   @@index([userId, status])
   @@index([symbol])
   @@map("swing_positions")
+}
+
+model NiftyIntradayPosition {
+  id                String              @id
+  userId            String?             @map("user_id")
+  instrumentId      String              @map("instrument_id")
+  symbol            String
+  instrumentLabel   String?             @map("instrument_label")
+  status            SwingPositionStatus @default(open)
+  side              String              @default("long")
+  timeframe         String              @default("15m")
+  entryPrice        Float               @map("entry_price")
+  entryTime         DateTime            @map("entry_time")
+  sessionDate       DateTime            @map("session_date") @db.Date
+  quantity          Float?
+  stopLoss          Float?              @map("stop_loss")
+  effectiveStop     Float?              @map("effective_stop")
+  targetT1          Float?              @map("target_t1")
+  targetT2          Float?              @map("target_t2")
+  targetT3          Float?              @map("target_t3")
+  remainingPct      Int                 @default(100) @map("remaining_pct")
+  t1Booked          Boolean             @default(false) @map("t1_booked")
+  t2Booked          Boolean             @default(false) @map("t2_booked")
+  breakevenArmed    Boolean             @default(false) @map("breakeven_armed")
+  notes             String?
+  source            String?
+  highestSinceEntry Float?              @map("highest_since_entry")
+  lowestSinceEntry  Float?              @map("lowest_since_entry")
+  trailedStop       Float?              @map("trailed_stop")
+  closedAt          DateTime?           @map("closed_at")
+  closedPrice       Float?              @map("closed_price")
+  closedReason      String?             @map("closed_reason")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([sessionDate])
+  @@map("nifty_intraday_positions")
 }
 
 model VerificationRun {

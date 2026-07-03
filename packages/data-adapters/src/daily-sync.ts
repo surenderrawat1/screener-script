@@ -12,6 +12,7 @@ import { syncAllIndicesFromDirectory } from './index-sync.js';
 import { fetchStockData } from './stock-data-fetcher.js';
 import { fetchScreenerRatios } from './screener-in.js';
 import { currentMarketRegime } from './market-regime.js';
+import { warmMorningBriefing } from './morning-prewarm.js';
 import { openSwingPositionSymbols, resolveUniverseSymbols } from './universe.js';
 
 export interface DailySyncStepResult {
@@ -163,13 +164,20 @@ async function runStep(step: ScheduleStep): Promise<DailySyncStepResult> {
         };
       }
 
-      case 'warm_morning_briefing':
+      case 'warm_morning_briefing': {
+        const warmed = await warmMorningBriefing(true);
         return {
           ...base,
-          ok: true,
+          ok: warmed.ok,
           duration_ms: Date.now() - started,
-          detail: { skipped: true, reason: 'morning routine not implemented' },
+          detail: {
+            regime_key: warmed.regime_key,
+            etf_hit_count: warmed.etf_hit_count,
+            nifty_charts: warmed.nifty_charts,
+          },
+          error: warmed.error,
         };
+      }
 
       default:
         return {

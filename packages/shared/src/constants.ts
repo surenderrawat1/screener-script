@@ -64,6 +64,7 @@ export const CACHE_PREFIX = {
   WORKER_HEARTBEAT: 'sv:worker:heartbeat',
   SWING_AUTO: 'sv:swing:auto',
   REGIME: 'sv:regime',
+  MORNING: 'sv:morning',
 } as const;
 
 export const CACHE_TTL = {
@@ -79,6 +80,8 @@ export const CACHE_TTL = {
   intraday: 120,
   swing_auto_snapshot: 7200,
   regime: 900,
+  morning_etf: 600,
+  morning_bundle: 60,
 } as const;
 
 export const BUILTIN_UNIVERSES = [

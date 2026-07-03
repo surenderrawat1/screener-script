@@ -1,6 +1,7 @@
 import { prisma } from '@sv/db';
 import { cacheGetJson, cacheKey } from '@sv/cache';
 import { CACHE_PREFIX } from '@sv/shared';
+import { ETF_UNIVERSE_ID, etfSymbols, resolvePresetUniverseSymbols } from '@sv/swing';
 
 const DEV_FALLBACK: Record<string, string[]> = {
   nifty50: ['TCS', 'INFY', 'RELIANCE', 'HDFCBANK', 'ITC', 'BHARTIARTL', 'ICICIBANK', 'SBIN', 'LT', 'AXISBANK'],
@@ -8,6 +9,16 @@ const DEV_FALLBACK: Record<string, string[]> = {
 
 export async function resolveUniverseSymbols(universeKey: string, maxScan: number): Promise<string[]> {
   const limit = maxScan > 0 ? maxScan : undefined;
+
+  const presetSymbols = resolvePresetUniverseSymbols(universeKey);
+  if (presetSymbols) {
+    return limit ? presetSymbols.slice(0, limit) : presetSymbols;
+  }
+
+  if (universeKey === ETF_UNIVERSE_ID) {
+    const symbols = etfSymbols();
+    return limit ? symbols.slice(0, limit) : symbols;
+  }
 
   const cached = await cacheGetJson<string[]>(cacheKey(CACHE_PREFIX.UNIVERSE, universeKey));
   if (cached?.length) {

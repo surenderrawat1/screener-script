@@ -45,6 +45,11 @@ export interface SchedulesConfig {
   intraday: {
     swing_auto_scan: { enabled: boolean; interval_sec: number };
     regime_refresh: { enabled: boolean; interval_sec: number };
+    morning_prewarm?: {
+      enabled: boolean;
+      cron: string;
+      timezone: string;
+    };
   };
 }
 
@@ -131,6 +136,11 @@ const DEFAULT_SCHEDULES: SchedulesConfig = {
   intraday: {
     swing_auto_scan: { enabled: true, interval_sec: 300 },
     regime_refresh: { enabled: true, interval_sec: 900 },
+    morning_prewarm: {
+      enabled: true,
+      cron: '45 8 * * *',
+      timezone: 'Asia/Kolkata',
+    },
   },
 };
 

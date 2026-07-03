@@ -1,5 +1,6 @@
 import { prisma } from '@sv/db';
 import { BUILTIN_UNIVERSES } from '@sv/shared';
+import { ETF_UNIVERSE_ID, etfSymbols, SWING_TIER_A_UNIVERSE_ID, TIER_A_SYMBOLS } from '@sv/swing';
 import { resolveUniverseSymbols } from '@sv/data-adapters';
 
 export { resolveUniverseSymbols };
@@ -17,12 +18,26 @@ export async function listUniverses() {
   });
 
   if (dbUniverses.length === 0) {
-    return BUILTIN_UNIVERSES.map((u) => ({
-      key: u.key,
-      name: u.name,
-      type: 'builtin',
-      symbolCount: DEFAULT_SYMBOLS[u.key]?.length ?? 0,
-    }));
+    return [
+      ...BUILTIN_UNIVERSES.map((u) => ({
+        key: u.key,
+        name: u.name,
+        type: 'builtin',
+        symbolCount: DEFAULT_SYMBOLS[u.key]?.length ?? 0,
+      })),
+      {
+        key: ETF_UNIVERSE_ID,
+        name: 'NSE ETF swing book',
+        type: 'builtin',
+        symbolCount: etfSymbols().length,
+      },
+      {
+        key: SWING_TIER_A_UNIVERSE_ID,
+        name: 'Tier-A swing book (12 names)',
+        type: 'builtin',
+        symbolCount: TIER_A_SYMBOLS.length,
+      },
+    ];
   }
 
   return dbUniverses.map((u) => ({

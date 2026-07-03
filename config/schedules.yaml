@@ -57,7 +57,7 @@ daily_sync:
     - id: morning_cache_warm
       at: "06:50"
       action: warm_morning_briefing
-      enabled: false          # enable with MORNING-ROUTINE MR-F
+      enabled: true
 
 # Intraday jobs (separate from daily sync)
 intraday:
@@ -67,3 +67,7 @@ intraday:
   regime_refresh:
     enabled: true
     interval_sec: 900
+  morning_prewarm:
+    enabled: true
+    cron: "45 8 * * *"        # 08:45 IST — ETF + regime before open
+    timezone: Asia/Kolkata

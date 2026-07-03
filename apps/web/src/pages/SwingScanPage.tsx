@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { Page, PageHeader } from '../components/PageLayout';
 
@@ -21,22 +22,63 @@ interface SwingHit {
   swing_rank?: number;
 }
 
+interface TradingPresetResponse {
+  preset: {
+    scan_params?: {
+      universe: string;
+      min_verdict: string;
+      gc9_only?: boolean;
+      maxScan?: number;
+    };
+  };
+}
+
 export default function SwingScanPage() {
+  const [searchParams] = useSearchParams();
   const [universes, setUniverses] = useState<Universe[]>([]);
-  const [universe, setUniverse] = useState('nifty50');
+  const [universe, setUniverse] = useState(searchParams.get('universe') ?? 'nifty50');
   const [minVerdict, setMinVerdict] = useState('SETUP_PLUS');
   const [gc9Only, setGc9Only] = useState(false);
+  const [maxScan, setMaxScan] = useState(50);
   const [hits, setHits] = useState<SwingHit[]>([]);
   const [meta, setMeta] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [presetReady, setPresetReady] = useState(!searchParams.get('preset'));
+  const autorunDone = useRef(false);
 
   useEffect(() => {
     api<{ universes: Universe[] }>('/api/v1/universes').then((r) => setUniverses(r.universes)).catch(() => undefined);
   }, []);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  useEffect(() => {
+    const presetParam = searchParams.get('preset');
+    const universeParam = searchParams.get('universe');
+
+    if (!presetParam) {
+      if (universeParam) setUniverse(universeParam);
+      setPresetReady(true);
+      return;
+    }
+
+    setPresetReady(false);
+    api<TradingPresetResponse>(`/api/v1/trading/presets/${encodeURIComponent(presetParam)}`)
+      .then(({ preset }) => {
+        const scan = preset.scan_params;
+        if (universeParam) {
+          setUniverse(universeParam);
+        } else if (scan?.universe) {
+          setUniverse(scan.universe);
+        }
+        if (scan?.min_verdict) setMinVerdict(scan.min_verdict);
+        if (scan?.gc9_only) setGc9Only(true);
+        if (scan?.maxScan) setMaxScan(scan.maxScan);
+      })
+      .catch(() => undefined)
+      .finally(() => setPresetReady(true));
+  }, [searchParams]);
+
+  const runScan = useCallback(async () => {
     setError('');
     setLoading(true);
     setHits([]);
@@ -50,7 +92,7 @@ export default function SwingScanPage() {
         method: 'POST',
         body: JSON.stringify({
           universe,
-          maxScan: 50,
+          maxScan,
           min_verdict: minVerdict,
           gc9_only: gc9Only,
           background: false,
@@ -75,12 +117,38 @@ export default function SwingScanPage() {
     } finally {
       setLoading(false);
     }
+  }, [universe, maxScan, minVerdict, gc9Only]);
+
+  useEffect(() => {
+    if (
+      searchParams.get('autorun') !== '1' ||
+      !presetReady ||
+      universes.length === 0 ||
+      autorunDone.current
+    ) {
+      return;
+    }
+    autorunDone.current = true;
+    void runScan();
+  }, [searchParams, presetReady, universes.length, runScan]);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    await runScan();
   }
+
+  const activePreset = searchParams.get('preset');
 
   return (
     <Page>
       <PageHeader title="Swing Scanner" subtitle="Daily E1–E11 rules, GC9 filter, Yahoo chart TA" />
       <p className="disclaimer">Swing engine v3.9-gc9 — research signals only.</p>
+      {activePreset && (
+        <p className="muted">
+          Preset: <strong>{activePreset.replace(/_/g, ' ')}</strong>
+          {searchParams.get('autorun') === '1' ? ' · auto-scan' : ''}
+        </p>
+      )}
 
       <form className="card" onSubmit={onSubmit}>
         <div className="form-row">
@@ -108,8 +176,8 @@ export default function SwingScanPage() {
           <input type="checkbox" checked={gc9Only} onChange={(e) => setGc9Only(e.target.checked)} />
           GC9 only
         </label>
-        <button type="submit" className="btn" disabled={loading}>
-          {loading ? 'Scanning…' : 'Run swing scan (max 50)'}
+        <button type="submit" className="btn" disabled={loading || !presetReady}>
+          {loading ? 'Scanning…' : 'Run swing scan'}
         </button>
       </form>
 

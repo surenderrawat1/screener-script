@@ -10,7 +10,10 @@ import PositionsPage from './pages/PositionsPage';
 import SwingScanPage from './pages/SwingScanPage';
 import SwingAutoPage from './pages/SwingAutoPage';
 import IntradayPage from './pages/IntradayPage';
+import IntradayPositionsPage from './pages/IntradayPositionsPage';
 import StockDetailsPage from './pages/StockDetailsPage';
+import MorningPage from './pages/MorningPage';
+import PresetsPage from './pages/PresetsPage';
 import { APP_NAME } from './brand';
 
 function Layout() {
@@ -22,6 +25,8 @@ function Layout() {
       <nav className="nav">
         <span className="brand">{APP_NAME}</span>
         <NavLink to="/" end>Dashboard</NavLink>
+        <NavLink to="/morning">Morning</NavLink>
+        <NavLink to="/presets">Presets</NavLink>
         <NavLink to="/screener">Screener</NavLink>
         <NavLink to="/verify">Verify</NavLink>
         <NavLink to="/stock/TCS">Details</NavLink>
@@ -30,6 +35,7 @@ function Layout() {
         <NavLink to="/swing">Swing</NavLink>
         <NavLink to="/swing/auto">Auto Radar</NavLink>
         <NavLink to="/intraday">Intraday</NavLink>
+        <NavLink to="/intraday/positions">Nifty Pos</NavLink>
         <NavLink to="/admin">Admin</NavLink>
         <span className="nav-user muted">{user.email}</span>
         <button type="button" className="btn btn-secondary" onClick={logout}>
@@ -50,6 +56,8 @@ function AppRoutes() {
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
       <Route element={<Layout />}>
         <Route index element={<DashboardPage />} />
+        <Route path="morning" element={<MorningPage />} />
+        <Route path="presets" element={<PresetsPage />} />
         <Route path="screener" element={<ScreenerPage />} />
         <Route path="verify" element={<VerifyPage />} />
         <Route path="stock/:symbol" element={<StockDetailsPage />} />
@@ -58,6 +66,7 @@ function AppRoutes() {
         <Route path="swing" element={<SwingScanPage />} />
         <Route path="swing/auto" element={<SwingAutoPage />} />
         <Route path="intraday" element={<IntradayPage />} />
+        <Route path="intraday/positions" element={<IntradayPositionsPage />} />
         <Route path="admin" element={<AdminPage />} />
       </Route>
     </Routes>

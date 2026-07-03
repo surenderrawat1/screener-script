@@ -38,14 +38,21 @@ function yahooInterval(interval: '5m' | '15m'): string {
   return interval === '5m' ? '5m' : '15m';
 }
 
-export async function fetchIntradayChart(interval: '5m' | '15m' = '15m', refresh = false): Promise<IntradayChart | null> {
-  const cacheKeyStr = cacheKey(CACHE_PREFIX.TA, `intraday:nifty50:${interval}`);
+export async function fetchInstrumentIntradayChart(
+  instrumentCacheKey: string,
+  yahooSymbols: string[],
+  displaySymbol: string,
+  interval: '5m' | '15m' = '15m',
+  refresh = false,
+): Promise<IntradayChart | null> {
+  const normalizedKey = instrumentCacheKey.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+  const cacheKeyStr = cacheKey(CACHE_PREFIX.TA, `intraday:${normalizedKey}:${interval}`);
   if (!refresh) {
     const cached = await cacheGetJson<IntradayChart>(cacheKeyStr);
     if (cached?.bars?.length) return cached;
   }
 
-  for (const yahooSymbol of YAHOO_SYMBOLS) {
+  for (const yahooSymbol of yahooSymbols) {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${yahooInterval(interval)}&range=5d`;
     const body = await httpGet(url);
     if (!body) continue;
@@ -53,7 +60,6 @@ export async function fetchIntradayChart(interval: '5m' | '15m' = '15m', refresh
       const json = JSON.parse(body) as {
         chart?: {
           result?: Array<{
-            meta?: { exchangeTimezoneName?: string };
             timestamp?: number[];
             indicators?: { quote?: Array<{ open?: number[]; high?: number[]; low?: number[]; close?: number[]; volume?: number[] }> };
           }>;
@@ -86,7 +92,7 @@ export async function fetchIntradayChart(interval: '5m' | '15m' = '15m', refresh
       if (bars.length < minBars) continue;
 
       const chart: IntradayChart = {
-        symbol: 'NIFTY50',
+        symbol: displaySymbol,
         yahoo: yahooSymbol,
         interval,
         range: '5d',
@@ -102,6 +108,10 @@ export async function fetchIntradayChart(interval: '5m' | '15m' = '15m', refresh
     }
   }
   return null;
+}
+
+export async function fetchIntradayChart(interval: '5m' | '15m' = '15m', refresh = false): Promise<IntradayChart | null> {
+  return fetchInstrumentIntradayChart('NIFTY50', YAHOO_SYMBOLS, 'NIFTY50', interval, refresh);
 }
 
 export async function fetchNiftyIntradayCharts(refresh = false) {

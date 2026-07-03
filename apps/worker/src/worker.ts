@@ -2,7 +2,7 @@ import './load-env.js';
 
 import { hostname } from 'node:os';
 import { prisma, JobStatus } from '@sv/db';
-import { runLiveScreener, executeAutoScanPlan, runSwingScan, tickSwingAutoScan, tickDailySync } from '@sv/data-adapters';
+import { runLiveScreener, executeAutoScanPlan, runSwingScan, tickSwingAutoScan, tickDailySync, tickMorningPrewarm } from '@sv/data-adapters';
 import { connectRedis, setJobProgress, setWorkerHeartbeat } from '@sv/cache';
 import { createScreenerWorker, createSwingScanWorker } from '@sv/jobs';
 import { initAppConfig } from '@sv/shared';
@@ -186,6 +186,18 @@ async function main() {
       }
     }).catch((err) => {
       console.error('Daily sync tick failed:', err instanceof Error ? err.message : err);
+    });
+  }, AUTO_SCAN_TICK_MS);
+
+  setInterval(() => {
+    void tickMorningPrewarm().then((result) => {
+      if (result) {
+        console.log(
+          `Morning pre-warm completed — regime ${result.regime_key ?? '—'}, ETF hits ${result.etf_hit_count}`,
+        );
+      }
+    }).catch((err) => {
+      console.error('Morning pre-warm tick failed:', err instanceof Error ? err.message : err);
     });
   }, AUTO_SCAN_TICK_MS);
 

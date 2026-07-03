@@ -16,7 +16,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "sync:indices": "tsx src/sync-indices-cli.ts",
-    "daily:sync": "tsx src/daily-sync-cli.ts"
+    "daily:sync": "tsx src/daily-sync-cli.ts",
+    "morning:prewarm": "tsx src/morning-prewarm-cli.ts"
   },
   "dependencies": {
     "@sv/cache": "workspace:*",

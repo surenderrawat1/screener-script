@@ -26,6 +26,8 @@ import {
   watchlistUpsertSchema,
   swingPositionCreateSchema,
   swingPositionCloseSchema,
+  niftyIntradayPositionCreateSchema,
+  niftyIntradayPositionCloseSchema,
   swingScanSchema,
   PERMISSIONS,
   initAppConfig,
@@ -39,6 +41,8 @@ import { getAdminStats, importIndexCsv, importNseEquityCsv, importPromoterHoldin
 import { bootstrapAppConfig, getEffectiveSettings, patchAppSettings } from './services/settings.js';
 import { fetchDailySyncStatus, runDailySyncJob } from './services/daily-sync.js';
 import { getStockSummary, getStockChart, getStockProfile, refreshStockCaches } from './services/stock-details.js';
+import { getMorningBriefing, notifyMorningAlertsIfNeeded } from './services/morning.js';
+import { getTradingPresetById, listTradingPresets } from './services/trading-presets.js';
 import { evaluateSwingSymbol } from '@sv/data-adapters';
 import {
   listWatchlist,
@@ -53,6 +57,12 @@ import {
 } from './services/swing-positions.js';
 import { getSwingAutoState, getSwingAutoProfile, validateSwingAddPosition, refreshOpenPositions, startSwingAutoScan } from './services/swing-auto.js';
 import { getNiftyIntradayState } from './services/intraday.js';
+import {
+  listIntradayPositions,
+  createIntradayPosition,
+  closeIntradayPosition,
+  trackOpenIntradayPositions,
+} from './services/intraday-positions.js';
 
 const PORT = parseInt(process.env.API_PORT ?? '3100', 10);
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? 'http://localhost:5173';
@@ -292,6 +302,52 @@ export async function buildApp() {
     }
   });
 
+  app.get('/api/v1/morning', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const query = request.query as { live?: string; refresh_etf?: string };
+    const live = query.live !== '0';
+    const refreshEtf = query.refresh_etf === '1';
+    try {
+      const briefing = await getMorningBriefing(user.sub !== 'system' ? user.sub : undefined, {
+        live,
+        refreshEtf,
+      });
+      void notifyMorningAlertsIfNeeded(briefing).catch(() => undefined);
+      return briefing;
+    } catch (err) {
+      return reply.status(500).send({
+        error: err instanceof Error ? err.message : 'Morning briefing failed',
+      });
+    }
+  });
+
+  app.post('/api/v1/morning/refresh-etf', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const query = request.query as { live?: string };
+    const live = query.live !== '0';
+    try {
+      const briefing = await getMorningBriefing(user.sub !== 'system' ? user.sub : undefined, {
+        live,
+        refreshEtf: true,
+      });
+      void notifyMorningAlertsIfNeeded(briefing).catch(() => undefined);
+      return briefing;
+    } catch (err) {
+      return reply.status(500).send({
+        error: err instanceof Error ? err.message : 'ETF refresh failed',
+      });
+    }
+  });
+
+  app.get('/api/v1/trading/presets', { preHandler: [authPreHandler] }, async () => listTradingPresets());
+
+  app.get('/api/v1/trading/presets/:id', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const result = getTradingPresetById(id);
+    if (!result) return reply.status(404).send({ error: 'Preset not found' });
+    return result;
+  });
+
   app.post('/api/v1/swing/scan', { preHandler: [authPreHandler] }, async (request, reply) => {
     const user = requirePermission(request, PERMISSIONS.RUN_SCREENER);
     const parsed = swingScanSchema.safeParse(request.body);
@@ -384,6 +440,39 @@ export async function buildApp() {
     const interval = query.interval === '5m' ? '5m' : '15m';
     const refresh = query.refresh === '1';
     return getNiftyIntradayState(interval, refresh);
+  });
+
+  app.get('/api/v1/intraday/positions', { preHandler: [authPreHandler] }, async (request) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const query = request.query as { status?: string; live?: string };
+    const status = query.status === 'open' || query.status === 'closed' ? query.status : undefined;
+    const result = await listIntradayPositions(user.sub !== 'system' ? user.sub : undefined, status);
+    if (query.live === '1' && status === 'open') {
+      const live = await trackOpenIntradayPositions(result.positions, true);
+      return { ...result, positions: live };
+    }
+    return result;
+  });
+
+  app.post('/api/v1/intraday/positions', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const parsed = niftyIntradayPositionCreateSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    try {
+      return await createIntradayPosition(user.sub, parsed.data);
+    } catch (err) {
+      return reply.status(400).send({ error: err instanceof Error ? err.message : 'Create failed' });
+    }
+  });
+
+  app.post('/api/v1/intraday/positions/:id/close', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const { id } = request.params as { id: string };
+    const parsed = niftyIntradayPositionCloseSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    const result = await closeIntradayPosition(user.sub, id, parsed.data.closed_price, parsed.data.closed_reason);
+    if (!result) return reply.status(404).send({ error: 'Open position not found' });
+    return result;
   });
 
   app.post('/api/v1/swing/positions', { preHandler: [authPreHandler] }, async (request, reply) => {

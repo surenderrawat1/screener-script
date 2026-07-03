@@ -17,6 +17,7 @@
     "migrate:php": "pnpm --filter @sv/db run migrate:php",
     "sync:indices": "pnpm --filter @sv/data-adapters run sync:indices",
     "daily:sync": "pnpm --filter @sv/data-adapters run daily:sync",
+    "morning:prewarm": "pnpm --filter @sv/data-adapters run morning:prewarm",
     "test": "pnpm -r run test",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck"

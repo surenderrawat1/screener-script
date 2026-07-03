@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { Page, PageHeader, PageLoading } from '../components/PageLayout';
 
 type Interval = '5m' | '15m';
 
 export default function IntradayPage() {
+  const [searchParams] = useSearchParams();
+  const presetId = searchParams.get('preset');
+  const initialInterval: Interval = searchParams.get('interval') === '5m' ? '5m' : '15m';
   const [state, setState] = useState<Record<string, unknown> | null>(null);
-  const [interval, setInterval] = useState<Interval>('15m');
+  const [interval, setInterval] = useState<Interval>(initialInterval);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const next = searchParams.get('interval') === '5m' ? '5m' : searchParams.get('interval') === '15m' ? '15m' : null;
+    if (next) setInterval(next);
+  }, [searchParams]);
 
   const load = useCallback(
     async (refresh = false) => {
@@ -75,6 +84,15 @@ export default function IntradayPage() {
         }
       />
       <p className="disclaimer">Intraday signals for education — confirm with your risk plan before trading.</p>
+      {presetId && (
+        <p className="muted">
+          Preset: <strong>{presetId.replace(/_/g, ' ')}</strong>
+          {' · '}
+          <Link to="/presets">All presets</Link>
+          {' · '}
+          <Link to="/intraday/positions">Intraday ledger</Link>
+        </p>
+      )}
 
       <section className="card">
         <h2>{String(playbook.headline ?? '—')}</h2>

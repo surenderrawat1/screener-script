@@ -29,3 +29,17 @@ export {
   INTERVAL as NIFTY_DEFAULT_INTERVAL,
 } from './nifty-direction.js';
 export { confluence as mtfConfluence } from './mtf.js';
+export {
+  resolveInstrument,
+  resolveInstrumentFromSymbol,
+  normalizeInstrumentId,
+  instrumentIds,
+  type IntradayInstrumentMeta,
+} from './instruments.js';
+export {
+  evaluateIntradayPosition,
+  sortTrackedPositions,
+  countIntradayExitSignals,
+  isUrgentIntradayAction,
+  type IntradayBar as IntradayPositionBar,
+} from './position-tracker.js';

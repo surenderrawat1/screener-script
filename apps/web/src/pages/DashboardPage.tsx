@@ -50,6 +50,9 @@ export default function DashboardPage() {
         <h2>Quick links</h2>
         <ul>
           <li>
+            <Link to="/morning">Morning routine</Link> — regime, checklist, auto radar
+          </li>
+          <li>
             <Link to="/screener">Run screener</Link> — universe + preset filters
           </li>
           <li>
