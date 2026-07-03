@@ -33,12 +33,18 @@ import {
   niftyIntradayPositionCreateSchema,
   niftyIntradayPositionCloseSchema,
   swingScanSchema,
+  strategyRunSchema,
   PERMISSIONS,
   initAppConfig,
+  type ScreenerRow,
 } from '@sv/shared';
+import { toPitchCsv } from '@sv/core';
 import { requirePermission } from './lib/auth.js';
 import { listUniverses, createCustomUniverse } from './services/universe.js';
 import { createScreenerJob, getJob } from './services/screener.js';
+import { listScreenerPresets } from './services/screener-presets.js';
+import { createStrategyRun, getJob as getStrategyJob, getTradingStrategy, listTradingStrategies } from './services/strategies.js';
+import { exchangeListSummary } from '@sv/data-adapters';
 import { createSwingScanJob } from './services/swing.js';
 import { verifySymbol } from './services/verify.js';
 import { getVerifyFullPrefill, fetchVerifyFull, runVerifyFull, getVerifyFullDraft, saveVerifyFullDraft } from './services/verify-full.js';
@@ -67,14 +73,15 @@ import {
   listSwingPositions,
   createSwingPosition,
   closeSwingPosition,
+  reopenSwingPosition,
 } from './services/swing-positions.js';
-import { getSwingAutoState, getSwingAutoProfile, validateSwingAddPosition, refreshOpenPositions, startSwingAutoScan } from './services/swing-auto.js';
+import { getSwingAutoState, getSwingAutoPositions, getSwingAutoProfile, validateSwingAddPosition, refreshOpenPositions, startSwingAutoScan } from './services/swing-auto.js';
 import { getNiftyIntradayState } from './services/intraday.js';
 import {
   listIntradayPositions,
   createIntradayPosition,
   closeIntradayPosition,
-  trackOpenIntradayPositions,
+  reopenIntradayPosition,
 } from './services/intraday-positions.js';
 
 const PORT = parseInt(process.env.API_PORT ?? '3100', 10);
@@ -231,6 +238,69 @@ export async function buildApp() {
 
     const progress = (await getJobProgress(id)) ?? job.progress;
     return { job: { ...job, progress } };
+  });
+
+  app.get('/api/v1/screener/presets', async () => ({
+    presets: listScreenerPresets(),
+  }));
+
+  app.get('/api/v1/screener/exchange-lists', async () => ({
+    exchange_lists: exchangeListSummary(),
+  }));
+
+  app.get('/api/v1/strategies', { preHandler: [authPreHandler] }, async (request) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const style = (request.query as { style?: string }).style ?? 'all';
+    return listTradingStrategies(style);
+  });
+
+  app.get('/api/v1/strategies/:id', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const { id } = request.params as { id: string };
+    const strategy = getTradingStrategy(id);
+    if (!strategy) return reply.status(404).send({ error: 'Strategy not found' });
+    return { strategy };
+  });
+
+  app.post('/api/v1/strategies/run', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.RUN_SCREENER);
+    const parsed = strategyRunSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+    try {
+      const out = await createStrategyRun(
+        parsed.data,
+        user.sub !== 'system' ? user.sub : undefined,
+      );
+      if (out.background) {
+        return { jobId: out.jobId, background: true, status: out.status };
+      }
+      return out.result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Strategy run failed';
+      return reply.status(400).send({ error: message });
+    }
+  });
+
+  app.get('/api/v1/strategies/jobs/:id', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const { id } = request.params as { id: string };
+    const job = await getStrategyJob(id);
+    if (!job) return reply.status(404).send({ error: 'Job not found' });
+
+    const progress = (await getJobProgress(id)) ?? job.progress;
+    return { job: { ...job, progress } };
+  });
+
+  app.post('/api/v1/screener/export', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const body = request.body as { rows?: ScreenerRow[] };
+    const rows = body?.rows ?? [];
+    const csv = toPitchCsv(rows);
+    reply.header('Content-Type', 'text/csv; charset=utf-8');
+    reply.header('Content-Disposition', 'attachment; filename="screener-pitch.csv"');
+    return csv;
   });
 
   app.post('/api/v1/verify/auto', { preHandler: [authPreHandler] }, async (request, reply) => {
@@ -507,17 +577,23 @@ export async function buildApp() {
     const user = requirePermission(request, PERMISSIONS.VIEW);
     const query = request.query as { status?: string; live?: string };
     const status = query.status === 'open' || query.status === 'closed' ? query.status : undefined;
-    const result = await listSwingPositions(user.sub !== 'system' ? user.sub : undefined, status);
-    if (query.live === '1' && status === 'open') {
-      const live = await refreshOpenPositions(result.positions, true);
-      return { ...result, positions: live };
-    }
-    return result;
+    const live = query.live === '1' || query.live === 'true';
+    return listSwingPositions(user.sub !== 'system' ? user.sub : undefined, status, { live });
   });
 
   app.get('/api/v1/swing/auto/state', { preHandler: [authPreHandler] }, async (request) => {
     const user = requirePermission(request, PERMISSIONS.VIEW);
-    return getSwingAutoState(user.sub);
+    const query = request.query as { live?: string; positions?: string };
+    const live = query.live === '1' || query.live === 'true';
+    const positions = query.positions !== '0' && query.positions !== 'false';
+    return getSwingAutoState(user.sub, { live, positions });
+  });
+
+  app.get('/api/v1/swing/auto/positions', { preHandler: [authPreHandler] }, async (request) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const query = request.query as { live?: string };
+    const live = query.live === '1' || query.live === 'true';
+    return getSwingAutoPositions(user.sub, { live });
   });
 
   app.get('/api/v1/swing/auto/profile', { preHandler: [authPreHandler] }, async () => getSwingAutoProfile());
@@ -537,22 +613,19 @@ export async function buildApp() {
   });
 
   app.get('/api/v1/intraday/nifty/state', { preHandler: [authPreHandler] }, async (request) => {
-    const query = request.query as { interval?: string; refresh?: string };
+    const query = request.query as { interval?: string; refresh?: string; instrument?: string; index?: string };
     const interval = query.interval === '5m' ? '5m' : '15m';
     const refresh = query.refresh === '1';
-    return getNiftyIntradayState(interval, refresh);
+    const instrument = query.instrument ?? query.index ?? 'nifty50';
+    return getNiftyIntradayState(interval, refresh, instrument);
   });
 
   app.get('/api/v1/intraday/positions', { preHandler: [authPreHandler] }, async (request) => {
     const user = requirePermission(request, PERMISSIONS.VIEW);
     const query = request.query as { status?: string; live?: string };
     const status = query.status === 'open' || query.status === 'closed' ? query.status : undefined;
-    const result = await listIntradayPositions(user.sub !== 'system' ? user.sub : undefined, status);
-    if (query.live === '1' && status === 'open') {
-      const live = await trackOpenIntradayPositions(result.positions, true);
-      return { ...result, positions: live };
-    }
-    return result;
+    const live = query.live === '1' || query.live === 'true';
+    return listIntradayPositions(user.sub !== 'system' ? user.sub : undefined, status, { live });
   });
 
   app.post('/api/v1/intraday/positions', { preHandler: [authPreHandler] }, async (request, reply) => {
@@ -576,6 +649,17 @@ export async function buildApp() {
     return result;
   });
 
+  app.post('/api/v1/intraday/positions/:id/reopen', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const { id } = request.params as { id: string };
+    const result = await reopenIntradayPosition(user.sub, id);
+    if (!result) return reply.status(404).send({ error: 'Closed position not found' });
+    if ('error' in result && result.error === 'undo_expired') {
+      return reply.status(410).send({ error: 'Undo window expired (5 minutes)' });
+    }
+    return result;
+  });
+
   app.post('/api/v1/swing/positions', { preHandler: [authPreHandler] }, async (request, reply) => {
     const user = requirePermission(request, PERMISSIONS.VIEW);
     const parsed = swingPositionCreateSchema.safeParse(request.body);
@@ -590,6 +674,17 @@ export async function buildApp() {
     if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
     const result = await closeSwingPosition(user.sub, id, parsed.data.closed_price, parsed.data.closed_reason);
     if (!result) return reply.status(404).send({ error: 'Open position not found' });
+    return result;
+  });
+
+  app.post('/api/v1/swing/positions/:id/reopen', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const { id } = request.params as { id: string };
+    const result = await reopenSwingPosition(user.sub, id);
+    if (!result) return reply.status(404).send({ error: 'Closed position not found' });
+    if ('error' in result && result.error === 'undo_expired') {
+      return reply.status(410).send({ error: 'Undo window expired (5 minutes)' });
+    }
     return result;
   });
 
@@ -755,15 +850,7 @@ export async function buildApp() {
   });
 
   app.get('/api/v1/presets', async () => ({
-    presets: [
-      'quality',
-      'strong_buy',
-      'buy_picks',
-      'fair_mos',
-      'value',
-      'growth',
-      'cfa_top',
-    ],
+    presets: listScreenerPresets().map((p) => p.id),
   }));
 
   app.get('/ws/jobs/:id', { websocket: true }, (socket, request) => {

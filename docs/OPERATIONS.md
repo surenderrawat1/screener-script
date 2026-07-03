@@ -10,7 +10,13 @@ Day-2 running, deployment, data imports, and troubleshooting.
 |---------|---------|--------------|
 | API | `pnpm dev` or `sv_api` container | All HTTP features |
 | Web | included in `pnpm dev` or `sv_web` | UI |
-| Worker | `pnpm dev:worker` or `sv_worker` container | Background scans, auto-radar, job queue |
+| Worker | `pnpm dev:worker` or `sv_worker` container | Background scans, auto-radar, BullMQ jobs |
+
+**Recommended local stack:**
+
+```bash
+pnpm dev:all    # API + Web + Worker in one terminal
+```
 
 **Common mistake:** Running only `pnpm dev` without the worker. Symptoms:
 
@@ -67,7 +73,14 @@ INDICES_DIR=/path/to/csvs pnpm sync:indices
 
 Admin UI: **Admin → Sync indices from disk** or upload individual CSV.
 
-**Scheduled:** Daily at **06:00 IST** by default (`config/schedules.yaml`). See [Data Rules](DATA-RULES.md).
+**Scheduled:** Daily at **06:00 IST** by default (`config/schedules.yaml`). Manual trigger:
+
+```bash
+pnpm daily:sync              # CLI — indices + OHLC prefetch
+pnpm morning:prewarm         # ETF + watchlist quote warmup
+```
+
+Admin UI: **Admin → Run daily sync** (`POST /api/v1/admin/sync/daily`) or upload individual CSV.
 
 Supported CSV formats:
 
@@ -83,6 +96,10 @@ Upload NSE `EQUITY_L.csv` via Admin. Required for `total_nse` universe scans.
 Upload CSV: `symbol`, `promoter_holding_pct`, optional `as_of`.
 
 Used as screener overlay filter after upload.
+
+### ASM / GSM / T2T exchange lists
+
+Restricted symbols live in `config/data/exchange/asm_gsm_manual.json`. Screener runs skip these when **Exclude ASM/GSM/T2T** is checked (default). Update the JSON file and redeploy — no upload endpoint.
 
 ### PHP JSON migration
 
@@ -121,12 +138,59 @@ Manual trigger: **Auto Radar → Run scan** or `POST /api/v1/swing/auto/scan`.
 
 ## Background job thresholds
 
-| Feature | Background when |
-|---------|-------------------|
-| Screener | ≥ 400 symbols (≥ 80 with TA filters) |
-| Swing scan | ≥ 25 symbols |
+| Feature | Worker queue (BullMQ) | Inline (API process) |
+|---------|----------------------|----------------------|
+| Screener | ≥ 400 symbols (≥ 80 with `show_ta`) | Smaller universes |
+| Swing scan | ≥ 25 symbols | &lt; 25 symbols |
+| Strategy run | swing &gt; 25, hybrid &gt; 40, screener &gt; 80 | Below thresholds |
 
-Monitor via `GET /api/v1/screener/jobs/:id` or WebSocket `/ws/jobs/:id`.
+All screener runs return a `jobId` — poll `GET /api/v1/screener/jobs/:id` or WebSocket `/ws/jobs/:id`.
+
+Strategy runs: `GET /api/v1/strategies/jobs/:id` when background.
+
+---
+
+## Cache administration
+
+Admin UI (**Admin → Cache**) or API:
+
+```bash
+# List TA chart keys
+curl -H "Authorization: Bearer $TOKEN" \
+  'http://localhost:3100/api/v1/admin/cache/keys?prefix=sv:ta&limit=20'
+
+# Clear TA cache only (safe — universes stay in Postgres)
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  'http://localhost:3100/api/v1/admin/cache?prefix=sv:ta'
+```
+
+| Prefix | Clears |
+|--------|--------|
+| `sv:ta` | Yahoo OHLC / TA chart cache |
+| `sv:screener:row` | Per-preset analyze row cache |
+| `sv:verify` | CFA auto-verify cache (7 d TTL) |
+
+See [Redis & Cache](REDIS-CACHE.md) for full namespace map.
+
+---
+
+## Screener & strategies (ops notes)
+
+- **22 presets** including TA gates (`ta_pullback`, `cfa_best_opportunity`, …) — see [Screener](SCREENER.md)
+- **21 trading strategies** at `/strategies` — background checkbox forces async
+- **Pitch CSV export** — client-side or `POST /api/v1/screener/export`
+- **Row actions** — Watchlist + Add swing from screener/strategy results
+
+---
+
+## Position undo window
+
+Closed swing and intraday positions can be reopened within **5 minutes** via UI or:
+
+- `POST /api/v1/swing/positions/:id/reopen`
+- `POST /api/v1/intraday/positions/:id/reopen`
+
+Returns **410** after window expires.
 
 ---
 

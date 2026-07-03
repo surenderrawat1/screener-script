@@ -176,3 +176,132 @@ export function isUrgentIntradayAction(row: Record<string, unknown>): boolean {
   const act = String(row.position_action ?? 'HOLD');
   return EXIT_ACTIONS.has(act) || String(row.exit_verdict ?? '') === 'EXIT';
 }
+
+export function serializeTrackedIntradayPosition(row: Record<string, unknown>) {
+  const pos = (row.position as Record<string, unknown> | undefined) ?? row;
+  return {
+    id: String(pos.id ?? row.id ?? ''),
+    instrument_id: String(row.instrument_id ?? pos.instrument_id ?? ''),
+    instrument_label: String(row.instrument_label ?? pos.instrument_label ?? ''),
+    symbol: String(row.symbol ?? pos.symbol ?? ''),
+    status: String(pos.status ?? row.status ?? 'open'),
+    side: String(row.side ?? pos.side ?? 'long'),
+    side_label: String(row.side_label ?? (pos.side === 'short' ? 'Short' : 'Long')),
+    timeframe: String(row.timeframe ?? pos.timeframe ?? '15m'),
+    entry_price: Number(pos.entry_price ?? row.entry_price ?? 0),
+    entry_time: String(pos.entry_time ?? ''),
+    session_date: String(pos.session_date ?? ''),
+    quantity: pos.quantity ?? row.quantity ?? null,
+    notes: pos.notes ?? null,
+    source: pos.source ?? null,
+    ok: row.ok !== false && row.current_price != null,
+    error: row.error != null ? String(row.error) : null,
+    current_price: typeof row.current_price === 'number' ? row.current_price : null,
+    as_of: row.as_of ?? null,
+    gain_pct: typeof row.gain_pct === 'number' ? row.gain_pct : null,
+    pnl_inr: typeof row.pnl_inr === 'number' ? row.pnl_inr : null,
+    exit_verdict: String(row.exit_verdict ?? 'HOLD'),
+    position_action: String(row.position_action ?? 'HOLD'),
+    action_label: String(row.action_label ?? 'Hold'),
+    exit_triggers: Array.isArray(row.exit_triggers) ? row.exit_triggers.map(String) : [],
+    stop_loss: row.stop_loss ?? pos.stop_loss ?? null,
+    effective_stop: row.effective_stop ?? pos.effective_stop ?? null,
+    target_t1: row.target_t1 ?? pos.target_t1 ?? null,
+    target_t2: row.target_t2 ?? pos.target_t2 ?? null,
+    target_t3: row.target_t3 ?? pos.target_t3 ?? null,
+    remaining_pct: Number(row.remaining_pct ?? pos.remaining_pct ?? 100),
+    t1_booked: Boolean(pos.t1_booked),
+    t2_booked: Boolean(pos.t2_booked),
+    breakeven_armed: Boolean(pos.breakeven_armed),
+    closed_at: pos.closed_at ?? null,
+    closed_price: pos.closed_price ?? null,
+    closed_reason: pos.closed_reason ?? null,
+    data_source: row.data_source ?? null,
+  };
+}
+
+export function summarizeOpenIntradayPortfolio(rows: Record<string, unknown>[]) {
+  let netPnl = 0;
+  let pnlCount = 0;
+  for (const row of rows) {
+    const pnl = row.pnl_inr;
+    if (typeof pnl === 'number' && Number.isFinite(pnl)) {
+      netPnl += pnl;
+      pnlCount += 1;
+    }
+  }
+  return {
+    count: rows.length,
+    pnl_count: pnlCount,
+    net_pnl_inr: pnlCount > 0 ? Math.round(netPnl * 100) / 100 : null,
+    exit_count: countIntradayExitSignals(rows),
+    urgent_count: rows.filter(isUrgentIntradayAction).length,
+  };
+}
+
+export function closedTradeMetrics(pos: Record<string, unknown>) {
+  const entry = Number(pos.entry_price ?? 0);
+  const exit = Number(pos.closed_price ?? 0);
+  const qty = Number(pos.quantity ?? 0) || 1;
+  const side = String(pos.side ?? 'long');
+  if (entry <= 0 || exit <= 0) return null;
+
+  const gross = side === 'short' ? (entry - exit) * qty : (exit - entry) * qty;
+  const stop = Number(pos.stop_loss ?? 0);
+  let rMultiple: number | null = null;
+  if (stop > 0) {
+    const risk = Math.abs(entry - stop);
+    if (risk > 0) {
+      const pts = side === 'short' ? entry - exit : exit - entry;
+      rMultiple = Math.round((pts / risk) * 100) / 100;
+    }
+  }
+
+  return {
+    net_pnl: Math.round(gross * 100) / 100,
+    r_multiple: rMultiple,
+  };
+}
+
+export function summarizeClosedIntradayPositions(closed: Record<string, unknown>[]) {
+  let wins = 0;
+  let losses = 0;
+  let netSum = 0;
+  let withPnl = 0;
+  let rSum = 0;
+  let rCount = 0;
+  let best: { instrument: string; net_pnl: number; r_multiple: number | null } | null = null;
+  let worst: { instrument: string; net_pnl: number; r_multiple: number | null } | null = null;
+
+  for (const pos of closed) {
+    const m = closedTradeMetrics(pos);
+    if (!m) continue;
+    withPnl += 1;
+    netSum += m.net_pnl;
+    if (m.net_pnl >= 0) wins += 1;
+    else losses += 1;
+    if (m.r_multiple != null) {
+      rSum += m.r_multiple;
+      rCount += 1;
+    }
+    const label = String(pos.instrument_label ?? pos.instrument_id ?? '');
+    if (!best || m.net_pnl > best.net_pnl) {
+      best = { instrument: label, net_pnl: m.net_pnl, r_multiple: m.r_multiple };
+    }
+    if (!worst || m.net_pnl < worst.net_pnl) {
+      worst = { instrument: label, net_pnl: m.net_pnl, r_multiple: m.r_multiple };
+    }
+  }
+
+  return {
+    with_pnl: withPnl,
+    wins,
+    losses,
+    win_rate_pct: withPnl > 0 ? Math.round((wins / withPnl) * 1000) / 10 : null,
+    avg_r: rCount > 0 ? Math.round((rSum / rCount) * 100) / 100 : null,
+    r_count: rCount,
+    total_net_pnl: Math.round(netSum * 100) / 100,
+    best,
+    worst,
+  };
+}

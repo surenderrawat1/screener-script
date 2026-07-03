@@ -1,10 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { prisma, JobStatus, JobType } from '@sv/db';
-import { setJobProgress } from '@sv/cache';
 import { enqueueScreenerJob, shouldRunInBackground } from '@sv/jobs';
+import { executeScreenerJob } from '@sv/data-adapters';
 import type { ScreenerRunInput } from '@sv/shared';
 import { resolveUniverseSymbols } from './universe.js';
-import { runLiveScreener } from './screener-run.js';
 
 export async function createScreenerJob(
   input: ScreenerRunInput,
@@ -12,8 +11,12 @@ export async function createScreenerJob(
 ): Promise<{ jobId: string; background: boolean; status: string }> {
   const symbols = await resolveUniverseSymbols(input.universe, input.maxScan);
   const taActive = Boolean(input.filters?.show_ta);
-  const background =
-    input.background ?? shouldRunInBackground(input.maxScan, taActive);
+  const useQueue = input.background ?? shouldRunInBackground(input.maxScan, taActive);
+  const filters = (input.filters ?? {}) as Record<string, number>;
+  const runOptions = {
+    exclude_restricted: input.exclude_restricted !== false,
+    refresh: Boolean(input.refresh),
+  };
 
   const job = await prisma.job.create({
     data: {
@@ -25,7 +28,7 @@ export async function createScreenerJob(
     },
   });
 
-  if (background) {
+  if (useQueue) {
     await enqueueScreenerJob({
       jobId: job.id,
       input,
@@ -35,41 +38,15 @@ export async function createScreenerJob(
     return { jobId: job.id, background: true, status: 'pending' };
   }
 
-  await prisma.job.update({
-    where: { id: job.id },
-    data: { status: JobStatus.running, startedAt: new Date() },
+  void executeScreenerJob(job.id, symbols, input.preset, filters, runOptions).catch(async (err) => {
+    const message = err instanceof Error ? err.message : 'Screener failed';
+    await prisma.job.update({
+      where: { id: job.id },
+      data: { status: JobStatus.failed, error: message, finishedAt: new Date() },
+    });
   });
 
-  const rows = await runLiveScreener(
-    symbols,
-    input.preset,
-    input.filters as Record<string, number>,
-  );
-  const result = { rows, total: symbols.length, passed: rows.length };
-
-  await prisma.job.update({
-    where: { id: job.id },
-    data: {
-      status: JobStatus.done,
-      result: result as object,
-      finishedAt: new Date(),
-      progress: {
-        phase: 'done',
-        total: symbols.length,
-        processed: symbols.length,
-        passed: rows.length,
-      },
-    },
-  });
-
-  await setJobProgress(job.id, {
-    phase: 'done',
-    total: symbols.length,
-    processed: symbols.length,
-    passed: rows.length,
-  });
-
-  return { jobId: job.id, background: false, status: 'done' };
+  return { jobId: job.id, background: true, status: 'pending' };
 }
 
 export async function getJob(jobId: string) {

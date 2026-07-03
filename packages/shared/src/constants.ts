@@ -96,15 +96,27 @@ export const BUILTIN_UNIVERSES = [
 
 export const SCREENER_PRESETS = [
   'quality',
-  'strong_buy',
-  'buy_picks',
-  'fair_mos',
   'value',
   'growth',
+  'defensive',
   'cfa_top',
+  'deep_value',
+  'buy_zone',
+  'buy_picks',
+  'fair_mos',
+  'near_iv',
+  'strong_buy',
+  'moat_compounders',
+  'moat_at_value',
+  'monopoly_stocks',
   'ta_pullback',
+  'ta_green_zone',
+  'ta_red_zone',
   'ta_momentum',
   'ta_oversold',
+  'cfa_moat_bottom',
+  'cfa_moat_uptrend',
+  'cfa_best_opportunity',
 ] as const;
 
 export type ScreenerPreset = (typeof SCREENER_PRESETS)[number];

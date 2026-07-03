@@ -1,15 +1,28 @@
-import { fetchNiftyIntradayCharts } from '@sv/data-adapters';
+import { fetchChartsForInstrument, fetchNiftyIntradayCharts } from '@sv/data-adapters';
 import {
   analyzeNiftyDirection,
+  buildFnoTradePlans,
   buildLivePlaybook,
   evaluatePresets,
   gradeSignalQuality,
   mtfConfluence,
   NIFTY_INTRADAY_REFRESH_SEC,
+  normalizeInstrumentId,
+  recommendedPresetForInstrument,
+  resolveInstrument,
 } from '@sv/intraday';
 
-export async function getNiftyIntradayState(interval = '15m', refresh = false) {
-  const { chart5, chart15 } = await fetchNiftyIntradayCharts(refresh);
+export async function getNiftyIntradayState(
+  interval = '15m',
+  refresh = false,
+  instrumentId = 'nifty50',
+) {
+  const instrumentKey = normalizeInstrumentId(instrumentId);
+  const meta = resolveInstrument(instrumentKey);
+  const { chart5, chart15 } = meta
+    ? await fetchChartsForInstrument(meta.cache_key, meta.yahoo_symbols, refresh)
+    : await fetchNiftyIntradayCharts(refresh);
+
   const analysis5 = analyzeNiftyDirection(chart5, '5m') as Record<string, unknown>;
   const analysis15 = analyzeNiftyDirection(chart15, '15m') as Record<string, unknown>;
 
@@ -22,16 +35,18 @@ export async function getNiftyIntradayState(interval = '15m', refresh = false) {
 
   const mtf = mtfConfluence(analysis5, analysis15);
   const presetEval = evaluatePresets(analysis5, analysis15, mtf);
-  const recommendedPreset = 'cfa_precision';
   const activeIv = interval === '5m' ? '5m' : '15m';
+  const recommendedPreset = recommendedPresetForInstrument(instrumentKey, activeIv);
   const analysis = activeIv === '5m' ? analysis5 : analysis15;
   const plan = (analysis.trade_plan as Record<string, unknown> | null) ?? null;
   const livePlaybook = buildLivePlaybook(plan, analysis, analysis5, mtf, presetEval, recommendedPreset, activeIv);
+  const fno = buildFnoTradePlans(instrumentKey, plan, analysis, mtf);
 
   return {
     ok: Boolean(analysis5.ok || analysis15.ok),
-    index: 'nifty50',
-    index_label: 'Nifty 50',
+    index: instrumentKey,
+    index_label: meta?.label ?? 'Nifty 50',
+    instrument: meta,
     interval: activeIv,
     refresh_sec: NIFTY_INTRADAY_REFRESH_SEC,
     recommended_preset: recommendedPreset,
@@ -44,6 +59,7 @@ export async function getNiftyIntradayState(interval = '15m', refresh = false) {
     plan,
     playbook: livePlaybook,
     preset_eval: presetEval,
+    fno,
     server_time: new Date().toISOString(),
   };
 }

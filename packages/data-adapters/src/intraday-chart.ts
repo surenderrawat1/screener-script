@@ -121,3 +121,15 @@ export async function fetchNiftyIntradayCharts(refresh = false) {
   ]);
   return { chart5, chart15 };
 }
+
+export async function fetchChartsForInstrument(
+  cacheKey: string,
+  yahooSymbols: string[],
+  refresh = false,
+): Promise<{ chart5: IntradayChart | null; chart15: IntradayChart | null }> {
+  const [chart5, chart15] = await Promise.all([
+    fetchInstrumentIntradayChart(cacheKey, yahooSymbols, cacheKey, '5m', refresh),
+    fetchInstrumentIntradayChart(cacheKey, yahooSymbols, cacheKey, '15m', refresh),
+  ]);
+  return { chart5, chart15 };
+}

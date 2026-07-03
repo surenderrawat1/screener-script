@@ -4,6 +4,11 @@ import {
   enrichHit,
   evaluatePositionAction,
   overlayOpenPositionsOnTiers,
+  POS_CUT,
+  POS_EXIT,
+  POS_HOLD,
+  POS_TIGHTEN,
+  POS_TRAIL,
   regimeGuidance,
 } from './auto-decision.js';
 import { tier } from './ranker.js';
@@ -80,30 +85,66 @@ export function serializeHit(hit: Record<string, unknown>) {
   };
 }
 
+export const URGENT_POSITION_ACTIONS = [POS_EXIT, POS_CUT, POS_TIGHTEN] as const;
+
+function exitField(row: Record<string, unknown>, key: string): unknown {
+  const exit = row.exit as Record<string, unknown> | undefined;
+  return row[key] ?? exit?.[key];
+}
+
+function grossPnlInr(row: Record<string, unknown>): number | null {
+  const entry = Number(row.entry_price ?? 0);
+  const cur = num(row.current_price);
+  const shares = num(row.shares);
+  if (cur === null || shares === null || shares <= 0 || entry <= 0) return null;
+  return Math.round((cur - entry) * shares * 100) / 100;
+}
+
 export function serializePosition(
   row: Record<string, unknown>,
   hitMatch?: Record<string, unknown> | null,
   regime?: Record<string, unknown> | null,
 ) {
   const action = evaluatePositionAction(row, hitMatch ?? null, regime ?? null);
+  const posAction = action.action;
+  const inHighConviction =
+    hitMatch != null &&
+    Boolean(hitMatch.high_conviction) &&
+    (posAction === POS_HOLD || posAction === POS_TRAIL);
+
   return {
+    id: String(row.id ?? (row.position as Record<string, unknown> | undefined)?.id ?? ''),
     symbol: String(row.symbol ?? ''),
+    notes: String(row.notes ?? ''),
+    source: row.source != null ? String(row.source) : null,
     status: String(row.status ?? 'open'),
     entry_price: Number(row.entry_price ?? 0),
+    entry_date: String(row.entry_date ?? ''),
+    shares: num(row.shares),
     current_price: num(row.current_price),
     gain_pct: num(row.gain_pct),
+    net_pnl: grossPnlInr(row),
     exit_verdict: String(row.exit_verdict ?? 'HOLD'),
     exit_triggers: Array.isArray(row.exit_triggers) ? row.exit_triggers : [],
     active_stop: num(row.active_stop),
+    effective_stop: num(exitField(row, 'effective_stop') ?? row.active_stop),
     profit_target: num(row.profit_target),
-    trail_armed: Boolean(row.trail_armed),
-    trail_stop: num(row.trail_stop),
+    trail_armed: Boolean(exitField(row, 'trail_armed')),
+    trail_stop: num(exitField(row, 'trail_stop')),
+    trail_arm_pct: num(exitField(row, 'trail_arm_pct')),
+    trail_from_high_pct: num(exitField(row, 'trail_from_high_pct')),
+    high_water: num(exitField(row, 'high_water')),
+    gain_to_arm_trail_pct: num(exitField(row, 'gain_to_arm_trail_pct')),
+    breakeven_armed: Boolean(exitField(row, 'breakeven_armed')),
     sessions_held: Number(row.sessions_held ?? 0),
-    position_action: action.action,
+    ok: row.ok !== false && num(row.current_price) !== null,
+    error: String(row.error ?? ''),
+    position_action: posAction,
     action_label: action.label,
     action_reasons: action.reasons,
     stop_distance_pct: action.stop_distance_pct,
     r_unrealized: action.r_unrealized,
+    in_high_conviction: inHighConviction,
     hit_match: hitMatch
       ? {
           decision_action: hitMatch.decision_action,
@@ -111,6 +152,127 @@ export function serializePosition(
           swing_rank: hitMatch.swing_rank,
         }
       : null,
+  };
+}
+
+export function sortPositionsByUrgency<
+  T extends { position_action: string; exit_verdict: string },
+>(rows: T[]): T[] {
+  const priority = (r: T) => {
+    const act = r.position_action;
+    if (act === POS_EXIT) return 0;
+    if (act === POS_CUT) return 1;
+    if (act === POS_TIGHTEN) return 2;
+    if (r.exit_verdict === 'EXIT') return 3;
+    return 10;
+  };
+  return [...rows].sort((a, b) => priority(a) - priority(b));
+}
+
+export function buildPositionsBlock(
+  openPositions: Record<string, unknown>[],
+  hits: Record<string, unknown>[],
+  regime?: Record<string, unknown> | null,
+) {
+  const rows = openPositions.map((p) =>
+    serializePosition(p, findHitMatch(hits, String(p.symbol ?? '')), regime),
+  );
+  const open = sortPositionsByUrgency(rows);
+  const exitCount = open.filter((r) => r.exit_verdict === 'EXIT').length;
+  let netPnl = 0;
+  let pnlCount = 0;
+  let invested = 0;
+  let currentValue = 0;
+  for (const r of open) {
+    const sh = r.shares ?? 0;
+    if (sh > 0 && r.entry_price > 0) {
+      invested += r.entry_price * sh;
+      if (r.current_price != null) currentValue += r.current_price * sh;
+    }
+    if (r.net_pnl != null) {
+      netPnl += r.net_pnl;
+      pnlCount += 1;
+    }
+  }
+
+  return {
+    open,
+    count: open.length,
+    heat_pct: portfolioHeatPct(
+      openPositions.map((p) => ({
+        entry_price: p.entry_price,
+        stop_loss: p.stop_loss ?? p.active_stop,
+        shares: p.shares,
+      })),
+    ),
+    exit_count: exitCount,
+    urgent_count: open.filter((r) =>
+      (URGENT_POSITION_ACTIONS as readonly string[]).includes(r.position_action),
+    ).length,
+    refreshed_at: new Date().toISOString(),
+    summary: { open: open.length, exit_signals: exitCount },
+    portfolio: {
+      count: pnlCount,
+      net_pnl: pnlCount > 0 ? Math.round(netPnl * 100) / 100 : 0,
+      gross_pnl: pnlCount > 0 ? Math.round(netPnl * 100) / 100 : 0,
+      invested: Math.round(invested),
+      current_value: Math.round(currentValue),
+    },
+  };
+}
+
+export function summarizeClosedSwingPositions(closed: Record<string, unknown>[]) {
+  let wins = 0;
+  let losses = 0;
+  let netSum = 0;
+  let withPnl = 0;
+  let rSum = 0;
+  let rCount = 0;
+  let best: { instrument: string; net_pnl: number; r_multiple: number | null } | null = null;
+  let worst: { instrument: string; net_pnl: number; r_multiple: number | null } | null = null;
+
+  for (const pos of closed) {
+    const entry = Number(pos.entry_price ?? 0);
+    const exit = Number(pos.closed_price ?? 0);
+    const shares = Number(pos.shares ?? 0) || 1;
+    if (entry <= 0 || exit <= 0) continue;
+
+    const net = Math.round((exit - entry) * shares * 100) / 100;
+    withPnl += 1;
+    netSum += net;
+    if (net >= 0) wins += 1;
+    else losses += 1;
+
+    let rMultiple: number | null = null;
+    const stop = Number(pos.stop_loss ?? 0);
+    if (stop > 0) {
+      const risk = Math.abs(entry - stop);
+      if (risk > 0) {
+        rMultiple = Math.round(((exit - entry) / risk) * 100) / 100;
+        rSum += rMultiple;
+        rCount += 1;
+      }
+    }
+
+    const label = String(pos.symbol ?? '');
+    if (!best || net > best.net_pnl) {
+      best = { instrument: label, net_pnl: net, r_multiple: rMultiple };
+    }
+    if (!worst || net < worst.net_pnl) {
+      worst = { instrument: label, net_pnl: net, r_multiple: rMultiple };
+    }
+  }
+
+  return {
+    with_pnl: withPnl,
+    wins,
+    losses,
+    win_rate_pct: withPnl > 0 ? Math.round((wins / withPnl) * 1000) / 10 : null,
+    avg_r: rCount > 0 ? Math.round((rSum / rCount) * 100) / 100 : null,
+    r_count: rCount,
+    total_net_pnl: Math.round(netSum * 100) / 100,
+    best,
+    worst,
   };
 }
 
@@ -139,10 +301,8 @@ export function buildState(
 ) {
   const hits = Array.isArray(scanResult?.hits) ? (scanResult!.hits as Record<string, unknown>[]) : [];
   let tiers = categorizeHits(hits, regime, false);
-  const positionRows = openPositions.map((p) =>
-    serializePosition(p, findHitMatch(hits, String(p.symbol ?? '')), regime),
-  );
-  tiers = overlayOpenPositionsOnTiers(tiers, positionRows) as typeof tiers;
+  const positionsBlock = buildPositionsBlock(openPositions, hits, regime);
+  tiers = overlayOpenPositionsOnTiers(tiers, positionsBlock.open) as typeof tiers;
 
   return {
     ok: true,
@@ -156,17 +316,7 @@ export function buildState(
       setup_radar: tiers.setup_radar.map(serializeHit),
       breakout_surge: tiers.breakout_surge.map(serializeHit),
     },
-    positions: {
-      open: positionRows,
-      heat_pct: portfolioHeatPct(
-        openPositions.map((p) => ({
-          entry_price: p.entry_price,
-          stop_loss: p.stop_loss ?? p.active_stop,
-          shares: p.shares,
-        })),
-      ),
-      count: openPositions.length,
-    },
+    positions: positionsBlock,
     server_time: new Date().toISOString(),
   };
 }

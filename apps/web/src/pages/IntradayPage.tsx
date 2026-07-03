@@ -2,21 +2,40 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { Page, PageHeader, PageLoading } from '../components/PageLayout';
+import {
+  IntradayFnoPanel,
+  IntradayLedgerLink,
+  IntradayPresetTable,
+  IntradayProductTabs,
+  IntradayTradePlanCard,
+  type ProductMode,
+} from '../components/intraday/IntradayFnoPanels';
 
 type Interval = '5m' | '15m';
 
+const INDEX_TABS = [
+  { id: 'nifty50', label: 'Nifty 50' },
+  { id: 'banknifty', label: 'Bank Nifty' },
+] as const;
+
 export default function IntradayPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const presetId = searchParams.get('preset');
   const initialInterval: Interval = searchParams.get('interval') === '5m' ? '5m' : '15m';
+  const initialInstrument = searchParams.get('instrument') ?? searchParams.get('index') ?? 'nifty50';
+
   const [state, setState] = useState<Record<string, unknown> | null>(null);
   const [interval, setInterval] = useState<Interval>(initialInterval);
+  const [instrument, setInstrument] = useState(initialInstrument);
+  const [productMode, setProductMode] = useState<ProductMode>('spot');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     const next = searchParams.get('interval') === '5m' ? '5m' : searchParams.get('interval') === '15m' ? '15m' : null;
     if (next) setInterval(next);
+    const inst = searchParams.get('instrument') ?? searchParams.get('index');
+    if (inst) setInstrument(inst);
   }, [searchParams]);
 
   const load = useCallback(
@@ -24,7 +43,7 @@ export default function IntradayPage() {
       setError('');
       setLoading(true);
       try {
-        const q = new URLSearchParams({ interval });
+        const q = new URLSearchParams({ interval, instrument });
         if (refresh) q.set('refresh', '1');
         const data = await api<Record<string, unknown>>(`/api/v1/intraday/nifty/state?${q}`);
         setState(data);
@@ -34,7 +53,7 @@ export default function IntradayPage() {
         setLoading(false);
       }
     },
-    [interval],
+    [interval, instrument],
   );
 
   useEffect(() => {
@@ -42,6 +61,13 @@ export default function IntradayPage() {
     const id = window.setInterval(() => void load(), 60_000);
     return () => window.clearInterval(id);
   }, [load]);
+
+  function selectInstrument(id: string) {
+    setInstrument(id);
+    const next = new URLSearchParams(searchParams);
+    next.set('instrument', id);
+    setSearchParams(next);
+  }
 
   if (loading && !state) return <PageLoading label="Loading Nifty intraday playbook…" />;
   if (error && !state) {
@@ -57,12 +83,18 @@ export default function IntradayPage() {
   const steps = (playbook.steps as Array<Record<string, unknown>>) ?? [];
   const analysis = state.analysis as Record<string, unknown> | undefined;
   const mtf = state.mtf as Record<string, unknown> | undefined;
+  const plan = state.plan as Record<string, unknown> | null | undefined;
+  const fno = state.fno as Record<string, unknown> | null | undefined;
+  const presetEval = (state.preset_eval as Array<Record<string, unknown>>) ?? [];
+  const recommendedPreset = String(state.recommended_preset ?? 'cfa_precision');
+  const indexLabel = String(state.index_label ?? 'Nifty 50');
+  const expiry = fno?.expiry as Record<string, unknown> | undefined;
 
   return (
     <Page>
       <PageHeader
         title="Nifty Intraday"
-        subtitle="Live 5m/15m directional playbook"
+        subtitle={`${indexLabel} · spot, futures & options playbook`}
         actions={
           <>
             <div className="segmented">
@@ -83,28 +115,85 @@ export default function IntradayPage() {
           </>
         }
       />
-      <p className="disclaimer">Intraday signals for education — confirm with your risk plan before trading.</p>
+
+      <div className="intraday-idx-tabs">
+        {INDEX_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={instrument === tab.id ? 'intraday-idx-tab active' : 'intraday-idx-tab'}
+            onClick={() => selectInstrument(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <p className="disclaimer">
+        Intraday signals for education — F&O premiums and margins are estimates, not live chain data. Confirm on NSE/broker
+        before orders.
+      </p>
       {presetId && (
         <p className="muted">
           Preset: <strong>{presetId.replace(/_/g, ' ')}</strong>
           {' · '}
           <Link to="/presets">All presets</Link>
-          {' · '}
-          <Link to="/intraday/positions">Intraday ledger</Link>
         </p>
       )}
+      {error && <p className="error">{error}</p>}
+
+      <section className="card intraday-hero">
+        <div className="intraday-kpi-pills">
+          <span className={`intraday-pill ${playbook.actionable ? 'pill-live' : 'pill-wait'}`}>
+            {playbook.actionable ? '● Actionable' : '○ Wait'}
+          </span>
+          <span className="intraday-pill">Bias {String(playbook.bias_label ?? '—')}</span>
+          <span className="intraday-pill">
+            LTP {playbook.current_price != null ? `₹${Number(playbook.current_price).toFixed(2)}` : '—'}
+          </span>
+          <span className="intraday-pill">MTF {String(mtf?.title ?? mtf?.key ?? '—')}</span>
+          <span className="intraday-pill">Deploy {Number(mtf?.deploy_pct ?? 0)}%</span>
+          {expiry?.label ? (
+            <span className={`intraday-pill ${expiry.is_today ? 'pill-expiry' : ''}`}>
+              Expiry {String(expiry.label)}
+            </span>
+          ) : null}
+        </div>
+        <h2 style={{ margin: '0.75rem 0 0.35rem' }}>{String(playbook.headline ?? '—')}</h2>
+        <p className="muted">
+          Direction {String(analysis?.direction ?? '—')} · confidence {String(analysis?.confidence ?? '—')}% ·{' '}
+          {String(mtf?.message ?? '')}
+        </p>
+      </section>
 
       <section className="card">
-        <h2>{String(playbook.headline ?? '—')}</h2>
+        <IntradayProductTabs mode={productMode} onChange={setProductMode} />
+        {productMode === 'spot' ? (
+          <>
+            <IntradayTradePlanCard plan={plan} />
+            <IntradayLedgerLink instrumentId={instrument} plan={plan} />
+          </>
+        ) : (
+          <>
+            <IntradayFnoPanel fno={fno} mode={productMode} />
+            <IntradayLedgerLink instrumentId={instrument} plan={plan} />
+            {((fno?.risk_notes as string[]) ?? []).length > 0 && (
+              <ul className="intraday-risk-notes">
+                {((fno?.risk_notes as string[]) ?? []).map((n) => (
+                  <li key={n}>{n}</li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </section>
+
+      <section className="card">
+        <h2>Entry presets ({interval})</h2>
         <p className="muted">
-          Bias {String(playbook.bias_label ?? '')} · LTP{' '}
-          {playbook.current_price != null ? `₹${Number(playbook.current_price).toFixed(2)}` : '—'} · actionable{' '}
-          {playbook.actionable ? 'yes' : 'no'}
+          Recommended: <strong>{recommendedPreset.replace(/_/g, ' ')}</strong> — gates before taking spot or F&O trades.
         </p>
-        <p className="muted">
-          Direction {String(analysis?.direction ?? '—')} · confidence {String(analysis?.confidence ?? '—')}% · MTF{' '}
-          {String(mtf?.bias ?? mtf?.label ?? '—')}
-        </p>
+        <IntradayPresetTable presets={presetEval} activeInterval={interval} recommended={recommendedPreset} />
       </section>
 
       <section className="card">
@@ -112,10 +201,13 @@ export default function IntradayPage() {
         {steps.length === 0 ? (
           <p className="muted">No steps available for current session.</p>
         ) : (
-          <ol>
+          <ol className="intraday-steps">
             {steps.map((s) => (
-              <li key={String(s.step)} style={{ marginBottom: '0.75rem' }}>
+              <li key={String(s.step)} className={`intraday-step intraday-step-${String(s.status ?? 'info')}`}>
                 <strong>{String(s.title)}</strong> — {String(s.instruction)}
+                {s.price != null ? (
+                  <span className="intraday-step-price"> @ ₹{Number(s.price).toFixed(2)}</span>
+                ) : null}
               </li>
             ))}
           </ol>

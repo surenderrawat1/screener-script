@@ -34,12 +34,26 @@ export {
   resolveInstrumentFromSymbol,
   normalizeInstrumentId,
   instrumentIds,
+  indexInstrumentIds,
+  recommendedPresetForInstrument,
   type IntradayInstrumentMeta,
 } from './instruments.js';
+export { buildFnoTradePlans } from './fno-trade-plan.js';
+export {
+  fnoSpecForInstrument,
+  FNO_UNDERLYINGS,
+  atmStrike,
+  nextWeeklyExpiry,
+  type FnoUnderlyingSpec,
+} from './fno-specs.js';
 export {
   evaluateIntradayPosition,
   sortTrackedPositions,
   countIntradayExitSignals,
   isUrgentIntradayAction,
+  serializeTrackedIntradayPosition,
+  summarizeOpenIntradayPortfolio,
+  summarizeClosedIntradayPositions,
+  closedTradeMetrics,
   type IntradayBar as IntradayPositionBar,
 } from './position-tracker.js';

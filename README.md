@@ -41,10 +41,10 @@ Open http://localhost:5173 — login: `admin@example.com` / `admin123`
 | [Nifty Positions](docs/NIFTY-POSITIONS.md) | Same-day intraday ledger (planned) |
 | [CFA Verify](docs/CFA-VERIFY.md) | One-click memo, 8-phase engine plan |
 | [Full Verify](docs/FULL-VERIFY.md) | 8-phase allocation gate, thesis (planned) |
-| [Morning Routine](docs/MORNING-ROUTINE.md) | Pre-market cockpit (planned) |
+| [Morning Routine](docs/MORNING-ROUTINE.md) | Pre-market cockpit |
 | [Trading Presets](docs/TRADING-PRESETS.md) | Swing / ETF / intraday profiles (planned) |
-| [Trading Strategies](docs/TRADING-STRATEGIES.md) | 21 curated swing / screener / hybrid strategies (planned) |
-| [Stock Details](docs/STOCK-DETAILS.md) | Single-symbol research hub (planned) |
+| [Trading Strategies](docs/TRADING-STRATEGIES.md) | 21 curated swing / screener / hybrid strategies |
+| [Stock Details](docs/STOCK-DETAILS.md) | Single-symbol research hub |
 | [Database](docs/DATABASE.md) | PostgreSQL schema |
 | [Data Rules](docs/DATA-RULES.md) | DB vs cache policy, 6 AM sync, config files |
 | [Redis & Cache](docs/REDIS-CACHE.md) | Key namespaces and TTLs |
@@ -92,9 +92,10 @@ packages/shared   Types, schemas, constants
 | Command | Description |
 |---------|-------------|
 | `pnpm dev` | API + Web (watch mode) |
-| `pnpm dev:worker` | Background worker |
+| `pnpm dev:worker` | Background worker only |
+| `pnpm dev:all` | API + Web + Worker (single command) |
 | `pnpm build` | Production build |
-| `pnpm test` | Run all tests (66) |
+| `pnpm test` | Run all tests (~200) |
 | `pnpm sync:indices` | Import Nifty index CSVs |
 | `pnpm daily:sync` | Daily 6 AM job (indices + OHLC/screener prefetch) |
 | `pnpm migrate:php -- --user admin@example.com` | Import PHP JSON data |
@@ -116,6 +117,6 @@ docker compose up --build   # sv_api + sv_worker + sv_web
 
 ## Status
 
-Phases **1–8 complete** (milestones M1–M8) — auth, screener, verify, swing scanner, auto-radar, intraday, index sync, live regime, durable snapshots.
+Phases **1–8 complete** (milestones M1–M8). **M9 in progress** — cache admin, strategies hub, TA screener, ops docs.
 
 See [Development Milestones](docs/MILESTONES.md) for deliverables and acceptance criteria · [Roadmap](docs/ROADMAP.md) for planned work (M9+).

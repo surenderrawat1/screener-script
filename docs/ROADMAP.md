@@ -85,7 +85,7 @@ Development phases for Script Screener. Phases 1–8 are **complete**. Phases 9+
 - [x] Chunked job progress (per-symbol status in worker)
 - [x] `pnpm dev:all` — API + web + worker in one command
 - [x] Verify endpoint uses `sv:verify` cache to avoid duplicate fetches
-- [ ] Update [OPERATIONS.md](OPERATIONS.md) and [API.md](API.md)
+- [ ] Update [OPERATIONS.md](OPERATIONS.md) and [API.md](API.md) — **done** (Jul 2026)
 - **Doc:** [CFA-VERIFY.md](CFA-VERIFY.md) Phase V-A
 
 ### Data policy & daily sync (parallel track)

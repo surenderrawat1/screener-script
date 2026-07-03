@@ -11,6 +11,8 @@ export const screenerRunSchema = z.object({
   preset: z.enum(SCREENER_PRESETS).optional(),
   maxScan: z.number().int().min(10).max(2000).default(200),
   background: z.boolean().optional(),
+  refresh: z.boolean().optional(),
+  exclude_restricted: z.boolean().optional(),
   filters: z.record(z.unknown()).optional(),
 });
 
@@ -111,6 +113,16 @@ export const swingScanSchema = z.object({
 });
 
 export type SwingScanInput = z.infer<typeof swingScanSchema>;
+
+export const strategyRunSchema = z.object({
+  strategy: z.string().min(1).max(64),
+  universe: z.string().min(1).optional(),
+  maxScan: z.number().int().min(0).max(2000).optional(),
+  refresh: z.boolean().optional(),
+  background: z.boolean().optional(),
+});
+
+export type StrategyRunInput = z.infer<typeof strategyRunSchema>;
 export type WatchlistUpsertInput = z.infer<typeof watchlistUpsertSchema>;
 export type SwingPositionCreateInput = z.infer<typeof swingPositionCreateSchema>;
 export type NiftyIntradayPositionCreateInput = z.infer<typeof niftyIntradayPositionCreateSchema>;
@@ -159,6 +171,21 @@ export interface ScreenerRow extends MosEstimate {
   recommendation: string;
   passed: boolean;
   promoter_holding?: number;
+  moat_tier?: string;
+  moat_count?: number;
+  market_cap_cr?: number;
+  sales_yoy?: number;
+  div_yield?: number;
+  ta_ready?: boolean;
+  ta_rsi14?: number | null;
+  ta_pct_52w?: number | null;
+  ta_macd_hist?: number | null;
+  ta_bb_pct_b?: number | null;
+  ta_bottom_out_hint?: boolean | null;
+  ta_bottom_out_score?: number | null;
+  ta_52w_chart_zone?: string | null;
+  ta_above_sma50?: boolean | null;
+  ta_macd_bullish?: boolean | null;
 }
 
 export interface JobProgress {

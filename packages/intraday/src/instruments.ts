@@ -85,3 +85,15 @@ export function resolveInstrumentFromSymbol(symbol: string, instrumentId?: strin
 export function instrumentIds(): string[] {
   return Object.keys(ALL);
 }
+
+export function indexInstrumentIds(): string[] {
+  return Object.keys(INDICES);
+}
+
+/** Recommended entry-filter preset id (matches PHP IntradayInstrument). */
+export function recommendedPresetForInstrument(id: string, interval: '5m' | '15m' = '15m'): string {
+  const key = normalizeInstrumentId(id);
+  if (interval === '5m') return 'trend_scalp_5m';
+  if (key === 'banknifty') return 'banknifty_tuned';
+  return 'cfa_precision';
+}

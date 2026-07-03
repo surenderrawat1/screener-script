@@ -331,7 +331,7 @@ Each completed/planned milestone follows this structure:
 - [ ] Chunked job progress (per-symbol status in worker)
 - [ ] `pnpm dev:all` — API + web + worker in one command
 - [ ] Verify endpoint uses `sv:verify` cache to avoid duplicate fetches
-- [ ] Update [OPERATIONS.md](OPERATIONS.md) and [API.md](API.md)
+- [x] Update [OPERATIONS.md](OPERATIONS.md) and [API.md](API.md)
 
 **Parallel track — Full Verify (FV-A…FV-E):** see [FULL-VERIFY.md](FULL-VERIFY.md). Engine port (FV-C) shared with CFA Verify V-C.
 

@@ -1,0 +1,7 @@
+{
+  "as_of": "2026-06-01",
+  "asm": [],
+  "gsm": [],
+  "t2t": [],
+  "_comment": "Add NSE symbols under asm, gsm, or t2t. Refresh from NSE surveillance lists after each review."
+}

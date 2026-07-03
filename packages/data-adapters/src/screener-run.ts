@@ -1,20 +1,69 @@
-import { buildStockMetrics, passesFilters, PRESET_FILTERS, screenSymbol } from '@sv/core';
+import { passesFilters, passesTableGates, PRESET_FILTERS, screenSymbol, buildStockMetrics, type ScreenerFilters } from '@sv/core';
 import type { ScreenerRow, StockMetrics } from '@sv/shared';
+import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
+import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
 import { prisma } from '@sv/db';
+import {
+  enrichDetailTa,
+  passesTaFilters,
+  taFieldsForRow,
+  taFiltersActive,
+} from '@sv/swing';
 import { runCfaAutoVerify } from './cfa-auto-verify.js';
 import { fetchScreenerAnnualFinancials } from './screener-annual.js';
 import { fetchScreenerRatios } from './screener-in.js';
 import { enrichStockMetrics } from './stock-metrics-enrich.js';
 import { fetchStockData } from './stock-data-fetcher.js';
 import { getPromoterHolding } from './promoter-holding.js';
+import { filterUnrestrictedSymbols } from './exchange-list-loader.js';
+import { fetchDailyBars } from './swing-chart.js';
 
-export type ScreenerFilters = {
-  min_roe?: number;
-  min_roce?: number;
-  min_mos?: number;
-  max_pe?: number;
-  min_promoter_holding?: number;
-};
+export type { ScreenerFilters };
+
+const SCREENER_CONCURRENCY = 6;
+
+export interface ScreenerRunOptions {
+  refresh?: boolean;
+  concurrency?: number;
+  exclude_restricted?: boolean;
+}
+
+export interface ScreenerRunResult {
+  rows: ScreenerRow[];
+  restricted_skipped: number;
+  cache_hits: number;
+  exchange_list_as_of: string;
+  scanned: number;
+}
+
+function shouldEnrichTa(filters: ScreenerFilters): boolean {
+  return Boolean(filters.show_ta || filters.ta_preset || taFiltersActive(filters));
+}
+
+async function applyTaGates(
+  symbol: string,
+  row: ScreenerRow,
+  filters: ScreenerFilters,
+  refresh: boolean,
+): Promise<ScreenerRow | null> {
+  if (!shouldEnrichTa(filters)) return row;
+
+  const bars = await fetchDailyBars(symbol, refresh);
+  if (!bars.length) {
+    return taFiltersActive(filters) ? null : row;
+  }
+
+  const ta = enrichDetailTa(bars, row.price);
+  if (taFiltersActive(filters) && !passesTaFilters(ta, filters)) {
+    return null;
+  }
+
+  return { ...row, ...taFieldsForRow(ta) } as ScreenerRow;
+}
+
+function presetCacheKey(preset?: string): string {
+  return preset?.trim() || 'custom';
+}
 
 export async function resolveStockMetrics(
   symbol: string,
@@ -105,23 +154,99 @@ export async function screenStock(symbol: string, refresh = false): Promise<Scre
   return screenSymbol(symbol, metrics);
 }
 
+async function screenSymbolFiltered(
+  symbol: string,
+  filters: ScreenerFilters,
+  presetKey: string,
+  refresh = false,
+  cacheHits?: { count: number },
+): Promise<ScreenerRow | null> {
+  const baseSymbol = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
+  const rowCacheKey = cacheKey(CACHE_PREFIX.SCREENER_ROW, `${presetKey}:${baseSymbol}`);
+
+  if (!refresh) {
+    const cached = await cacheGetJson<ScreenerRow>(rowCacheKey);
+    if (cached && passesFilters(cached, filters)) {
+      if (!shouldEnrichTa(filters) || cached.ta_ready) {
+        if (cacheHits) cacheHits.count++;
+        return cached;
+      }
+    }
+  }
+
+  const ratios = await fetchScreenerRatios(baseSymbol, refresh);
+  if (
+    ratios &&
+    !passesTableGates(
+      {
+        roce: ratios.roce,
+        roe: ratios.roe,
+        pe: ratios.pe,
+        sales_yoy: ratios.sales_yoy,
+        market_cap_cr: ratios.market_cap_cr,
+        div_yield: ratios.div_yield,
+      },
+      filters,
+    )
+  ) {
+    return null;
+  }
+
+  let row = await screenStock(symbol, refresh);
+  if (!passesFilters(row, filters)) return null;
+
+  const enriched = await applyTaGates(symbol, row, filters, refresh);
+  if (!enriched) return null;
+  row = enriched;
+
+  if (!refresh) {
+    await cacheSetJson(rowCacheKey, row, CACHE_TTL.screener_row);
+  }
+  return row;
+}
+
 export async function runLiveScreener(
   symbols: string[],
   preset?: string,
   customFilters: ScreenerFilters = {},
   onProgress?: (progress: { processed: number; total: number; passed: number }) => void | Promise<void>,
-): Promise<ScreenerRow[]> {
-  const filters = { ...(preset ? PRESET_FILTERS[preset] ?? {} : {}), ...customFilters };
-  const rows: ScreenerRow[] = [];
+  options: ScreenerRunOptions = {},
+): Promise<ScreenerRunResult> {
+  const filters = { ...(preset ? (PRESET_FILTERS[preset] ?? {}) : {}), ...customFilters };
+  const refresh = options.refresh ?? false;
+  const concurrency = options.concurrency ?? SCREENER_CONCURRENCY;
+  const presetKey = presetCacheKey(preset);
 
-  for (let i = 0; i < symbols.length; i++) {
-    const sym = symbols[i];
-    const row = await screenStock(sym);
-    if (passesFilters(row, filters)) {
-      rows.push(row);
+  const restricted =
+    options.exclude_restricted === false
+      ? { symbols, restricted_skipped: 0, exchange_list_as_of: '' }
+      : filterUnrestrictedSymbols(symbols);
+
+  const working = restricted.symbols;
+  const rows: ScreenerRow[] = [];
+  const cacheHits = { count: 0 };
+  const total = working.length;
+
+  for (let start = 0; start < total; start += concurrency) {
+    const batch = working.slice(start, start + concurrency);
+    const batchResults = await Promise.all(
+      batch.map((sym) => screenSymbolFiltered(sym, filters, presetKey, refresh, cacheHits)),
+    );
+    for (const row of batchResults) {
+      if (row) rows.push(row);
     }
-    await onProgress?.({ processed: i + 1, total: symbols.length, passed: rows.length });
+    await onProgress?.({
+      processed: Math.min(start + batch.length, total),
+      total,
+      passed: rows.length,
+    });
   }
 
-  return rows.sort((a, b) => (b.mos ?? -999) - (a.mos ?? -999));
+  return {
+    rows: rows.sort((a, b) => (b.mos ?? -999) - (a.mos ?? -999)),
+    restricted_skipped: restricted.restricted_skipped,
+    cache_hits: cacheHits.count,
+    exchange_list_as_of: restricted.exchange_list_as_of,
+    scanned: total,
+  };
 }

@@ -15,6 +15,7 @@ import IntradayPositionsPage from './pages/IntradayPositionsPage';
 import StockDetailsPage from './pages/StockDetailsPage';
 import MorningPage from './pages/MorningPage';
 import PresetsPage from './pages/PresetsPage';
+import StrategiesPage from './pages/StrategiesPage';
 import CfaReferencePage from './pages/CfaReferencePage';
 import AdminCfaDocsPage from './pages/AdminCfaDocsPage';
 import { APP_NAME } from './brand';
@@ -30,6 +31,7 @@ function Layout() {
         <NavLink to="/" end>Dashboard</NavLink>
         <NavLink to="/morning">Morning</NavLink>
         <NavLink to="/presets">Presets</NavLink>
+        <NavLink to="/strategies">Strategies</NavLink>
         <NavLink to="/screener">Screener</NavLink>
         <NavLink to="/verify">Verify</NavLink>
         <NavLink to="/verify/full">Full Verify</NavLink>
@@ -63,6 +65,7 @@ function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="morning" element={<MorningPage />} />
         <Route path="presets" element={<PresetsPage />} />
+        <Route path="strategies" element={<StrategiesPage />} />
         <Route path="screener" element={<ScreenerPage />} />
         <Route path="verify" element={<VerifyPage />} />
         <Route path="verify/full" element={<VerifyFullPage />} />

@@ -1,6 +1,9 @@
 import type { ScreenerRow, StockMetrics } from '@sv/shared';
 import { estimate } from './mos-helper.js';
 import { matrixVerdict } from './valuation.js';
+import { moatTierRank } from './cfa-valuation-engine.js';
+import { PRESET_FILTERS, type ScreenerFilters } from './screener-presets.js';
+export { PRESET_FILTERS, PRESET_LABELS, SCREENER_PRESET_KEYS, type ScreenerFilters } from './screener-presets.js';
 
 /** Demo/sample metrics when live fetch unavailable (MVP fallback). */
 const SAMPLE_METRICS: Record<string, Partial<StockMetrics>> = {
@@ -39,6 +42,7 @@ export function screenSymbol(symbol: string, metrics?: Partial<StockMetrics>): S
   const verifyScore = Math.round(Math.max(0, Math.min(56, composite * 56 / 100)));
   const mos = analysis.mos ?? 0;
   const recommendation = matrixVerdict(verifyScore, mos);
+  const cfa = analysis.cfa_report as { moat_tier?: string; moat_count?: number } | undefined;
 
   return {
     symbol: stock.symbol,
@@ -58,15 +62,41 @@ export function screenSymbol(symbol: string, metrics?: Partial<StockMetrics>): S
     composite_score: composite,
     recommendation,
     passed: verifyScore >= 25 && mos >= -5,
+    moat_tier: cfa?.moat_tier ?? '',
+    moat_count: Number(cfa?.moat_count ?? 0),
+    market_cap_cr: Number(stock.market_cap_cr ?? 0),
+    sales_yoy: Number(stock.sales_yoy ?? 0),
+    div_yield: Number(stock.div_yield ?? 0),
   };
 }
 
-export interface ScreenerFilters {
-  min_roe?: number;
-  min_roce?: number;
-  min_mos?: number;
-  max_pe?: number;
-  min_promoter_holding?: number;
+/** Cheap ratio gates before full Yahoo + CFA fetch (PHP passesTableGates parity). */
+export interface TableGateInput {
+  roce?: number;
+  roe?: number;
+  pe?: number;
+  sales_yoy?: number;
+  market_cap_cr?: number;
+  div_yield?: number;
+}
+
+export function passesTableGates(stock: TableGateInput, filters: ScreenerFilters = {}): boolean {
+  const roce = stock.roce ?? 0;
+  const roe = stock.roe ?? 0;
+  const pe = stock.pe ?? 0;
+  const salesYoy = stock.sales_yoy ?? 0;
+  const mcap = stock.market_cap_cr ?? 0;
+  const div = stock.div_yield ?? 0;
+
+  if (filters.min_roce !== undefined && roce < filters.min_roce) return false;
+  if (filters.min_roe !== undefined && filters.min_roe > 0 && roe < filters.min_roe) return false;
+  if (filters.max_pe !== undefined && (pe <= 0 || pe > filters.max_pe)) return false;
+  if (filters.min_sales_yoy !== undefined && salesYoy < filters.min_sales_yoy) return false;
+  if (filters.min_mcap_cr !== undefined && filters.min_mcap_cr > 0 && mcap < filters.min_mcap_cr) return false;
+  if (filters.min_div_yield !== undefined && filters.min_div_yield > 0 && div < filters.min_div_yield) {
+    return false;
+  }
+  return true;
 }
 
 export function passesFilters(row: ScreenerRow, filters: ScreenerFilters = {}): boolean {
@@ -78,18 +108,23 @@ export function passesFilters(row: ScreenerRow, filters: ScreenerFilters = {}): 
     const prom = Number(row.promoter_holding ?? 0);
     if (prom <= 0 || prom < filters.min_promoter_holding) return false;
   }
+  if (filters.min_score !== undefined && row.composite_score < filters.min_score) return false;
+  if (filters.min_sales_yoy !== undefined && (row.sales_yoy ?? 0) < filters.min_sales_yoy) return false;
+  if (filters.min_mcap_cr !== undefined && filters.min_mcap_cr > 0 && (row.market_cap_cr ?? 0) < filters.min_mcap_cr) {
+    return false;
+  }
+  if (filters.min_div_yield !== undefined && filters.min_div_yield > 0 && (row.div_yield ?? 0) < filters.min_div_yield) {
+    return false;
+  }
+  if (filters.min_moat_tier) {
+    const rowTier = String(row.moat_tier ?? '');
+    if (moatTierRank(rowTier) < moatTierRank(filters.min_moat_tier)) return false;
+  }
+  if (filters.min_moat_count !== undefined && filters.min_moat_count > 0 && (row.moat_count ?? 0) < filters.min_moat_count) {
+    return false;
+  }
   return true;
 }
-
-export const PRESET_FILTERS: Record<string, ScreenerFilters> = {
-  quality: { min_roe: 15, min_roce: 12 },
-  strong_buy: { min_roe: 18, min_mos: 25 },
-  buy_picks: { min_roe: 12, min_mos: 10 },
-  fair_mos: { min_mos: 0 },
-  value: { max_pe: 20, min_roe: 12 },
-  growth: { min_roe: 15 },
-  cfa_top: { min_roe: 18, min_roce: 15 },
-};
 
 export function runScreener(
   symbols: string[],

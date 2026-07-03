@@ -2,13 +2,18 @@ import { randomBytes } from 'node:crypto';
 import { prisma } from '@sv/db';
 import { fetchInstrumentIntradayChart } from '@sv/data-adapters';
 import {
+  closedTradeMetrics,
   evaluateIntradayPosition,
   normalizeInterval,
   resolveInstrument,
   resolveInstrumentFromSymbol,
+  serializeTrackedIntradayPosition,
   sortTrackedPositions,
+  summarizeClosedIntradayPositions,
+  summarizeOpenIntradayPortfolio,
 } from '@sv/intraday';
 import type { NiftyIntradayPositionCreateInput } from '@sv/shared';
+import { undoCloseMeta } from '@sv/shared';
 
 function istSessionDate(d = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
@@ -43,13 +48,14 @@ function mapPosition(p: {
   createdAt: Date;
   updatedAt: Date;
 }) {
-  return {
+  const base = {
     id: p.id,
     instrument_id: p.instrumentId,
     symbol: p.symbol,
     instrument_label: p.instrumentLabel,
     status: p.status,
     side: p.side,
+    side_label: p.side === 'short' ? 'Short' : 'Long',
     timeframe: p.timeframe,
     entry_price: p.entryPrice,
     entry_time: p.entryTime.toISOString(),
@@ -72,9 +78,17 @@ function mapPosition(p: {
     created_at: p.createdAt.toISOString(),
     updated_at: p.updatedAt.toISOString(),
   };
+  if (p.status === 'closed' && p.closedAt) {
+    return { ...base, ...undoCloseMeta(p.closedAt) };
+  }
+  return { ...base, can_undo: false, undo_seconds_left: 0, undo_until: null };
 }
 
-export async function listIntradayPositions(userId?: string, status?: 'open' | 'closed') {
+export async function listIntradayPositions(
+  userId?: string,
+  status?: 'open' | 'closed',
+  options: { live?: boolean } = {},
+) {
   const positions = await prisma.niftyIntradayPosition.findMany({
     where: {
       ...(userId ? { userId } : {}),
@@ -83,12 +97,40 @@ export async function listIntradayPositions(userId?: string, status?: 'open' | '
     orderBy: [{ status: 'asc' }, { entryTime: 'desc' }],
   });
 
+  const mapped = positions.map(mapPosition);
+  const allOpen = positions.filter((p) => p.status === 'open').length;
+  const allClosed = positions.filter((p) => p.status === 'closed').length;
+
+  let responsePositions: Record<string, unknown>[] = mapped;
+  let liveBlock: Record<string, unknown> | null = null;
+
+  const openRows = mapped.filter((p) => p.status === 'open');
+  if (options.live && openRows.length > 0) {
+    const tracked = await trackOpenIntradayPositions(openRows, true);
+    const serialized = tracked.map(serializeTrackedIntradayPosition);
+    liveBlock = {
+      refreshed_at: new Date().toISOString(),
+      portfolio: summarizeOpenIntradayPortfolio(tracked),
+    };
+
+    if (status === 'open') {
+      responsePositions = serialized;
+    } else if (!status) {
+      const closedRows = mapped.filter((p) => p.status === 'closed');
+      responsePositions = [...serialized, ...closedRows];
+    }
+  }
+
+  const closedStats =
+    status === 'closed' || !status
+      ? summarizeClosedIntradayPositions(mapped.filter((p) => p.status === 'closed'))
+      : null;
+
   return {
-    positions: positions.map(mapPosition),
-    summary: {
-      open: positions.filter((p) => p.status === 'open').length,
-      closed: positions.filter((p) => p.status === 'closed').length,
-    },
+    positions: responsePositions,
+    summary: { open: allOpen, closed: allClosed },
+    live: liveBlock,
+    closed_stats: closedStats,
   };
 }
 
@@ -151,6 +193,29 @@ export async function closeIntradayPosition(
     },
   });
 
+  const mapped = mapPosition(position);
+  return { position: mapped, metrics: closedTradeMetrics(mapped) };
+}
+
+export async function reopenIntradayPosition(userId: string, id: string) {
+  const existing = await prisma.niftyIntradayPosition.findFirst({
+    where: { id, userId, status: 'closed' },
+  });
+  if (!existing?.closedAt) return null;
+  if (!undoCloseMeta(existing.closedAt).can_undo) {
+    return { error: 'undo_expired' as const };
+  }
+
+  const position = await prisma.niftyIntradayPosition.update({
+    where: { id },
+    data: {
+      status: 'open',
+      closedAt: null,
+      closedPrice: null,
+      closedReason: null,
+    },
+  });
+
   return { position: mapPosition(position) };
 }
 
@@ -186,3 +251,5 @@ export async function trackOpenIntradayPositions(
 
   return sortTrackedPositions(rows);
 }
+
+export { closedTradeMetrics };

@@ -2,7 +2,7 @@ import './load-env.js';
 
 import { hostname } from 'node:os';
 import { prisma, JobStatus } from '@sv/db';
-import { runLiveScreener, executeAutoScanPlan, runSwingScan, tickSwingAutoScan, tickDailySync, tickMorningPrewarm } from '@sv/data-adapters';
+import { executeScreenerJob, executeAutoScanPlan, runSwingScan, tickSwingAutoScan, tickDailySync, tickMorningPrewarm } from '@sv/data-adapters';
 import { connectRedis, setJobProgress, setWorkerHeartbeat } from '@sv/cache';
 import { createScreenerWorker, createSwingScanWorker } from '@sv/jobs';
 import { initAppConfig } from '@sv/shared';
@@ -12,56 +12,21 @@ const AUTO_SCAN_TICK_MS = 60_000;
 
 async function processScreenerJob(data: {
   jobId: string;
-  input: { preset?: string; filters?: Record<string, unknown> };
+  input: {
+    preset?: string;
+    filters?: Record<string, unknown>;
+    exclude_restricted?: boolean;
+    refresh?: boolean;
+  };
   symbols: string[];
 }) {
   const { jobId, input, symbols } = data;
   const filters = (input.filters ?? {}) as Record<string, number>;
-
-  await prisma.job.update({
-    where: { id: jobId },
-    data: { status: JobStatus.running, startedAt: new Date() },
-  });
-
-  const rows = await runLiveScreener(symbols, input.preset, filters, async (progress) => {
-    const snapshot = {
-      phase: 'analyze',
-      total: progress.total,
-      processed: progress.processed,
-      passed: progress.passed,
-    };
-    await setJobProgress(jobId, snapshot);
-    if (progress.processed % 10 === 0 || progress.processed === progress.total) {
-      await prisma.job.update({
-        where: { id: jobId },
-        data: { progress: snapshot },
-      });
-    }
-  });
-
-  const result = { rows, total: symbols.length, passed: rows.length };
-
-  await prisma.job.update({
-    where: { id: jobId },
-    data: {
-      status: JobStatus.done,
-      result: result as object,
-      finishedAt: new Date(),
-      progress: {
-        phase: 'done',
-        total: symbols.length,
-        processed: symbols.length,
-        passed: rows.length,
-      },
-    },
-  });
-
-  await setJobProgress(jobId, {
-    phase: 'done',
-    total: symbols.length,
-    processed: symbols.length,
-    passed: rows.length,
-  });
+  const options = {
+    exclude_restricted: input.exclude_restricted !== false,
+    refresh: Boolean(input.refresh),
+  };
+  await executeScreenerJob(jobId, symbols, input.preset, filters, options);
 }
 
 async function processSwingScanJob(data: {

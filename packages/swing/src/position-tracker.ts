@@ -48,6 +48,7 @@ export function refreshPosition(position: PositionInput, live: LivePositionConte
   );
 
   const row = {
+    id: position.id,
     symbol: position.symbol,
     status: position.status ?? 'open',
     entry_price: entry,
@@ -61,14 +62,18 @@ export function refreshPosition(position: PositionInput, live: LivePositionConte
     exit_triggers: exit.triggered,
     active_stop: exit.active_stop,
     effective_stop: exit.effective_stop,
+    breakeven_armed: exit.breakeven_armed,
     trail_armed: exit.trail_armed,
     trail_stop: exit.trail_stop,
+    trail_arm_pct: exit.trail_arm_pct,
     trail_from_high_pct: exit.trail_from_high_pct,
     high_water: exit.high_water,
+    gain_to_arm_trail_pct: exit.gain_to_arm_trail_pct,
     sessions_held: exit.sessions_held,
     chop_regime: Boolean(live.regime?.sideways),
-    position: { entry_price: entry, entry_date: position.entry_date },
+    position: { id: position.id, entry_price: entry, entry_date: position.entry_date },
     exit,
+    ok: price > 0,
   };
 
   const action = evaluatePositionAction(row, null, live.regime ?? null);

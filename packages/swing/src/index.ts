@@ -22,3 +22,5 @@ export * from './morning-routine.js';
 export * from './etf-universe.js';
 export * from './etf-panel.js';
 export * from './trading-presets.js';
+export * from './strategy-registry.js';
+export * from './screener-ta.js';
