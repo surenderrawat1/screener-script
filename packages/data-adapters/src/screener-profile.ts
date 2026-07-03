@@ -1,6 +1,7 @@
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
 import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
 import { httpGet } from './http.js';
+import { parseSectionTable } from './screener-financials.js';
 
 const EXPENDITURE_ROWS = [
   'Expenses',
@@ -146,55 +147,17 @@ function extractConcalls(html: string): ConcallLink[] {
   return items;
 }
 
-function extractSection(html: string, sectionId: string): string {
-  const pattern = new RegExp(`<section[^>]*\\bid="${sectionId}"[^>]*>(.*?)<\\/section>`, 'si');
-  const m = html.match(pattern);
-  return m ? m[1] : '';
-}
-
-function parseSectionTable(html: string, sectionId: string): {
-  periods: string[];
-  rows: Record<string, Record<string, number | null>>;
-} {
-  const section = extractSection(html, sectionId);
-  if (!section) return { periods: [], rows: {} };
-
-  const table = section.match(/<thead>\s*<tr>(.*?)<\/tr>\s*<\/thead>\s*<tbody>(.*?)<\/tbody>/si);
-  if (!table) return { periods: [], rows: {} };
-
-  const periods: string[] = [];
-  const headerRe = /<th[^>]*>(.*?)<\/th>/gis;
-  let hm: RegExpExecArray | null;
-  let headerIdx = 0;
-  while ((hm = headerRe.exec(table[1])) !== null) {
-    if (headerIdx++ === 0) continue;
-    const label = cleanHtmlText(hm[1]);
-    if (label) periods.push(label);
+function findMergedRow(
+  merged: Record<string, Record<string, number | null>>,
+  label: string,
+): Record<string, number | null> | null {
+  if (merged[label]) return merged[label];
+  const norm = label.toLowerCase();
+  for (const [key, series] of Object.entries(merged)) {
+    const k = key.replace(/\s*\+$/, '').toLowerCase();
+    if (k === norm || k.startsWith(norm) || norm.startsWith(k)) return series;
   }
-
-  const rows: Record<string, Record<string, number | null>> = {};
-  const trRe = /<tr[^>]*>(.*?)<\/tr>/gis;
-  let tr: RegExpExecArray | null;
-  while ((tr = trRe.exec(table[2])) !== null) {
-    const rowHtml = tr[1];
-    const labelCell = rowHtml.match(/<td[^>]*class="text[^"]*"[^>]*>(.*?)<\/td>/si);
-    if (!labelCell) continue;
-    let label = cleanHtmlText(labelCell[1]).replace(/\s*\+$/, '');
-    if (!label) continue;
-
-    const cells = [...rowHtml.matchAll(/<td[^>]*>\s*([^<]*?)\s*<\/td>/gi)].map((c) => c[1]);
-    const values = cells.slice(1);
-    const row: Record<string, number | null> = {};
-    for (let i = 0; i < periods.length; i++) {
-      const raw = values[i]?.trim().replace(/,/g, '') ?? '';
-      if (raw === '' || raw === '-') row[periods[i]] = null;
-      else if (/^-?\d+(\.\d+)?$/.test(raw)) row[periods[i]] = parseFloat(raw);
-      else row[periods[i]] = null;
-    }
-    rows[label] = row;
-  }
-
-  return { periods, rows };
+  return null;
 }
 
 function buildExpenditureSnapshot(html: string) {
@@ -206,7 +169,7 @@ function buildExpenditureSnapshot(html: string) {
 
   const items: ExpenditureItem[] = [];
   for (const label of EXPENDITURE_ROWS) {
-    const series = merged[label];
+    const series = findMergedRow(merged, label);
     if (!series) continue;
     const periodKeys = Object.keys(series);
     const latestPeriod = periodKeys.length ? periodKeys[periodKeys.length - 1] : '';

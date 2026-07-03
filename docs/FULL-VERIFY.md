@@ -2,7 +2,7 @@
 
 **Full Verify** is the allocation gate: an 8-phase analyst checklist (Ch.99 guide) with auto-fetch (~80 fields), manual attestation on personal-finance and portfolio gates, a 0–56 master scorecard, investment-ready badge, and watchlist thesis persistence.
 
-In **Script Screener v2 this does not exist.** `/verify` is one-click valuation only. The PHP page `index.php` (~950 lines) plus `VerificationEngine` (~1,400 lines) are **not ported**.
+In **Script Screener v2** this is implemented at `/verify/full` (`VerifyFullPage`). CFA Verify (`/verify`) remains the one-click screening memo; use `?from=verify` to open Full Verify with auto Fetch & Fill.
 
 > Educational research only — `investment_ready` requires manual attestation; screening auto-verify is not a substitute.
 
@@ -59,20 +59,19 @@ In **Script Screener v2 this does not exist.** `/verify` is one-click valuation 
 
 | Aspect | PHP (`stock-verifier`) | Script Screener (`stock-verifier-v2`) |
 |--------|------------------------|--------------------------------------|
-| **Page** | `index.php` (nav: "Full Verify") | **No route** |
-| **Planned route** | — | `/verify/full` |
-| **Form fields** | ~80+ across 9 phase panels | **0** |
-| **Engine** | `VerificationEngine` (8 phases) | `estimate()` only (valuation slice) |
-| **Form state** | `FormState` — merge auto + manual | **Not ported** |
-| **Auto-fill** | `buildVerifierAutoFill()` | `fetchStockData` (~15 fields) |
-| **Sector UI** | 13 `sector-panel` blocks in Phase 6 | **None** |
-| **Scorecard** | 0–56 master table | `verify_score` derived from quality only |
-| **Investment ready** | `investmentReady()` badge | **None** |
-| **Attestation** | Phase 8 checkbox | **None** |
-| **Thesis save** | Watchlist on verify + `review_date` | Watchlist CRUD; no thesis-from-verify flow |
-| **Results layout** | Sticky sidebar: verdict, scorecard, gates | VerifyPage table (8 rows) |
-| **i18n** | Hindi partial (`?lang=hi`) | English only |
-| **CSRF** | `PageAuth::formPost()` | JWT API (no form CSRF) |
+| **Page** | `index.php` (nav: "Full Verify") | `/verify/full` (`VerifyFullPage`) |
+| **Form fields** | ~80+ across 9 phase panels | ~80+ via `VERIFY_FULL_PHASES` |
+| **Engine** | `VerificationEngine` (8 phases) | `runVerificationEngine()` in `@sv/core` |
+| **Form state** | `FormState` — merge auto + manual | `FormState` in `@sv/core/verify-full` |
+| **Auto-fill** | `buildVerifierAutoFill()` | `buildVerifierAutoFill()` + Screener annual enrich |
+| **Sector UI** | 13 `sector-panel` blocks in Phase 6 | Phase 6 sector panels + `nse-sector-hints` |
+| **Scorecard** | 0–56 master table | 0–56 master scorecard in results |
+| **Investment ready** | `investmentReady()` badge | `investment_ready` + attestation gate |
+| **Attestation** | Phase 8 checkbox | Phase 8 `manual_attestation` required to run |
+| **Thesis save** | Watchlist on verify + `review_date` | Watchlist save on run when thesis valid |
+| **Results layout** | Sticky sidebar: verdict, scorecard, gates | `VerifyFullResults` — verdict, scorecard, gates |
+| **i18n** | Hindi partial (`?lang=hi`) | Hindi partial (phase labels toggle) |
+| **CSRF** | `PageAuth::formPost()` | JWT API |
 
 ---
 
@@ -317,9 +316,9 @@ sanitize → EpsModeHelper
 
 ### v2 today
 
-`estimate()` + `matrixVerdict()` — valuation and recommendation only. No phase evaluation, no scorecard rows, no critical fails.
+`runVerificationEngine()` in `@sv/core` — full 9-phase evaluation, scorecard, red flags, executive summary, data-quality gates, and `investmentReady()`.
 
-**Golden tests:** `validate-logic.php` fixtures ported for valuation; engine gate tests **not ported**.
+**Golden tests:** `scorecard-parity.test.ts` covers Dual EPS and TCS-like fixtures (±2 pts vs PHP baseline). Valuation parity in `cfa-valuation.test.ts`.
 
 ---
 
@@ -424,26 +423,26 @@ Watchlist page shows review due dates and links back to Full Verify.
 | `stock_verify/verify:{SYM}` | CFA verify result (cross-page IV) |
 | Form state | **Session only** — lost on refresh |
 
-### v2 planned
+### v2 (shipped)
 
 | Store | Use |
 |-------|-----|
-| `sv:stock:{SYM}` | Fetch & fill |
+| `sv:stock:{SYM}` | Fetch & fill (7d) |
 | `sv:verify:{SYM}` | Screening verify (shared) |
-| `verify_drafts` table or `localStorage` | In-progress wizard |
+| `sv:verify:full:draft:{userId}:{SYM}` | Redis draft (30d) + `localStorage` fallback in UI |
 | `verification_runs` | Completed full runs (`mode: 'full'`) |
 
 ---
 
 ## API mapping (PHP → v2)
 
-| PHP | Planned v2 |
-|-----|------------|
+| PHP | v2 |
+|-----|-----|
 | GET `index.php?symbol=TCS` | `GET /api/v1/verify/full/prefill?symbol=TCS` |
 | POST `action=fetch` | `POST /api/v1/verify/full/fetch` |
 | POST `action=verify` | `POST /api/v1/verify/full/run` |
-| POST `action=auto_verify` | Reuse `POST /api/v1/verify/auto` + merge into draft |
-| Form state | `PUT /api/v1/verify/full/draft` |
+| POST `action=auto_verify` | `GET /verify?symbol=TCS` then `/verify/full?symbol=TCS&from=verify` (auto Fetch & Fill) |
+| Form state | `GET`/`PUT /api/v1/verify/full/draft` |
 | Results HTML | JSON `result` + client `VerifyFullResults.tsx` |
 
 ### Planned run request
@@ -519,25 +518,25 @@ Watchlist page shows review due dates and links back to Full Verify.
 
 | Feature | PHP | v2 | Gap |
 |---------|-----|-----|-----|
-| `/verify/full` route | `index.php` | ✗ | **FV-A** |
-| 9-phase tabbed form | ✓ | ✗ | **FV-A** |
-| Fetch & Fill (~80 fields) | ✓ | ✗ | **FV-B** |
-| AUTO field badges | ✓ | ✗ | **FV-A** |
-| `FormState` merge logic | ✓ | ✗ | **FV-B** |
-| `VerificationEngine` | ✓ | ✗ | **FV-C** |
-| Master scorecard 0–56 | ✓ | ✗ | **FV-C** |
-| Critical fails / red flags | ✓ | ✗ | **FV-C** |
-| Investment ready badge | ✓ | ✗ | **FV-C** |
-| Manual attestation | ✓ | ✗ | **FV-C** |
-| Executive summary | ✓ | ✗ | **FV-C** |
-| Phase 6 sector panels (13) | ✓ | ✗ | **FV-D** |
-| Phase 7 exit triggers | ✓ | ✗ | **FV-D** |
-| Thesis → watchlist save | ✓ | partial | **FV-D** |
-| Promoter pledge overlay | ✓ | holding only | **FV-B** |
-| Draft resume | ✗ | planned | v2 improvement |
-| Hindi i18n | partial | ✗ | **FV-E** |
-| `validate-logic.php` parity | ✓ | valuation only | **FV-E** |
-| REST JSON API | ✗ | planned | v2 improvement |
+| `/verify/full` route | `index.php` | ✓ | — |
+| 9-phase tabbed form | ✓ | ✓ | — |
+| Fetch & Fill (~80 fields) | ✓ | ✓ | Screener/Yahoo gaps for some symbols |
+| AUTO field badges | ✓ | ✓ | — |
+| `FormState` merge logic | ✓ | ✓ | — |
+| `VerificationEngine` | ✓ | ✓ | — |
+| Master scorecard 0–56 | ✓ | ✓ | ±2 pt tolerance vs PHP fixtures |
+| Critical fails / red flags | ✓ | ✓ | — |
+| Investment ready badge | ✓ | ✓ | — |
+| Manual attestation | ✓ | ✓ | — |
+| Executive summary | ✓ | ✓ | — |
+| Phase 6 sector panels (13) | ✓ | partial | Manual sector KPIs still analyst-filled |
+| Phase 7 exit triggers | ✓ | ✓ | — |
+| Thesis → watchlist save | ✓ | ✓ | Requires `watchlist_ready` + thesis fields |
+| Promoter pledge overlay | ✓ | holding only | **FV-B5** — upload overlay |
+| Draft resume | ✗ | ✓ | Redis + localStorage fallback |
+| Hindi i18n | partial | partial | **FV-E3** |
+| `validate-logic.php` parity | ✓ | partial | **FV-E1** — cross-page IV drift |
+| REST JSON API | ✗ | ✓ | v2 improvement |
 
 ---
 
@@ -609,17 +608,11 @@ Watchlist page shows review due dates and links back to Full Verify.
 ## Implementation phases
 
 ```
-Now — no Full Verify
+FV-A through FV-C — shipped (route, fetch, engine, results)
   │
-  ├─► FV-A: Route + phase shell + prefill URL
+  ├─► FV-D: Sector manual KPIs, review-date reminders (partial)
   │
-  ├─► FV-B: buildVerifierAutoFill + fetch API + draft
-  │
-  ├─► FV-C: VerificationEngine + results + investment ready
-  │
-  ├─► FV-D: Sector panels + thesis watchlist
-  │
-  └─► FV-E: Parity tests + i18n + mobile
+  └─► FV-E: Cross-page parity tests, mobile polish
 ```
 
 **Overlap with [CFA-VERIFY.md](CFA-VERIFY.md):** V-C (engine port) = FV-C1. Implement once in `@sv/core`; both docs reference the same package.

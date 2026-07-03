@@ -14,3 +14,5 @@ if (process.env.NODE_ENV !== 'production') {
 
 export * from '@prisma/client';
 export { prisma as db };
+export { seedCfaTerms } from './seed-cfa-terms.js';
+export { CFA_TERM_DEFAULTS } from './cfa-terms-defaults.js';

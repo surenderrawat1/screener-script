@@ -16,7 +16,26 @@ export async function listVerificationHistory(userId: string | undefined, limit 
 
   return {
     runs: runs.map((run) => {
-      const result = run.result as {
+      const result = run.result as Record<string, unknown>;
+      if (run.mode === 'full') {
+        const r = result as {
+          scorecard?: { total?: number };
+          verdict?: { action?: string };
+          metrics?: { margin_of_safety?: number };
+          investment_ready?: { ready?: boolean };
+        };
+        return {
+          id: run.id,
+          symbol: run.symbol,
+          mode: run.mode,
+          createdAt: run.createdAt.toISOString(),
+          mos: r.metrics?.margin_of_safety ?? null,
+          recommendation: r.verdict?.action ?? '',
+          quality_score: r.scorecard?.total ?? 0,
+          investment_ready: r.investment_ready?.ready ?? false,
+        };
+      }
+      const cfa = result as {
         analysis?: { mos?: number | null; recommendation?: string; quality_score?: number };
       };
       return {
@@ -24,9 +43,10 @@ export async function listVerificationHistory(userId: string | undefined, limit 
         symbol: run.symbol,
         mode: run.mode,
         createdAt: run.createdAt.toISOString(),
-        mos: result.analysis?.mos ?? null,
-        recommendation: result.analysis?.recommendation ?? '',
-        quality_score: result.analysis?.quality_score ?? 0,
+        mos: cfa.analysis?.mos ?? null,
+        recommendation: cfa.analysis?.recommendation ?? '',
+        quality_score: cfa.analysis?.quality_score ?? 0,
+        investment_ready: false,
       };
     }),
   };

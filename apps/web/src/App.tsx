@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import ScreenerPage from './pages/ScreenerPage';
 import VerifyPage from './pages/VerifyPage';
+import VerifyFullPage from './pages/VerifyFullPage';
 import AdminPage from './pages/AdminPage';
 import WatchlistPage from './pages/WatchlistPage';
 import PositionsPage from './pages/PositionsPage';
@@ -14,6 +15,8 @@ import IntradayPositionsPage from './pages/IntradayPositionsPage';
 import StockDetailsPage from './pages/StockDetailsPage';
 import MorningPage from './pages/MorningPage';
 import PresetsPage from './pages/PresetsPage';
+import CfaReferencePage from './pages/CfaReferencePage';
+import AdminCfaDocsPage from './pages/AdminCfaDocsPage';
 import { APP_NAME } from './brand';
 
 function Layout() {
@@ -29,6 +32,8 @@ function Layout() {
         <NavLink to="/presets">Presets</NavLink>
         <NavLink to="/screener">Screener</NavLink>
         <NavLink to="/verify">Verify</NavLink>
+        <NavLink to="/verify/full">Full Verify</NavLink>
+        <NavLink to="/cfa-reference">CFA Ref</NavLink>
         <NavLink to="/stock/TCS">Details</NavLink>
         <NavLink to="/watchlist">Watchlist</NavLink>
         <NavLink to="/positions">Positions</NavLink>
@@ -60,6 +65,8 @@ function AppRoutes() {
         <Route path="presets" element={<PresetsPage />} />
         <Route path="screener" element={<ScreenerPage />} />
         <Route path="verify" element={<VerifyPage />} />
+        <Route path="verify/full" element={<VerifyFullPage />} />
+        <Route path="cfa-reference" element={<CfaReferencePage />} />
         <Route path="stock/:symbol" element={<StockDetailsPage />} />
         <Route path="watchlist" element={<WatchlistPage />} />
         <Route path="positions" element={<PositionsPage />} />
@@ -68,6 +75,7 @@ function AppRoutes() {
         <Route path="intraday" element={<IntradayPage />} />
         <Route path="intraday/positions" element={<IntradayPositionsPage />} />
         <Route path="admin" element={<AdminPage />} />
+        <Route path="admin/cfa-docs" element={<AdminCfaDocsPage />} />
       </Route>
     </Routes>
   );

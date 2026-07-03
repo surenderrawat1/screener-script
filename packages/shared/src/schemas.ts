@@ -19,6 +19,27 @@ export const verifyAutoSchema = z.object({
   refresh: z.boolean().optional(),
 });
 
+export const verifyFullFetchSchema = z.object({
+  symbol: z.string().min(1).max(32),
+  refresh: z.boolean().optional(),
+  manual: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+});
+
+export const verifyFullRunSchema = z.object({
+  symbol: z.string().min(1).max(32).optional(),
+  input: z.record(z.union([z.string(), z.number(), z.boolean()])),
+});
+
+export const verifyFullDraftSchema = z.object({
+  symbol: z.string().min(1).max(32),
+  input: z.record(z.union([z.string(), z.number(), z.boolean()])),
+  auto_keys: z.array(z.string()).optional(),
+});
+
+export type VerifyFullFetchInput = z.infer<typeof verifyFullFetchSchema>;
+export type VerifyFullRunInput = z.infer<typeof verifyFullRunSchema>;
+export type VerifyFullDraftInput = z.infer<typeof verifyFullDraftSchema>;
+
 export const createUniverseSchema = z.object({
   name: z.string().min(1).max(120),
   symbols: z.array(z.string().min(1)).optional(),
@@ -145,4 +166,37 @@ export interface JobProgress {
   total: number;
   processed: number;
   passed: number;
+}
+
+export const cfaTermUpsertSchema = z.object({
+  key: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z][a-z0-9_]*$/, 'key must be snake_case'),
+  category: z.string().min(1).max(32),
+  title: z.string().min(1).max(120),
+  definition: z.string().min(1).max(8000),
+  formula: z.string().max(4000).optional().nullable(),
+  example: z.string().max(2000).optional().nullable(),
+  phaseRefs: z.array(z.string()).optional(),
+  relatedKeys: z.array(z.string()).optional(),
+  sortOrder: z.number().int().min(0).max(9999).optional(),
+  isActive: z.boolean().optional(),
+});
+
+export type CfaTermUpsertInput = z.infer<typeof cfaTermUpsertSchema>;
+
+export interface CfaTermDto {
+  key: string;
+  category: string;
+  title: string;
+  definition: string;
+  formula: string | null;
+  example: string | null;
+  phase_refs: string[];
+  related_keys: string[];
+  sort_order: number;
+  is_active: boolean;
+  updated_at: string;
 }

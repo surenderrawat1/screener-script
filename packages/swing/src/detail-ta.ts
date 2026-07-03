@@ -1,5 +1,24 @@
-import { macd, metricsFromBars, rsi, sma } from './ta-helper.js';
+import { macd, metricsFromBars, pctFrom52wRange, rsi, sma } from './ta-helper.js';
 import type { OhlcBar, TaMetrics } from './types.js';
+
+/** Fill TA gaps from fundamentals when Yahoo chart is partial or missing. */
+export function mergeTaFundamentalFallback(
+  ta: TaMetrics,
+  fundamentals: { price?: number; high_52w?: number; low_52w?: number },
+): TaMetrics {
+  const price = Number(fundamentals.price ?? ta.ta_price ?? 0);
+  const high = Number(fundamentals.high_52w ?? 0);
+  const low = Number(fundamentals.low_52w ?? 0);
+  const pct = pctFrom52wRange(price, low, high);
+
+  return {
+    ...ta,
+    ta_price: price > 0 ? price : ta.ta_price,
+    ta_pct_52w: typeof ta.ta_pct_52w === 'number' ? ta.ta_pct_52w : pct,
+    ta_ready: Boolean(ta.ta_ready) || typeof pct === 'number',
+    ta_source: ta.ta_source || (pct !== null ? 'fundamentals_52w' : ''),
+  };
+}
 
 export function bollingerBands(closes: number[], period = 20, mult = 2) {
   if (closes.length < period) return null;

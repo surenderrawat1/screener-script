@@ -1,16 +1,12 @@
-import { buildStockMetrics, estimate, matrixVerdict, passesFilters, PRESET_FILTERS, screenSymbol } from '@sv/core';
+import { buildStockMetrics, passesFilters, PRESET_FILTERS, screenSymbol } from '@sv/core';
 import type { ScreenerRow, StockMetrics } from '@sv/shared';
-import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
-import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
 import { prisma } from '@sv/db';
+import { runCfaAutoVerify } from './cfa-auto-verify.js';
+import { fetchScreenerAnnualFinancials } from './screener-annual.js';
+import { fetchScreenerRatios } from './screener-in.js';
+import { enrichStockMetrics } from './stock-metrics-enrich.js';
 import { fetchStockData } from './stock-data-fetcher.js';
-
-interface VerifyCachePayload {
-  metrics: StockMetrics;
-  analysis: Record<string, unknown>;
-  sources: string[];
-  cached_at: string;
-}
+import { getPromoterHolding } from './promoter-holding.js';
 
 export type ScreenerFilters = {
   min_roe?: number;
@@ -24,13 +20,27 @@ export async function resolveStockMetrics(
   symbol: string,
   refresh = false,
 ): Promise<{ metrics: StockMetrics; sources: string[]; from_cache: boolean }> {
-  const fetched = await fetchStockData(symbol, { refresh });
+  const baseSymbol = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
+  const [fetched, annual, screener] = await Promise.all([
+    fetchStockData(symbol, { refresh }),
+    fetchScreenerAnnualFinancials(baseSymbol, refresh),
+    fetchScreenerRatios(baseSymbol, refresh),
+  ]);
+
   if (fetched.success && fetched.metrics) {
-    const metrics = await applyPromoterHolding(fetched.metrics);
+    let metrics = enrichStockMetrics(fetched.metrics, annual, {
+      symbol: baseSymbol,
+      div_yield: screener?.div_yield,
+    });
+    metrics = await applyPromoterHolding(metrics);
+
+    const sources = [...fetched.sources];
+    if (annual?.revenue_history?.length) sources.push('Screener.in (annual P&L)');
+
     return {
       metrics,
-      sources: fetched.sources,
-      from_cache: Boolean(fetched.from_cache),
+      sources: [...new Set(sources)],
+      from_cache: Boolean(fetched.from_cache) && !refresh,
     };
   }
 
@@ -42,64 +52,52 @@ export async function resolveStockMetrics(
 }
 
 export async function verifyStock(symbol: string, refresh = false) {
-  const baseSymbol = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
-  const verifyKey = cacheKey(CACHE_PREFIX.VERIFY, baseSymbol);
-
-  if (!refresh) {
-    const cached = await cacheGetJson<VerifyCachePayload>(verifyKey);
-    if (cached?.metrics && cached.analysis) {
-      return {
-        metrics: cached.metrics,
-        analysis: cached.analysis,
-        sources: cached.sources,
-        from_cache: true,
-      };
-    }
-  }
-
-  const { metrics, sources, from_cache } = await resolveStockMetrics(symbol, refresh);
-  const est = estimate(metrics);
-  const composite = est.quality_score ?? 0;
-  const verifyScore = Math.round(Math.max(0, Math.min(56, composite * 56 / 100)));
-  const mos = est.mos ?? 0;
-  const analysis = {
-    ...est,
-    composite_score: composite,
-    verify_score: verifyScore,
-    recommendation: matrixVerdict(verifyScore, mos),
+  const result = await runCfaAutoVerify(symbol, refresh);
+  return {
+    symbol: result.symbol,
+    success: result.success,
+    company_name: result.company_name,
+    metrics: result.metrics,
+    analysis: result.analysis,
+    memo: result.memo,
+    assumptions: result.assumptions,
+    screening_mode: result.screening_mode,
+    sources: result.sources,
+    from_cache: result.from_cache,
   };
-
-  if (!refresh || !from_cache) {
-    await cacheSetJson(
-      verifyKey,
-      {
-        metrics,
-        analysis,
-        sources,
-        cached_at: new Date().toISOString(),
-      } satisfies VerifyCachePayload,
-      getCacheTtl().verify,
-    ).catch(() => undefined);
-  }
-
-  return { metrics, analysis, sources, from_cache };
 }
 
 async function applyPromoterHolding(metrics: StockMetrics): Promise<StockMetrics> {
   const sym = String(metrics.symbol ?? '').toUpperCase();
   if (!sym) return metrics;
+
+  let out: StockMetrics = { ...metrics };
+
+  const file = getPromoterHolding(sym);
+  if (file) {
+    out = {
+      ...out,
+      promoter_holding: file.pct,
+      promoter_holding_source: file.source,
+      ...(file.as_of ? { promoter_holding_as_of: file.as_of } : {}),
+    };
+  }
+
   try {
     const row = await prisma.promoterHolding.findUnique({ where: { symbol: sym } });
-    if (!row) return metrics;
-    return {
-      ...metrics,
-      promoter_holding: row.holdingPct,
-      promoter_holding_source: row.source,
-      promoter_holding_as_of: row.asOf.toISOString().slice(0, 10),
-    };
+    if (row) {
+      out = {
+        ...out,
+        promoter_holding: row.holdingPct,
+        promoter_holding_source: row.source,
+        promoter_holding_as_of: row.asOf.toISOString().slice(0, 10),
+      };
+    }
   } catch {
-    return metrics;
+    /* DB optional in dev */
   }
+
+  return out;
 }
 
 export async function screenStock(symbol: string, refresh = false): Promise<ScreenerRow> {

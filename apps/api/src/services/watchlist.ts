@@ -1,5 +1,6 @@
 import { prisma } from '@sv/db';
 import type { Prisma } from '@sv/db';
+import { validateThesisInput } from '@sv/core';
 import type { WatchlistUpsertInput } from '@sv/shared';
 
 const DEFAULT_NAME = 'Main';
@@ -91,6 +92,19 @@ export async function removeWatchlistItem(userId: string, symbol: string) {
   return { removed: deleted.count > 0 };
 }
 
+export async function getWatchlistItemMeta(
+  userId: string,
+  symbol: string,
+): Promise<Record<string, unknown> | null> {
+  const watchlist = await getOrCreateDefaultWatchlist(userId);
+  const sym = normalizeSymbol(symbol);
+  const item = await prisma.watchlistItem.findUnique({
+    where: { watchlistId_symbol: { watchlistId: watchlist.id, symbol: sym } },
+  });
+  if (!item) return null;
+  return (item.meta ?? {}) as Record<string, unknown>;
+}
+
 export async function syncWatchlistFromVerify(
   userId: string,
   symbol: string,
@@ -135,4 +149,62 @@ export async function syncWatchlistFromVerify(
       } as Prisma.InputJsonValue,
     },
   });
+}
+
+export async function syncWatchlistFromFullVerify(
+  userId: string,
+  symbol: string,
+  input: Record<string, string | number | boolean>,
+  result: {
+    stock_name?: string;
+    sector?: string;
+    scorecard?: { total?: number };
+    metrics?: { margin_of_safety?: number };
+    verdict?: { action?: string };
+  },
+): Promise<{ saved: boolean }> {
+  const reviewDate = String(input.review_date ?? '').trim();
+  if (!reviewDate) return { saved: false };
+
+  const thesis = validateThesisInput(input);
+  if (!thesis.watchlist_ready) return { saved: false };
+
+  const sym = normalizeSymbol(symbol);
+  const watchlist = await getOrCreateDefaultWatchlist(userId);
+  const existing = await prisma.watchlistItem.findUnique({
+    where: { watchlistId_symbol: { watchlistId: watchlist.id, symbol: sym } },
+  });
+  const prevMeta = (existing?.meta ?? {}) as Record<string, unknown>;
+  const today = new Date().toISOString().slice(0, 10);
+
+  const meta = {
+    ...prevMeta,
+    symbol: sym,
+    stock_name: String(result.stock_name ?? input.stock_name ?? sym),
+    sector: String(result.sector ?? input.sector ?? prevMeta.sector ?? ''),
+    review_date: reviewDate,
+    thesis_business: String(input.thesis_business ?? ''),
+    thesis_financials: String(input.thesis_financials ?? ''),
+    thesis_valuation: String(input.thesis_valuation ?? ''),
+    invalidation_1: String(input.invalidation_1 ?? ''),
+    invalidation_2: String(input.invalidation_2 ?? ''),
+    last_verified_at: today,
+    last_score: result.scorecard?.total ?? 0,
+    last_mos: result.metrics?.margin_of_safety ?? 0,
+    last_verdict: result.verdict?.action ?? '',
+  };
+
+  await prisma.watchlistItem.upsert({
+    where: { watchlistId_symbol: { watchlistId: watchlist.id, symbol: sym } },
+    create: {
+      watchlistId: watchlist.id,
+      symbol: sym,
+      meta: meta as Prisma.InputJsonValue,
+    },
+    update: {
+      meta: meta as Prisma.InputJsonValue,
+    },
+  });
+
+  return { saved: true };
 }

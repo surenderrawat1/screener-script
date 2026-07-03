@@ -311,3 +311,23 @@ model AppSetting {
 
   @@map("app_settings")
 }
+
+/// Admin-editable CFA glossary: definitions, formulas, and help text used across Verify / Screener UI.
+model CfaTerm {
+  key         String   @id
+  category    String
+  title       String
+  definition  String   @db.Text
+  formula     String?  @db.Text
+  example     String?  @db.Text
+  phaseRefs   String[] @default([]) @map("phase_refs")
+  relatedKeys String[] @default([]) @map("related_keys")
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  updatedBy   String?  @map("updated_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([category, sortOrder])
+  @@map("cfa_terms")
+}

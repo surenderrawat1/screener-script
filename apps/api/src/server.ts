@@ -22,6 +22,10 @@ import {
   loginSchema,
   screenerRunSchema,
   verifyAutoSchema,
+  verifyFullFetchSchema,
+  verifyFullRunSchema,
+  verifyFullDraftSchema,
+  cfaTermUpsertSchema,
   createUniverseSchema,
   watchlistUpsertSchema,
   swingPositionCreateSchema,
@@ -37,7 +41,16 @@ import { listUniverses, createCustomUniverse } from './services/universe.js';
 import { createScreenerJob, getJob } from './services/screener.js';
 import { createSwingScanJob } from './services/swing.js';
 import { verifySymbol } from './services/verify.js';
+import { getVerifyFullPrefill, fetchVerifyFull, runVerifyFull, getVerifyFullDraft, saveVerifyFullDraft } from './services/verify-full.js';
 import { getAdminStats, importIndexCsv, importNseEquityCsv, importPromoterHoldingCsv, getIndexStatus, syncIndicesFromDisk } from './services/admin.js';
+import {
+  cfaTermCategories,
+  deleteCfaTerm,
+  getCfaTerm,
+  listCfaTerms,
+  reseedCfaTerms,
+  upsertCfaTerm,
+} from './services/cfa-docs.js';
 import { bootstrapAppConfig, getEffectiveSettings, patchAppSettings } from './services/settings.js';
 import { fetchDailySyncStatus, runDailySyncJob } from './services/daily-sync.js';
 import { getStockSummary, getStockChart, getStockProfile, refreshStockCaches } from './services/stock-details.js';
@@ -402,6 +415,94 @@ export async function buildApp() {
     return { run };
   });
 
+  app.get('/api/v1/verify/full/prefill', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const symbol = String((request.query as { symbol?: string }).symbol ?? '');
+    try {
+      return getVerifyFullPrefill(symbol);
+    } catch (err) {
+      return reply.status(400).send({
+        error: err instanceof Error ? err.message : 'Invalid symbol',
+      });
+    }
+  });
+
+  app.post('/api/v1/verify/full/fetch', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const parsed = verifyFullFetchSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+    try {
+      return await fetchVerifyFull(parsed.data.symbol, {
+        refresh: parsed.data.refresh,
+        manual: parsed.data.manual as Record<string, string | number | boolean> | undefined,
+        userId: user.sub !== 'system' ? user.sub : undefined,
+      });
+    } catch (err) {
+      return reply.status(404).send({
+        error: err instanceof Error ? err.message : 'Fetch failed',
+      });
+    }
+  });
+
+  app.post('/api/v1/verify/full/run', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const parsed = verifyFullRunSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+    try {
+      return await runVerifyFull(
+        parsed.data.input as Record<string, string | number | boolean>,
+        {
+          symbol: parsed.data.symbol,
+          userId: user.sub !== 'system' ? user.sub : undefined,
+        },
+      );
+    } catch (err) {
+      return reply.status(400).send({
+        error: err instanceof Error ? err.message : 'Verification failed',
+      });
+    }
+  });
+
+  app.get('/api/v1/verify/full/draft', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    if (user.sub === 'system') return reply.status(400).send({ error: 'Draft requires user session' });
+    const symbol = String((request.query as { symbol?: string }).symbol ?? '');
+    try {
+      const draft = await getVerifyFullDraft(user.sub, symbol);
+      return { success: true, draft };
+    } catch (err) {
+      return reply.status(400).send({
+        error: err instanceof Error ? err.message : 'Invalid symbol',
+      });
+    }
+  });
+
+  app.put('/api/v1/verify/full/draft', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    if (user.sub === 'system') return reply.status(400).send({ error: 'Draft requires user session' });
+    const parsed = verifyFullDraftSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+    try {
+      const draft = await saveVerifyFullDraft(
+        user.sub,
+        parsed.data.symbol,
+        parsed.data.input as Record<string, string | number | boolean>,
+        parsed.data.auto_keys ?? [],
+      );
+      return { success: true, draft };
+    } catch (err) {
+      return reply.status(400).send({
+        error: err instanceof Error ? err.message : 'Draft save failed',
+      });
+    }
+  });
+
   app.get('/api/v1/swing/positions', { preHandler: [authPreHandler] }, async (request) => {
     const user = requirePermission(request, PERMISSIONS.VIEW);
     const query = request.query as { status?: string; live?: string };
@@ -597,6 +698,60 @@ export async function buildApp() {
     const result = await importIndexCsv(file.filename, csv);
     if (!result.success) return reply.status(400).send(result);
     return result;
+  });
+
+  app.get('/api/v1/cfa/terms', { preHandler: [authPreHandler] }, async (request) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const q = request.query as { category?: string };
+    const terms = await listCfaTerms({ category: q.category, activeOnly: true });
+    return { terms, categories: cfaTermCategories(terms) };
+  });
+
+  app.get('/api/v1/cfa/terms/:key', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const { key } = request.params as { key: string };
+    const term = await getCfaTerm(key);
+    if (!term) return reply.status(404).send({ error: 'Term not found' });
+    return { term };
+  });
+
+  app.get('/api/v1/admin/cfa/terms', { preHandler: [authPreHandler] }, async (request) => {
+    requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    const q = request.query as { category?: string };
+    const terms = await listCfaTerms({ category: q.category, includeInactive: true });
+    return { terms, categories: cfaTermCategories(terms) };
+  });
+
+  app.post('/api/v1/admin/cfa/terms', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    const parsed = cfaTermUpsertSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    const term = await upsertCfaTerm(parsed.data, user.sub);
+    return { term };
+  });
+
+  app.put('/api/v1/admin/cfa/terms/:key', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    const { key } = request.params as { key: string };
+    const parsed = cfaTermUpsertSchema.safeParse({ ...(request.body as object), key });
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    const term = await upsertCfaTerm(parsed.data, user.sub);
+    return { term };
+  });
+
+  app.delete('/api/v1/admin/cfa/terms/:key', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    const { key } = request.params as { key: string };
+    const ok = await deleteCfaTerm(key);
+    if (!ok) return reply.status(404).send({ error: 'Term not found' });
+    return { success: true };
+  });
+
+  app.post('/api/v1/admin/cfa/terms/reseed', { preHandler: [authPreHandler] }, async (request) => {
+    const user = requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    const result = await reseedCfaTerms(user.sub);
+    const terms = await listCfaTerms({ includeInactive: true });
+    return { ...result, count: terms.length };
   });
 
   app.get('/api/v1/presets', async () => ({

@@ -84,6 +84,41 @@ function fmtNum(v: unknown, suffix = ''): string {
   return `${n}${suffix}`;
 }
 
+function fmtText(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '—';
+  const s = String(v).trim();
+  return s || '—';
+}
+
+const SECTOR_LABELS: Record<string, string> = {
+  general: 'General / Other',
+  banking: 'Banking / NBFC',
+  it: 'IT Services',
+  defence: 'Defence / Aerospace',
+  infra: 'Infrastructure / NBFC',
+  fmcg: 'FMCG',
+  pharma: 'Pharma & Healthcare',
+  auto: 'Auto & Ancillary',
+  metal: 'Metals & Mining',
+  cement: 'Cement',
+  telecom: 'Telecom',
+  utility: 'Power / Utilities',
+  reit: 'REIT / InvIT',
+};
+
+function fmtSector(v: unknown): string {
+  const key = String(v ?? '').trim().toLowerCase();
+  if (!key || key === 'general') return '—';
+  return SECTOR_LABELS[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function fmtMacd(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '—';
+  const n = typeof v === 'number' ? v : parseFloat(String(v));
+  if (!Number.isFinite(n)) return '—';
+  return String(Math.round(n * 1000) / 1000);
+}
+
 function fmtMoney(v: unknown): string {
   if (v === null || v === undefined || v === '') return '—';
   const n = typeof v === 'number' ? v : parseFloat(String(v));
@@ -157,8 +192,8 @@ const FUNDAMENTAL_TILES: Array<{ label: string; key: string; fmt?: (v: unknown) 
   { label: 'Interest coverage', key: 'interest_coverage' },
   { label: 'Total debt (₹ Cr)', key: 'total_debt_cr' },
   { label: 'Total cash (₹ Cr)', key: 'total_cash_cr' },
-  { label: 'Sector', key: 'sector' },
-  { label: 'Industry', key: 'industry' },
+  { label: 'Sector', key: 'sector', fmt: fmtSector },
+  { label: 'Industry', key: 'industry', fmt: fmtText },
 ];
 
 export default function StockDetailsPage() {
@@ -357,8 +392,11 @@ export default function StockDetailsPage() {
               </p>
             )}
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
-              <Link className="btn btn-secondary" to={`/verify?symbol=${encodeURIComponent(summary.symbol)}`}>
+              <Link className="btn btn-secondary" to={`/verify/full?symbol=${encodeURIComponent(summary.symbol)}`}>
                 Full verify
+              </Link>
+              <Link className="btn btn-secondary" to={`/verify?symbol=${encodeURIComponent(summary.symbol)}`}>
+                CFA verify
               </Link>
               <Link className="btn btn-secondary" to={`/swing`}>
                 Swing scan
@@ -494,11 +532,11 @@ export default function StockDetailsPage() {
                     ta.ta_above_sma200 === true ? 'bullish' : ta.ta_above_sma200 === false ? 'bearish' : '',
                   )}
                 />
-                <MetricTile label="MACD Line" value={fmtNum(ta.ta_macd, '')} hint="12/26 EMA spread" />
-                <MetricTile label="MACD Signal" value={fmtNum(ta.ta_macd_signal, '')} hint="9 EMA signal" />
+                <MetricTile label="MACD Line" value={fmtMacd(ta.ta_macd)} hint="12/26 EMA spread" />
+                <MetricTile label="MACD Signal" value={fmtMacd(ta.ta_macd_signal)} hint="9 EMA signal" />
                 <MetricTile
                   label="MACD Hist"
-                  value={fmtNum(ta.ta_macd_hist, '')}
+                  value={fmtMacd(ta.ta_macd_hist)}
                   hint={boolHint(ta.ta_macd_bullish, 'Bullish momentum', 'Bearish momentum')}
                   className={signalClass(
                     ta.ta_macd_bullish === true ? 'bullish' : ta.ta_macd_bullish === false ? 'bearish' : '',

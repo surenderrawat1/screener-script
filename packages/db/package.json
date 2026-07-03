@@ -17,6 +17,7 @@
     "migrate": "prisma migrate deploy",
     "push": "prisma db push",
     "seed": "tsx src/seed.ts",
+    "seed:cfa": "tsx -e \"import { seedCfaTerms } from './src/seed-cfa-terms.ts'; seedCfaTerms().then(r => console.log(r)).finally(() => process.exit(0))\"",
     "migrate:php": "tsx src/migrate-php-data.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

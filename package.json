@@ -5,6 +5,7 @@
   "scripts": {
     "build": "pnpm -r run build",
     "predev": "pnpm -r --filter './packages/*' run build",
+    "predev:all": "pnpm -r --filter './packages/*' run build",
     "dev": "pnpm --parallel -r --filter @sv/api --filter @sv/web run dev",
     "dev:all": "pnpm --parallel -r --filter @sv/api --filter @sv/web --filter @sv/worker run dev",
     "dev:api": "pnpm --filter @sv/api run dev",

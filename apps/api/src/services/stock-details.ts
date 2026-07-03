@@ -3,6 +3,7 @@ import {
   fetchScreenerProfile,
   ivDriftHint,
   refreshStockSymbol,
+  resolveStockMetrics,
   verifyStock,
   type ScreenerProfile,
 } from '@sv/data-adapters';
@@ -11,6 +12,7 @@ import {
   buildDailyChartPayload,
   chartPhaseAnalysis,
   enrichDetailTa,
+  mergeTaFundamentalFallback,
   type ChartPhaseAnalysis,
   type DailyChartPayload,
   type TaMetrics,
@@ -49,10 +51,17 @@ function valuationFromAnalysis(analysis: Record<string, unknown>) {
 }
 
 export async function getStockSummary(symbol: string, refresh = false) {
-  const { metrics, analysis, sources, from_cache } = await verifyStock(symbol, refresh);
+  const normalized = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
+  const [metricsResult, verifyResult] = await Promise.all([
+    resolveStockMetrics(normalized, refresh),
+    verifyStock(normalized, refresh),
+  ]);
+
+  const { metrics, sources, from_cache } = metricsResult;
+  const { analysis } = verifyResult;
 
   if ((metrics.price ?? 0) <= 0 && sources.includes('sample_fallback')) {
-    throw new Error(`Could not load market data for ${symbol.toUpperCase()}`);
+    throw new Error(`Could not load market data for ${normalized}`);
   }
 
   const valuation = valuationFromAnalysis(analysis as Record<string, unknown>);
@@ -65,8 +74,8 @@ export async function getStockSummary(symbol: string, refresh = false) {
   }
 
   return {
-    symbol: String(metrics.symbol ?? symbol).toUpperCase(),
-    name: String(metrics.name ?? metrics.symbol ?? symbol),
+    symbol: String(metrics.symbol ?? normalized),
+    name: String(metrics.name ?? verifyResult.company_name ?? metrics.symbol ?? normalized),
     success: true,
     metrics,
     valuation,
@@ -86,22 +95,41 @@ export interface StockChartResponse {
   from_cache: boolean;
 }
 
-export async function getStockChart(symbol: string, refresh = false): Promise<StockChartResponse> {
+export async function getStockChart(
+  symbol: string,
+  refresh = false,
+  fundamentals: { price?: number; high_52w?: number; low_52w?: number } = {},
+): Promise<StockChartResponse> {
   const normalized = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
+  let fund = fundamentals;
+  if (!fund.price && !fund.high_52w && !fund.low_52w) {
+    const { metrics } = await resolveStockMetrics(normalized, refresh);
+    fund = {
+      price: Number(metrics.price ?? 0),
+      high_52w: Number(metrics.high_52w ?? 0),
+      low_52w: Number(metrics.low_52w ?? 0),
+    };
+  }
+
   const bars = await fetchDailyBars(normalized, refresh);
-  if (bars.length < 50) {
+  if (bars.length < 30) {
+    const ta = mergeTaFundamentalFallback({ ta_ready: false }, fund);
     return {
       symbol: normalized,
       chart: null,
-      ta: { ta_ready: false },
-      phases: chartPhaseAnalysis(0, { ta_ready: false }, null),
+      ta,
+      phases: chartPhaseAnalysis(Number(fund.price ?? 0), ta, null),
       from_cache: !refresh,
     };
   }
 
   const chart = buildDailyChartPayload(bars, normalized);
   const price = bars[bars.length - 1].close;
-  const ta = enrichDetailTa(bars, price);
+  const ta = mergeTaFundamentalFallback(enrichDetailTa(bars, price), {
+    price: fund.price ?? price,
+    high_52w: fund.high_52w,
+    low_52w: fund.low_52w,
+  });
   const phases = chartPhaseAnalysis(price, ta, chart);
 
   return {

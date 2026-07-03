@@ -6,10 +6,12 @@ export interface ScreenerRatios {
   roce: number;
   roe: number;
   pe: number;
+  book_value: number;
   sales_yoy: number;
   profit_yoy: number;
   debt_to_equity: number;
   market_cap_cr: number;
+  div_yield?: number;
 }
 
 function parseRatios(html: string): Record<string, string> {
@@ -37,10 +39,12 @@ export function ratiosToMetrics(ratios: Record<string, string>): ScreenerRatios 
     roce: num(ratios.ROCE),
     roe: num(ratios.ROE),
     pe: num(ratios['Stock P/E']),
+    book_value: num(ratios['Book Value']),
     sales_yoy: num(ratios['Sales growth']),
     profit_yoy: num(ratios['Profit growth']),
     debt_to_equity: normalizeDebtToEquity(de),
     market_cap_cr: num(ratios['Market Cap']),
+    div_yield: num(ratios['Dividend Yield']) || num(ratios['Div Yld']) || 0,
   };
 }
 

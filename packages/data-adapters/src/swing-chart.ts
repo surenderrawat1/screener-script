@@ -47,7 +47,7 @@ export async function fetchDailyBars(symbol: string, refresh = false): Promise<O
           volume: Number(quote.volume?.[i] ?? 0),
         });
       }
-      if (bars.length >= 50) {
+      if (bars.length >= 30) {
         await cacheSetJson(cacheKeyStr, { bars }, CACHE_TTL.ta);
         return bars;
       }

@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, getToken } from '../api';
 import { Page, PageHeader } from '../components/PageLayout';
 
@@ -254,6 +255,22 @@ export default function AdminPage() {
         title="Admin"
         subtitle="Data uploads, cache, settings, and index sync"
       />
+
+      <div className="card">
+        <h2>CFA documentation</h2>
+        <p className="muted">
+          Glossary of valuation terms, formulas, and phase definitions used in Verify and Screener.
+          Admins can edit definitions without redeploying the app.
+        </p>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <Link to="/admin/cfa-docs" className="btn">
+            Manage CFA Docs
+          </Link>
+          <Link to="/cfa-reference" className="btn btn-secondary">
+            View CFA Reference
+          </Link>
+        </div>
+      </div>
 
       {settings && (
         <form className="card" onSubmit={saveSyncSchedule}>

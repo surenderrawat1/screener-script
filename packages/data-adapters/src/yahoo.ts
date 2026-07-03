@@ -128,17 +128,34 @@ export function parseYahooQuote(
   };
 }
 
-export async function fetchYahooChartPrice(baseSymbol: string): Promise<{ price: number; symbol: string } | null> {
+export async function fetchYahooChartPrice(baseSymbol: string): Promise<{
+  price: number;
+  symbol: string;
+  high_52w: number;
+  low_52w: number;
+} | null> {
   for (const yahooSymbol of yahooSymbols(baseSymbol)) {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=5d`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1y`;
     const body = await httpGet(url);
     if (!body) continue;
     try {
       const json = JSON.parse(body) as {
-        chart?: { result?: Array<{ meta?: { regularMarketPrice?: number } }> };
+        chart?: {
+          result?: Array<{
+            meta?: { regularMarketPrice?: number; fiftyTwoWeekHigh?: number; fiftyTwoWeekLow?: number };
+          }>;
+        };
       };
-      const price = json.chart?.result?.[0]?.meta?.regularMarketPrice ?? 0;
-      if (price > 0) return { price, symbol: yahooSymbol };
+      const meta = json.chart?.result?.[0]?.meta;
+      const price = meta?.regularMarketPrice ?? 0;
+      if (price > 0) {
+        return {
+          price,
+          symbol: yahooSymbol,
+          high_52w: Math.round((meta?.fiftyTwoWeekHigh ?? 0) * 100) / 100,
+          low_52w: Math.round((meta?.fiftyTwoWeekLow ?? 0) * 100) / 100,
+        };
+      }
     } catch {
       continue;
     }
@@ -146,14 +163,27 @@ export async function fetchYahooChartPrice(baseSymbol: string): Promise<{ price:
   return null;
 }
 
+function mergeChartMeta(parsed: YahooFundamentals, chart: NonNullable<Awaited<ReturnType<typeof fetchYahooChartPrice>>>): YahooFundamentals {
+  return {
+    ...parsed,
+    price: parsed.price > 0 ? parsed.price : chart.price,
+    high_52w: parsed.high_52w > 0 ? parsed.high_52w : chart.high_52w,
+    low_52w: parsed.low_52w > 0 ? parsed.low_52w : chart.low_52w,
+  };
+}
+
 export async function fetchYahooFundamentals(baseSymbol: string): Promise<YahooFundamentals | null> {
-  let chartFallback: { price: number; symbol: string } | null = null;
+  let chartFallback: Awaited<ReturnType<typeof fetchYahooChartPrice>> = null;
 
   for (const yahooSymbol of yahooSymbols(baseSymbol)) {
     const data = await fetchQuoteSummary(yahooSymbol);
     if (data) {
-      const parsed = parseYahooQuote(yahooSymbol, data);
-      if (parsed.price > 0) return parsed;
+      let parsed = parseYahooQuote(yahooSymbol, data);
+      if (parsed.price > 0) {
+        if (!chartFallback) chartFallback = await fetchYahooChartPrice(baseSymbol);
+        if (chartFallback) parsed = mergeChartMeta(parsed, chartFallback);
+        return parsed;
+      }
     }
     if (!chartFallback) {
       chartFallback = await fetchYahooChartPrice(baseSymbol);
@@ -181,8 +211,8 @@ export async function fetchYahooFundamentals(baseSymbol: string): Promise<YahooF
       eps_growth: 0,
       fcf_cr: 0,
       cfo_cr: 0,
-      high_52w: 0,
-      low_52w: 0,
+      high_52w: chartFallback.high_52w,
+      low_52w: chartFallback.low_52w,
       gross_margin: 0,
       ebitda_margin: 0,
       operating_margin: 0,

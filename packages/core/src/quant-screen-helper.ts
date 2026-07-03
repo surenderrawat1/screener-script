@@ -58,16 +58,48 @@ export function altmanZone(z: number): string {
 }
 
 export function resolveAltmanMeta(sectorKey: string, ctx: Record<string, unknown>) {
-  const skip = altmanSkip(sectorKey) || Boolean(ctx.altman_skip);
+  if (altmanSkip(sectorKey) || Boolean(ctx.altman_skip)) {
+    return {
+      altman_z: 0,
+      altman_skip: true,
+      altman_zone: 'unknown',
+      z_score_source: 'skipped',
+      altman_unreliable: false,
+    };
+  }
+
+  let source = String(ctx.z_score_source ?? 'missing');
   const z = Number(ctx.altman_z ?? 0);
-  const source = String(ctx.z_score_source ?? 'missing');
-  const unreliable = source === 'estimated' && !altmanSanityOk(z, source);
+
+  if (z <= 0) {
+    return {
+      altman_z: 0,
+      altman_skip: false,
+      altman_zone: 'unknown',
+      z_score_source: source !== 'missing' && source !== '' ? source : 'missing',
+      altman_unreliable: false,
+    };
+  }
+
+  if (source === 'missing' || source === '') {
+    source = 'estimated';
+  }
+
+  if (!altmanSanityOk(z, source)) {
+    return {
+      altman_z: z,
+      altman_skip: false,
+      altman_zone: 'unknown',
+      z_score_source: 'unreliable',
+      altman_unreliable: true,
+    };
+  }
 
   return {
     altman_z: z,
-    altman_skip: skip,
-    altman_zone: skip ? 'skipped' : altmanZone(z),
-    z_score_source: skip ? 'skipped' : source,
-    altman_unreliable: unreliable,
+    altman_skip: false,
+    altman_zone: altmanZone(z),
+    z_score_source: source,
+    altman_unreliable: false,
   };
 }

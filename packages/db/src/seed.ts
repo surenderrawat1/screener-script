@@ -6,21 +6,19 @@ async function main() {
   const password = process.env.SEED_ADMIN_PASSWORD ?? 'admin123';
 
   const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
+  if (!existing) {
+    const passwordHash = await bcrypt.hash(password, 12);
+    await prisma.user.create({
+      data: {
+        email,
+        passwordHash,
+        role: UserRole.admin,
+      },
+    });
+    console.log(`Created admin user: ${email}`);
+  } else {
     console.log(`Admin user already exists: ${email}`);
-    return;
   }
-
-  const passwordHash = await bcrypt.hash(password, 12);
-  await prisma.user.create({
-    data: {
-      email,
-      passwordHash,
-      role: UserRole.admin,
-    },
-  });
-
-  console.log(`Created admin user: ${email}`);
 
   for (const u of [
     { key: 'nifty50', name: 'Nifty 50' },
@@ -39,6 +37,10 @@ async function main() {
   }
 
   console.log('Seeded builtin universes');
+
+  const { seedCfaTerms } = await import('./seed-cfa-terms.js');
+  const cfa = await seedCfaTerms();
+  console.log(`CFA glossary: ${cfa.inserted} inserted, ${cfa.skipped} skipped`);
 }
 
 main()

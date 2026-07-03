@@ -25,11 +25,15 @@ export function mergeMetrics(
   screener: Awaited<ReturnType<typeof fetchScreenerRatios>>,
 ): StockMetrics {
   const price = yahoo?.price ?? 0;
-  const eps = yahoo?.eps ?? 0;
-  const bookValue = yahoo?.book_value ?? 0;
+  let eps = yahoo?.eps ?? 0;
+  let bookValue = yahoo?.book_value ?? 0;
+  if (bookValue <= 0 && screener?.book_value) bookValue = screener.book_value;
   let pe = yahoo?.pe ?? 0;
   if (pe <= 0 && screener?.pe) pe = screener.pe;
   if (pe <= 0 && eps > 0 && price > 0) pe = Math.round((price / eps) * 100) / 100;
+  if (eps <= 0 && pe > 0 && price > 0) {
+    eps = Math.round((price / pe) * 100) / 100;
+  }
 
   let roe = yahoo?.roe ?? 0;
   if (roe <= 0 && screener?.roe) roe = screener.roe;
@@ -42,6 +46,7 @@ export function mergeMetrics(
 
   const salesYoy = screener?.sales_yoy ?? yahoo?.revenue_growth ?? 0;
   const profitYoy = screener?.profit_yoy ?? yahoo?.eps_growth ?? 0;
+  const divYield = yahoo?.div_yield ?? screener?.div_yield ?? 0;
   const capexCr =
     (yahoo?.cfo_cr ?? 0) > 0 && (yahoo?.fcf_cr ?? 0) !== 0
       ? Math.round(((yahoo?.cfo_cr ?? 0) - (yahoo?.fcf_cr ?? 0)) * 100) / 100
@@ -67,7 +72,7 @@ export function mergeMetrics(
     industry: yahoo?.industry ?? '',
     market_cap_cr: screener?.market_cap_cr ?? yahoo?.market_cap_cr ?? 0,
     debt_to_equity: de,
-    div_yield: yahoo?.div_yield ?? 0,
+    div_yield: divYield,
     fcf_cr: yahoo?.fcf_cr ?? 0,
     cfo_cr: yahoo?.cfo_cr ?? 0,
     capex_cr: capexCr,

@@ -18,6 +18,7 @@
 | [Swing Positions](SWING-POSITIONS.md) | Position ledger, exit X1–X9, P&L, speed plan |
 | [CFA Screener](SCREENER.md) | Fundamental screener, presets, background jobs |
 | [CFA Verify](CFA-VERIFY.md) | One-click valuation memo, 8-phase engine (planned) |
+| [CFA Glossary](CFA-GLOSSARY.md) | Admin-editable terms, definitions, and formulas |
 | [Full Verify](FULL-VERIFY.md) | 8-phase allocation gate, scorecard, thesis (planned) |
 | [Morning Routine](MORNING-ROUTINE.md) | Pre-market cockpit, checklist, alerts (planned) |
 | [Trading Presets](TRADING-PRESETS.md) | One-click swing / ETF / intraday profiles (planned) |

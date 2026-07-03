@@ -20,6 +20,19 @@ export function emaSeries(closes: number[], period: number): number[] {
   return out;
 }
 
+function emaSeriesIndexed(closes: number[], period: number): Map<number, number> {
+  if (closes.length < period) return new Map();
+  let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  const out = new Map<number, number>();
+  out.set(period - 1, ema);
+  const k = 2 / (period + 1);
+  for (let i = period; i < closes.length; i++) {
+    ema = closes[i] * k + ema * (1 - k);
+    out.set(i, ema);
+  }
+  return out;
+}
+
 export function ema(closes: number[], period: number): number | null {
   const series = emaSeries(closes, period);
   if (series.length === 0) return null;
@@ -40,23 +53,37 @@ export function rsi(closes: number[], period = 14): number | null {
   return Math.round((100 - 100 / (1 + rs)) * 10) / 10;
 }
 
-export function macd(closes: number[]): { line: number; signal: number; histogram: number } | null {
-  if (closes.length < 35) return null;
-  const fast = emaSeries(closes, 12);
-  const slow = emaSeries(closes, 26);
-  const offset = slow.length - fast.length;
-  const alignedFast = fast.slice(offset);
+export function macd(
+  closes: number[],
+  fastPeriod = 12,
+  slowPeriod = 26,
+  signalPeriod = 9,
+): { line: number; signal: number; histogram: number } | null {
+  if (closes.length < slowPeriod + signalPeriod) return null;
+
+  const fastMap = emaSeriesIndexed(closes, fastPeriod);
+  const slowMap = emaSeriesIndexed(closes, slowPeriod);
   const macdLine: number[] = [];
-  for (let i = 0; i < slow.length; i++) {
-    macdLine.push(alignedFast[i] - slow[i]);
+  for (let i = slowPeriod - 1; i < closes.length; i++) {
+    const fast = fastMap.get(i);
+    const slow = slowMap.get(i);
+    if (fast !== undefined && slow !== undefined) {
+      macdLine.push(fast - slow);
+    }
   }
-  const signalSeries = emaSeries(macdLine, 9);
+  if (macdLine.length < signalPeriod) return null;
+
+  const signalSeries = emaSeries(macdLine, signalPeriod);
+  if (signalSeries.length === 0) return null;
+
   const line = macdLine[macdLine.length - 1];
   const signal = signalSeries[signalSeries.length - 1];
+  if (!Number.isFinite(line) || !Number.isFinite(signal)) return null;
+
   return {
-    line: Math.round(line * 100) / 100,
-    signal: Math.round(signal * 100) / 100,
-    histogram: Math.round((line - signal) * 100) / 100,
+    line: Math.round(line * 1000) / 1000,
+    signal: Math.round(signal * 1000) / 1000,
+    histogram: Math.round((line - signal) * 1000) / 1000,
   };
 }
 

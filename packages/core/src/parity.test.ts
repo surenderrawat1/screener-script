@@ -5,6 +5,7 @@ import {
   grahamCredible,
   altmanSkip,
   altmanZone,
+  resolveAltmanMeta,
   normalizeSectorKey,
   moatTierRank,
   calculateFairPe,
@@ -120,6 +121,13 @@ describe('golden parity — validate-logic.php', () => {
     expect(moatTierRank('moderate')).toBe(1);
     expect(moatTierRank('strong')).toBe(2);
     expect(moatTierRank('exceptional')).toBe(3);
+  });
+
+  it('out-of-range estimated Altman Z → unreliable source', () => {
+    const meta = resolveAltmanMeta('general', { altman_z: 47, z_score_source: 'estimated' });
+    expect(meta.z_score_source).toBe('unreliable');
+    expect(meta.altman_unreliable).toBe(true);
+    expect(meta.altman_zone).toBe('unknown');
   });
 
   it('industry median P/E', () => {
