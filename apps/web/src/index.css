@@ -3658,6 +3658,8 @@ input[type='checkbox'] {
 .swing-uni-summary .swing-bt-strong {
   color: #86efac;
 }
+
+.swing-uni-summary .swing-bt-unproven {
   font-weight: 400;
   color: var(--muted);
 }

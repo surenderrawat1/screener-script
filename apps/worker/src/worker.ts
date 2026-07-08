@@ -9,6 +9,22 @@ import { initAppConfig } from '@sv/shared';
 
 const WORKER_ID = `${hostname()}-${process.pid}`;
 const AUTO_SCAN_TICK_MS = 60_000;
+const SWING_SORT_KEYS = [
+  'symbol',
+  'swing_rank',
+  'rules_passed',
+  'r_multiple',
+  'pct_52w',
+  'volume_ratio',
+  'entry_score',
+  'rsi',
+] as const;
+
+type SwingSortKey = (typeof SWING_SORT_KEYS)[number];
+
+function swingSortKey(value?: string): SwingSortKey | undefined {
+  return SWING_SORT_KEYS.includes(value as SwingSortKey) ? (value as SwingSortKey) : undefined;
+}
 
 async function processScreenerJob(data: {
   jobId: string;
@@ -74,7 +90,7 @@ async function processSwingScanJob(data: {
           breakout_volume: input.breakout_volume,
           min_rules_passed: input.min_rules_passed,
           require_rules: input.require_rules,
-          sort_by: input.sort_by,
+          sort_by: swingSortKey(input.sort_by),
           regime: input.regime,
         },
         input.refresh,

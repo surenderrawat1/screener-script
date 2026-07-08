@@ -493,7 +493,7 @@ function applyGrahamFloor(
   const useFloor = Boolean(ctx.use_graham_floor) || process.env.SV_GRAHAM_FLOOR === '1';
   if (!useFloor || graham <= 0 || !grahamCredible(sectorKey, ctx)) return intrinsic;
   const floor = Math.round(graham * 0.85 * 100) / 100;
-  if (floor > intrinsic) {
+  if (floor >= intrinsic * 0.99) {
     flags.push('graham_floor_active');
     return floor;
   }
