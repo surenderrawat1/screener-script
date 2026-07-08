@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { api } from '../api';
+import { Link, useSearchParams } from 'react-router-dom';
+import { api, getToken } from '../api';
+import { NseSessionBanner, type NseSessionInfo } from '../components/NseSessionBanner';
 import { Page, PageHeader } from '../components/PageLayout';
+import { fetchSymbolPrice } from '../components/swing/fetchSymbolPrice';
 import { OpenPositionsPanel, type PositionsBlock } from '../components/swing/OpenPositionsPanel';
 import { SwingClosedPanel, type ClosedSwingRow } from '../components/swing/SwingClosedPanel';
-
+import { useRefreshCountdown } from '../hooks/useRefreshCountdown';
 interface PositionsResponse {
   positions: Array<ClosedSwingRow & { status: string }>;
   summary: { open: number; closed: number };
@@ -15,6 +17,7 @@ interface PositionsResponse {
     urgent_count?: number;
     heat_pct?: number;
   } | null;
+  session?: NseSessionInfo;
   closed_stats?: {
     with_pnl?: number;
     wins?: number;
@@ -30,14 +33,15 @@ interface PositionsResponse {
 const REFRESH_MS = 60_000;
 
 export default function PositionsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<PositionsResponse | null>(null);
   const [filter, setFilter] = useState<'all' | 'open' | 'closed'>('open');
-  const [live, setLive] = useState(true);
+  const [live, setLive] = useState(searchParams.get('live') !== '0');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    symbol: '',
+  const [fetchPriceBusy, setFetchPriceBusy] = useState(false);
+  const [form, setForm] = useState({    symbol: '',
     entry_price: '',
     entry_date: new Date().toISOString().slice(0, 10),
     shares: '',
@@ -65,6 +69,18 @@ export default function PositionsPage() {
   }, [filter, live]);
 
   useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (live) params.set('live', '1');
+        else params.delete('live');
+        return params;
+      },
+      { replace: true },
+    );
+  }, [live, setSearchParams]);
+
+  useEffect(() => {
     void load();
     if (!live) return;
     const id = window.setInterval(() => void load(), REFRESH_MS);
@@ -73,9 +89,12 @@ export default function PositionsPage() {
 
   const openPositions = (data?.positions ?? []).filter((p) => p.status === 'open');
   const closedPositions = (data?.positions ?? []).filter((p) => p.status === 'closed');
+  const countdownSec = useRefreshCountdown(data?.live?.refreshed_at, REFRESH_MS, live);
+  const updatedAt = data?.live?.refreshed_at
+    ? new Date(data.live.refreshed_at).toLocaleTimeString()
+    : null;
 
-  const openBlock: PositionsBlock = {
-    open: openPositions,
+  const openBlock: PositionsBlock = {    open: openPositions,
     count: openPositions.length,
     exit_count: data?.live?.exit_count,
     urgent_count: data?.live?.urgent_count,
@@ -123,8 +142,46 @@ export default function PositionsPage() {
     }
   }
 
-  return (
-    <Page>
+  async function exportCsv() {
+    setError('');
+    try {
+      const token = getToken();
+      const res = await fetch('/api/v1/swing/positions/export', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'swing-positions.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Export failed');
+    }
+  }
+
+  async function fetchAddPrice() {
+    if (!form.symbol.trim()) {
+      setError('Enter a symbol first');
+      return;
+    }
+    setFetchPriceBusy(true);
+    setError('');
+    try {
+      const price = await fetchSymbolPrice(form.symbol);
+      if (price == null) {
+        setError(`Could not fetch price for ${form.symbol.trim().toUpperCase()}`);
+        return;
+      }
+      setForm((f) => ({ ...f, entry_price: String(price) }));
+    } finally {
+      setFetchPriceBusy(false);
+    }
+  }
+
+  return (    <Page>
       <PageHeader
         title="Swing Positions"
         subtitle="Multi-day swing ledger — live exit rules, stops, trail & targets"
@@ -137,6 +194,9 @@ export default function PositionsPage() {
             <button type="button" className="btn btn-secondary" onClick={() => void load()} disabled={loading}>
               {loading ? 'Refreshing…' : 'Refresh'}
             </button>
+            <button type="button" className="btn btn-secondary" onClick={() => void exportCsv()}>
+              Export CSV
+            </button>
             <Link to="/swing/auto" className="btn btn-secondary">
               Auto Radar
             </Link>
@@ -144,8 +204,8 @@ export default function PositionsPage() {
         }
       />
       <p className="disclaimer">
-        Distinct from <Link to="/intraday/positions">Nifty intraday ledger</Link>. P&amp;L is gross (no STT/charges
-        yet). Confirm on NSE before orders.
+        Distinct from <Link to="/intraday/positions">Nifty intraday ledger</Link>. Net P&amp;L includes STT,
+        stamp, exchange fees, GST &amp; DP when shares are set. Confirm on NSE before orders.
       </p>
 
       <div className="card segmented">
@@ -170,9 +230,25 @@ export default function PositionsPage() {
 
       {error && <p className="error">{error}</p>}
 
-      {(filter === 'open' || filter === 'all') && (
-        <OpenPositionsPanel
+      {data?.session && <NseSessionBanner session={data.session} />}
+
+      {live && (filter === 'open' || filter === 'all') && (
+        <div className="swing-live-bar card">
+          <span className="swing-pill pill-live">Live · auto</span>
+          {updatedAt ? (
+            <span className="muted">
+              Updated <strong>{updatedAt}</strong>
+            </span>
+          ) : null}
+          <span className="muted">
+            Next <strong>{countdownSec > 0 ? `${countdownSec}s` : 'due'}</strong>
+          </span>
+        </div>
+      )}
+
+      {(filter === 'open' || filter === 'all') && (        <OpenPositionsPanel
           positions={openBlock}
+          sessionLive={Boolean(data?.session?.live_quotes)}
           onRefresh={load}
           onClosed={async () => {
             setFilter('closed');
@@ -206,15 +282,24 @@ export default function PositionsPage() {
           </label>
           <label>
             Entry price
-            <input
-              type="number"
-              step="0.05"
-              required
-              value={form.entry_price}
-              onChange={(e) => setForm((f) => ({ ...f, entry_price: e.target.value }))}
-            />
-          </label>
-          <label>
+            <div className="swing-entry-price-wrap">
+              <input
+                type="number"
+                step="0.05"
+                required
+                value={form.entry_price}
+                onChange={(e) => setForm((f) => ({ ...f, entry_price: e.target.value }))}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary btn-xs"
+                disabled={fetchPriceBusy || !form.symbol.trim()}
+                onClick={() => void fetchAddPrice()}
+              >
+                {fetchPriceBusy ? '…' : 'Fetch now'}
+              </button>
+            </div>
+          </label>          <label>
             Shares
             <input
               type="number"

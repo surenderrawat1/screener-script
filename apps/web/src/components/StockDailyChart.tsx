@@ -5,10 +5,11 @@ import {
   createChart,
   LineSeries,
   type IChartApi,
+  type Time,
 } from 'lightweight-charts';
 
 interface OhlcBar {
-  time: string;
+  time: string | number;
   open: number;
   high: number;
   low: number;
@@ -16,7 +17,7 @@ interface OhlcBar {
 }
 
 interface SmaPoint {
-  time: string;
+  time: string | number;
   value: number;
 }
 
@@ -26,6 +27,9 @@ export interface ChartPayload {
   sma20: SmaPoint[];
   sma50: SmaPoint[];
   sma200: SmaPoint[];
+  interval?: string;
+  range?: string;
+  intraday?: boolean;
 }
 
 interface Props {
@@ -33,7 +37,7 @@ interface Props {
   height?: number;
 }
 
-type ChartTime = `${number}-${number}-${number}`;
+type ChartTime = Time;
 
 export function StockDailyChart({ chart, height = 420 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);

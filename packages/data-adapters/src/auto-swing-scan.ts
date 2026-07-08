@@ -6,6 +6,7 @@ import {
   MODE_FULL,
   MODE_INCREMENTAL,
   saveSwingAutoSnapshot,
+  actionableScanHits,
   type SwingAutoSnapshot,
   type SwingScanOptions,
 } from '@sv/swing';
@@ -85,6 +86,7 @@ export async function executeAutoScanPlan(plan: AutoScanPlan, refresh = false) {
       ...result,
       scan_mode: MODE_FULL,
       universe: plan.universe ?? 'nifty250',
+      universe_size: symbols.length,
       regime,
     };
     await persistSnapshot(full);
@@ -105,13 +107,14 @@ export async function executeAutoScanPlan(plan: AutoScanPlan, refresh = false) {
   const incremental = {
     ...fresh,
     hits: merged,
-    hit_count: merged.length,
+    hit_count: actionableScanHits(merged).length,
     scan_mode: MODE_INCREMENTAL,
     incremental_refreshed: refreshSymbols.length,
     incremental_carried: merged.filter((h) => h.incremental_stale).length,
     rotate_offset: Number(plan.rotate_offset ?? snapshot.rotate_offset ?? 0),
     last_full_scan_at: snapshot.last_full_scan_at,
     universe: plan.universe ?? 'nifty250',
+    universe_size: symbols.length,
     regime,
   };
   await persistSnapshot(incremental);

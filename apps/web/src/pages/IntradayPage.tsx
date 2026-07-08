@@ -10,6 +10,7 @@ import {
   IntradayTradePlanCard,
   type ProductMode,
 } from '../components/intraday/IntradayFnoPanels';
+import { IntradayPriceChart } from '../components/intraday/IntradayPriceChart';
 
 type Interval = '5m' | '15m';
 
@@ -112,6 +113,13 @@ export default function IntradayPage() {
   const fno = state.fno as Record<string, unknown> | null | undefined;
   const presetEval = (state.preset_eval as Array<Record<string, unknown>>) ?? [];
   const recommendedPreset = String(state.recommended_preset ?? 'cfa_precision');
+  const sessionPresetId =
+    presetId === 'intraday_session' || presetId === 'intraday' || presetId === 'scalp'
+      ? interval === '5m'
+        ? 'trend_scalp_5m'
+        : 'cfa_precision'
+      : null;
+  const activePresetHighlight = sessionPresetId ?? recommendedPreset;
   const indexLabel = String(state.index_label ?? 'Nifty 50');
   const expiry = fno?.expiry as Record<string, unknown> | undefined;
   const pageTitle = instrumentKind === 'stock' ? `${indexLabel} Intraday` : 'Index Intraday';
@@ -144,6 +152,9 @@ export default function IntradayPage() {
             <button type="button" className="btn btn-secondary" onClick={() => void load(true)} disabled={loading}>
               {loading ? 'Refreshing…' : 'Refresh'}
             </button>
+            <Link to="/intraday/backtest" className="btn btn-secondary">
+              60d backtest
+            </Link>
           </>
         }
       />
@@ -192,6 +203,12 @@ export default function IntradayPage() {
       {presetId && (
         <p className="muted">
           Preset: <strong>{presetId.replace(/_/g, ' ')}</strong>
+          {sessionPresetId ? (
+            <>
+              {' '}
+              · highlighting <strong>{sessionPresetId.replace(/_/g, ' ')}</strong>
+            </>
+          ) : null}
           {' · '}
           <Link to="/presets">All presets</Link>
         </p>
@@ -221,6 +238,8 @@ export default function IntradayPage() {
           {String(mtf?.message ?? '')}
         </p>
       </section>
+
+      <IntradayPriceChart instrumentId={instrument} interval={interval} label={indexLabel} />
 
       <section className="card">
         <IntradayProductTabs
@@ -252,9 +271,9 @@ export default function IntradayPage() {
       <section className="card">
         <h2>Entry presets ({interval})</h2>
         <p className="muted">
-          Recommended: <strong>{recommendedPreset.replace(/_/g, ' ')}</strong> — gates before taking spot or F&O trades.
+          Recommended: <strong>{activePresetHighlight.replace(/_/g, ' ')}</strong> — gates before taking spot or F&O trades.
         </p>
-        <IntradayPresetTable presets={presetEval} activeInterval={interval} recommended={recommendedPreset} />
+        <IntradayPresetTable presets={presetEval} activeInterval={interval} recommended={activePresetHighlight} />
       </section>
 
       <section className="card">

@@ -24,11 +24,7 @@ export function listScreenerPresets(): ScreenerPresetInfo[] {
         id,
         label: entry?.label ?? meta?.label ?? id.replace(/_/g, ' '),
         filters: { ...core, ...(entry?.filters ?? {}) },
-        description: meta?.description
-          ? ta
-            ? `${meta.description} · TA enrichment pending`
-            : meta.description
-          : undefined,
+        description: meta?.description ?? undefined,
         ta_preset: ta || undefined,
       };
     });

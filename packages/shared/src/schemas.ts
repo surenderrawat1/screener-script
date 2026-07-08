@@ -75,6 +75,15 @@ export const swingPositionCloseSchema = z.object({
   closed_reason: z.string().max(120).optional(),
 });
 
+export const swingPositionUpdateSchema = z.object({
+  entry_price: z.number().positive().optional(),
+  entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  shares: z.number().nonnegative().nullable().optional(),
+  stop_loss: z.number().positive().nullable().optional(),
+  profit_target: z.number().positive().nullable().optional(),
+  notes: z.string().max(500).nullable().optional(),
+});
+
 export const niftyIntradayPositionCreateSchema = z.object({
   instrument_id: z.string().min(1).max(32),
   symbol: z.string().min(1).max(32).optional(),
@@ -103,16 +112,81 @@ export type CreateUniverseInput = z.infer<typeof createUniverseSchema>;
 export const swingScanSchema = z.object({
   universe: z.string().min(1).optional(),
   symbols: z.array(z.string().min(1)).optional(),
-  maxScan: z.number().int().min(5).max(200).default(50),
+  maxScan: z.number().int().min(0).max(2000).default(0),
   background: z.boolean().optional(),
   min_verdict: z.enum(['ENTER', 'SETUP_PLUS', 'WATCH', 'ALL']).optional(),
-  zone_52w: z.string().optional(),
+  zone_52w: z.enum(['any', 'green', 'mid', 'red']).optional(),
   gc9_only: z.boolean().optional(),
   breakout_volume: z.boolean().optional(),
+  min_rules_passed: z.number().int().min(1).max(11).optional(),
+  require_rules: z.array(z.enum(['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'E10', 'E11'])).optional(),
+  sort_by: z
+    .enum(['swing_rank', 'rules_passed', 'r_multiple', 'pct_52w', 'volume_ratio', 'entry_score', 'rsi', 'symbol'])
+    .optional(),
   refresh: z.boolean().optional(),
 });
 
 export type SwingScanInput = z.infer<typeof swingScanSchema>;
+
+export const swingEvaluateSchema = z.object({
+  symbol: z.string().min(1),
+  refresh: z.boolean().optional(),
+  min_verdict: z.enum(['ENTER', 'SETUP_PLUS', 'WATCH', 'ALL']).optional(),
+  zone_52w: z.enum(['any', 'green', 'mid', 'red']).optional(),
+  gc9_only: z.boolean().optional(),
+  breakout_volume: z.boolean().optional(),
+  min_rules_passed: z.number().int().min(1).max(11).optional(),
+  require_rules: z.array(z.enum(['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'E10', 'E11'])).optional(),
+});
+
+export type SwingEvaluateInput = z.infer<typeof swingEvaluateSchema>;
+
+export const swingEvaluateExitSchema = z.object({
+  symbol: z.string().min(1),
+  entry_price: z.number().positive(),
+  entry_date: z.string().min(8),
+  profit_target: z.number().positive().optional(),
+  target_pct: z.number().positive().optional(),
+  refresh: z.boolean().optional(),
+});
+
+export type SwingEvaluateExitInput = z.infer<typeof swingEvaluateExitSchema>;
+
+export const swingBacktestSchema = z.object({
+  symbol: z.string().min(1),
+  symbols: z.array(z.string().min(1)).max(15).optional(),
+  universe: z.string().min(1).optional(),
+  maxScan: z.number().int().min(1).max(50).optional(),
+  warmup: z.number().int().min(100).max(300).optional(),
+  forward_sessions: z.number().int().min(5).max(60).optional(),
+  min_verdict: z.enum(['ENTER', 'SETUP_PLUS', 'WATCH', 'ALL']).optional(),
+  zone_52w: z.enum(['any', 'green', 'mid', 'red']).optional(),
+  gc9_only: z.boolean().optional(),
+  breakout_volume: z.boolean().optional(),
+  min_rules_passed: z.number().int().min(1).max(11).optional(),
+  require_rules: z.array(z.enum(['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'E10', 'E11'])).optional(),
+  refresh: z.boolean().optional(),
+});
+
+export type SwingBacktestInput = z.infer<typeof swingBacktestSchema>;
+
+export const swingAutoScanSchema = z.object({
+  force: z.boolean().optional(),
+  full: z.boolean().optional(),
+});
+
+export type SwingAutoScanInput = z.infer<typeof swingAutoScanSchema>;
+
+export const intradayBacktestSchema = z.object({
+  instrument: z.string().min(1).optional(),
+  interval: z.enum(['5m', '15m']).optional(),
+  mode: z.enum(['single', 'combo_compare']).optional(),
+  preset_id: z.string().min(1).optional(),
+  days: z.number().int().min(5).max(60).optional(),
+  refresh: z.boolean().optional(),
+});
+
+export type IntradayBacktestInput = z.infer<typeof intradayBacktestSchema>;
 
 export const strategyRunSchema = z.object({
   strategy: z.string().min(1).max(64),
@@ -125,6 +199,7 @@ export const strategyRunSchema = z.object({
 export type StrategyRunInput = z.infer<typeof strategyRunSchema>;
 export type WatchlistUpsertInput = z.infer<typeof watchlistUpsertSchema>;
 export type SwingPositionCreateInput = z.infer<typeof swingPositionCreateSchema>;
+export type SwingPositionUpdateInput = z.infer<typeof swingPositionUpdateSchema>;
 export type NiftyIntradayPositionCreateInput = z.infer<typeof niftyIntradayPositionCreateSchema>;
 
 export interface StockMetrics {

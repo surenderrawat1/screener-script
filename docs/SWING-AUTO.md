@@ -60,7 +60,7 @@ This document maps the **PHP stock-verifier** behavior to **Script Screener** ar
 | **API** | `swing-auto-api.php?action=` | REST `/api/v1/swing/auto/*` |
 | **UI** | `swing-auto-screener.php` (inline JS) | React `SwingAutoPage` (`/swing/auto`) |
 | **Auth** | PHP session | JWT + RBAC |
-| **Backtest overlay** | `SwingAutoBacktestTruth` (top 40 hits) | **Not ported yet** |
+| `SwingAutoBacktestTruth` (top 40 hits) | **Ported** — see [SWING-AUTO-CFA-VERIFICATION.md](SWING-AUTO-CFA-VERIFICATION.md) | `auto-backtest-truth.ts`, `attachBacktestTruthToHits` |
 
 ### Critical behavioral change
 
@@ -426,12 +426,14 @@ Default filters: **`SETUP_PLUS`**, sort **`swing_rank`**, zone **`any`**.
 | Position management actions | ✓ | ✓ | — |
 | Regime from NIFTYBEES | ✓ | ✓ | — |
 | Heat gate (10 pos / 4%) | ✓ | ✓ | — |
-| `incremental_stale` flag | ✓ | ✓ | UI not showing |
-| Backtest truth overlay | ✓ | ✗ | **Phase B** |
-| Add position from auto UI | ✓ | API only | **Phase A** |
-| 60s positions-only poll | ✓ | ✗ | **Phase A** |
-| 2.5s job poll while scanning | ✓ | WS available | **Phase A** |
-| `?tier=strict_enter` URL | ✓ | ✗ | [TRADING-PRESETS.md](TRADING-PRESETS.md) TP-B |
+| `incremental_stale` flag | ✓ | ✓ | UI badge on stale rows |
+| Backtest truth overlay | ✓ | ✓ | `auto-backtest-truth.ts` |
+| Add position from auto UI | ✓ | ✓ | Confirm dialog + heat gate |
+| 60s positions-only poll | ✓ | ✓ | `SwingAutoPage` |
+| 2.5s job poll while scanning | ✓ | ✓ | Manual scan poll |
+| `?tier=strict_enter` URL | ✓ | ✓ | — |
+| Compact KPI pills | ✓ | ✓ | High conv / strict / SETUP+ |
+| Price freshness badges | ✓ | ✓ | `PriceFreshness` component |
 | Morning dashboard panel | ✓ | ✗ | [MORNING-ROUTINE.md](MORNING-ROUTINE.md) MR-B |
 | Rate limit 120/min | ✓ | partial | Phase 13 |
 
@@ -505,6 +507,7 @@ Now (M6–M8 complete)
 - [ ] Worker runs scans without browser; Dashboard shows worker green
 - [ ] UI shows job progress during scan (WebSocket)
 - [ ] Add position works from auto page with heat/regime gates
+- [x] Add position works from auto page with heat/regime gates
 - [ ] Redis flush → state still loads from PostgreSQL < **500ms**
 
 ---

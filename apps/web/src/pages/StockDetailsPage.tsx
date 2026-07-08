@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../auth';
 import { EmptyState, Page, PageHeader } from '../components/PageLayout';
 import { StockDailyChart, type ChartPayload } from '../components/StockDailyChart';
+import { SwingEntryRulesTable, SwingVerdictBanner } from '../components/swing/SwingEntryRulesTable';
 
 interface StockSummary {
   symbol: string;
@@ -210,6 +211,8 @@ export default function StockDetailsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState('');
   const [error, setError] = useState('');
+  const [swingEval, setSwingEval] = useState<Record<string, unknown> | null>(null);
+  const [swingLoading, setSwingLoading] = useState(false);
 
   const canRefreshLive = user?.role === 'admin' || user?.role === 'analyst';
 
@@ -227,6 +230,23 @@ export default function StockDetailsPage() {
       setChartData(null);
     } finally {
       setChartLoading(false);
+    }
+  }, []);
+
+  const loadSwing = useCallback(async (sym: string, refresh = false) => {
+    const normalized = sym.trim().toUpperCase();
+    if (!normalized) return;
+    setSwingLoading(true);
+    try {
+      const data = await api<Record<string, unknown>>('/api/v1/swing/evaluate', {
+        method: 'POST',
+        body: JSON.stringify({ symbol: normalized, refresh }),
+      });
+      setSwingEval(data);
+    } catch {
+      setSwingEval(null);
+    } finally {
+      setSwingLoading(false);
     }
   }, []);
 
@@ -255,6 +275,7 @@ export default function StockDetailsPage() {
       setLoading(true);
       setChartData(null);
       setProfile(null);
+      setSwingEval(null);
       try {
         const q = refresh ? '?refresh=true' : '';
         const data = await api<StockSummary>(
@@ -263,6 +284,7 @@ export default function StockDetailsPage() {
         setSummary(data);
         void loadChart(normalized, refresh);
         void loadProfile(normalized, refresh);
+        void loadSwing(normalized, refresh);
       } catch (err) {
         setSummary(null);
         setError(err instanceof Error ? err.message : 'Failed to load stock');
@@ -270,7 +292,7 @@ export default function StockDetailsPage() {
         setLoading(false);
       }
     },
-    [loadChart, loadProfile],
+    [loadChart, loadProfile, loadSwing],
   );
 
   const refreshLive = useCallback(async (sym: string) => {
@@ -398,8 +420,11 @@ export default function StockDetailsPage() {
               <Link className="btn btn-secondary" to={`/verify?symbol=${encodeURIComponent(summary.symbol)}`}>
                 CFA verify
               </Link>
-              <Link className="btn btn-secondary" to={`/swing`}>
+              <Link className="btn btn-secondary" to={`/swing?symbol=${encodeURIComponent(summary.symbol)}`}>
                 Swing scan
+              </Link>
+              <Link className="btn btn-secondary" to={`/strategies`}>
+                Strategies
               </Link>
               <Link className="btn btn-secondary" to={`/watchlist`}>
                 Watchlist
@@ -407,21 +432,28 @@ export default function StockDetailsPage() {
             </div>
           </div>
 
+          {summary.iv_drift?.iv_drift_warn ? (
+            <div className="card iv-drift-card" role="alert">
+              <strong>IV drift warning</strong>
+              <p className="iv-drift-warn" style={{ margin: '0.35rem 0' }}>
+                Screener fast-path IV {fmtMoney(summary.iv_drift.screener_iv)} differs from Full Verify IV{' '}
+                {fmtMoney(summary.iv_drift.full_iv)} by {fmtNum(summary.iv_drift.drift_pct, '%')}. MOS and zone on
+                screener rows may be stale — re-run Full Verify before sizing.
+              </p>
+              <Link to={`/verify/full?symbol=${encodeURIComponent(summary.symbol)}`}>Open Full Verify →</Link>
+            </div>
+          ) : null}
+
           <div className="card">
             <h2>CFA valuation</h2>
             {summary.iv_drift &&
+              !summary.iv_drift.iv_drift_warn &&
               summary.iv_drift.drift_pct > 0.5 &&
               Math.abs(summary.iv_drift.screener_iv - summary.iv_drift.full_iv) > 0.5 && (
-                <p
-                  className={summary.iv_drift.iv_drift_warn ? 'iv-drift-warn' : 'muted'}
-                  style={{ marginTop: 0 }}
-                >
+                <p className="muted" style={{ marginTop: 0 }}>
                   Screener fast-path IV: {fmtMoney(summary.iv_drift.screener_iv)}
                   {' · '}
-                  drift {fmtNum(summary.iv_drift.drift_pct, '%')} vs verify IV
-                  {summary.iv_drift.iv_drift_warn
-                    ? ' — warm cache or run parity on screener row'
-                    : ''}
+                  drift {fmtNum(summary.iv_drift.drift_pct, '%')} vs verify IV — within tolerance
                 </p>
               )}
             <div className="sd-metric-grid">
@@ -566,6 +598,44 @@ export default function StockDetailsPage() {
                 />
               </div>
             )}
+          </div>
+
+          <div className="card">
+            <div className="sd-section-head">
+              <h2>Swing entry rules (E1–E11)</h2>
+              <Link to={`/swing?symbol=${summary.symbol}&mode=symbol`} className="btn btn-secondary btn-xs">
+                Full swing analysis →
+              </Link>
+            </div>
+            {swingLoading && <p className="muted">Evaluating swing rules…</p>}
+            {!swingLoading && swingEval?.entry ? (
+              <>
+                <SwingVerdictBanner
+                  discovery={String((swingEval.entry as Record<string, unknown>).discovery_verdict ?? 'AVOID')}
+                  strict={String((swingEval.entry as Record<string, unknown>).strict_verdict ?? 'AVOID')}
+                  rulesPassed={Number((swingEval.entry as Record<string, unknown>).rules_passed ?? 0)}
+                  entryScore={Number((swingEval.entry as Record<string, unknown>).entry_score ?? 0)}
+                />
+                <p className="muted">
+                  Stop {fmtMoney((swingEval.entry as Record<string, unknown>).stop_loss)} · Target{' '}
+                  {fmtMoney((swingEval.entry as Record<string, unknown>).profit_target)} · R{' '}
+                  {fmtNum((swingEval.entry as Record<string, unknown>).r_multiple)}
+                  {' · '}
+                  <Link to={`/swing/backtest?symbol=${summary.symbol}&autorun=1`}>Backtest</Link>
+                </p>
+                <SwingEntryRulesTable
+                  rules={((swingEval.entry as Record<string, unknown>).rules as Array<{
+                    id: string;
+                    name: string;
+                    criterion: string;
+                    passed: boolean | null;
+                    detail: string;
+                  }>) ?? []}
+                />
+              </>
+            ) : !swingLoading ? (
+              <p className="muted">Swing evaluation unavailable.</p>
+            ) : null}
           </div>
 
           <div className="card">

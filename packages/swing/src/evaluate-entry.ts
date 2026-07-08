@@ -1,7 +1,7 @@
 import type { OhlcBar, SwingRule, TaMetrics } from './types.js';
-import { atrPct14 } from './ta-helper.js';
+import { atrPct14, priorMacdHistogram } from './ta-helper.js';
 import { fromTa } from './gc9-dc9.js';
-import { analyzeDynamic, MOMENTUM_WEAK } from './dynamic-signals.js';
+import { analyzeDynamic, MOMENTUM_STRONG, MOMENTUM_WEAK, MOMENTUM_TARGET_BOOST } from './dynamic-signals.js';
 import { priceActionMetrics } from './price-action.js';
 import { entry52wBand } from './market-regime.js';
 import { MIN_BUY, MIN_WATCHLIST, scoreEntry, strictFloor } from './entry-scorer.js';
@@ -14,7 +14,13 @@ const DEFAULT_STOP_LOSS_PCT = 5.0;
 const MIN_TARGET_PCT = 6.0;
 const MAX_TARGET_PCT = 24.0;
 const MIN_CHARGE_AWARE_TARGET_PCT = 4.0;
-const MIN_R_MULTIPLE = 3.0;
+export const MIN_R_MULTIPLE = 3.0;
+export const CHOP_NAV_DEPLOY_SCALE = 1.0;
+export const BEAR_NAV_DEPLOY_SCALE = 0.8;
+export const BULL_NAV_DEPLOY_SCALE = 1.8;
+export const BULL_STRONG_MIN_DYNAMIC_SCORE = 50;
+export const DISCOVERY_CHOP_MAX_RET60_PCT = 3.0;
+export const DEFAULT_ENTRY_TIME_STOP_DAYS = 15;
 const MIN_EFFECTIVE_RISK_PCT = 2.75;
 const ATR_STOP_MULTIPLIER = 1.2;
 const SMA50_STOP_BUFFER_PCT = 1.0;
@@ -81,13 +87,31 @@ export function evaluateEntry(
   const pullbackOk = nearSma50 || nearEma21 || rsiPullback;
   rules.push(rule('E2', 'Pullback zone', `RSI ${ENTRY_RSI_PULLBACK_MIN}–${ENTRY_RSI_PULLBACK_MAX} or price within ${ENTRY_SMA50_PROXIMITY_PCT}% of SMA-50 / EMA-21`, pullbackOk, pullbackOk ? (nearEma21 ? 'Price hugging EMA-21 support.' : nearSma50 ? 'Price hugging SMA-50 support.' : 'RSI in pullback band.') : 'Wait for pullback — extended short-term move.'));
 
-  const momentumOk = macdHist !== null && macdHist >= 0;
+  const prevMacdHist =
+    bars?.length && bars.length >= 2
+      ? priorMacdHistogram(bars.map((b) => b.close))
+      : null;
+  const momentumOk =
+    macdHist !== null && (macdHist >= 0 || (prevMacdHist !== null && macdHist > prevMacdHist));
   const momentumStrong = macdHist !== null && macdHist >= 0;
-  rules.push(rule('E3', 'Momentum (MACD)', 'Histogram ≥ 0 or turning up vs prior session', momentumOk, momentumStrong ? 'MACD histogram positive — momentum confirmed.' : momentumOk ? 'MACD turning up — early momentum.' : 'MACD not confirming — wait.'));
+  rules.push(
+    rule(
+      'E3',
+      'Momentum (MACD)',
+      'Histogram ≥ 0 or turning up vs prior session',
+      momentumOk,
+      momentumStrong
+        ? 'MACD histogram positive — momentum confirmed.'
+        : momentumOk
+          ? 'MACD turning up — early momentum.'
+          : 'MACD not confirming — wait.',
+    ),
+  );
 
   const band = regime ? entry52wBand(regime) : { min: ENTRY_MIN_PCT_52W, max: ENTRY_MAX_PCT_52W };
+  const regimeTag = regime?.bear ? ' (Bear)' : regime?.bull ? ' (Bull)' : regime?.sideways ? ' (Sideways)' : '';
   const rangeOk = pct52 !== null && pct52 >= band.min && pct52 <= band.max;
-  rules.push(rule('E4', '52-week band', `${band.min}–${band.max}% of 252-session range`, rangeOk, rangeOk ? 'Mid-range — not chasing 52w high.' : pct52 !== null && pct52 > band.max ? 'Too close to 52w high — chase risk.' : 'Too close to 52w low — trend may be broken.'));
+  rules.push(rule('E4', '52-week band', `${band.min}–${band.max}% of 252-session range${regimeTag}`, rangeOk, rangeOk ? 'Mid-range — not chasing 52w high.' : pct52 !== null && pct52 > band.max ? 'Too close to 52w high — chase risk.' : 'Too close to 52w low — trend may be broken.'));
 
   const extOk = (rsi === null || rsi < ENTRY_RSI_MAX) && (bbPct === null || bbPct < ENTRY_BB_PCT_B_MAX);
   rules.push(rule('E5', 'Not overextended', `RSI < ${ENTRY_RSI_MAX} and BB %B < ${ENTRY_BB_PCT_B_MAX}`, extOk, extOk ? 'No short-term exhaustion signal.' : 'Overbought / upper band — defer entry.'));
@@ -156,6 +180,7 @@ export function evaluateEntry(
     discovery_verdict: verdicts.discovery,
     strict_verdict: verdicts.strict,
     strict_enter_ready: verdicts.strict_enter_ready,
+    strict_floor: strictFloor(regime),
     entry_score: entryScore.total,
     entry_score_detail: entryScore,
     rules_passed: passed,
@@ -163,10 +188,17 @@ export function evaluateEntry(
     rules,
     entry_price: Math.round(price * 100) / 100,
     stop_loss: stop,
+    hard_stop: plan.hard_stop,
+    structural_stop: plan.structural_stop,
+    stop_pct: plan.effective_stop_pct,
+    risk_pct: plan.risk_pct,
     profit_target: target,
     r_multiple: rMultiple,
     r_multiple_ok: rOk,
+    min_r_multiple: MIN_R_MULTIPLE,
     target_pct: targetPct,
+    time_stop_days: DEFAULT_ENTRY_TIME_STOP_DAYS,
+    deploy_scale: navDeployScaleForEntry(regime, dynamic),
     price_action: pa,
     dynamic,
     gc9: gc9State,
@@ -174,6 +206,30 @@ export function evaluateEntry(
     net_edge_ok: netEdgeOk,
     liquidity_strict: liqStrictOk,
   };
+}
+
+export function isDiscoveryChopRegime(regime: Record<string, unknown>): boolean {
+  const weakNifty = Number(regime.return_20d_pct ?? 0) < 0;
+  return Boolean(regime.sideways) || (weakNifty && Number(regime.return_60d_pct ?? 0) < DISCOVERY_CHOP_MAX_RET60_PCT);
+}
+
+export function navDeployScaleForEntry(
+  regime?: Record<string, unknown> | null,
+  dynamic?: Record<string, unknown> | null,
+): number {
+  if (!regime || Object.keys(regime).length === 0) return 1.0;
+  if (isDiscoveryChopRegime(regime)) return CHOP_NAV_DEPLOY_SCALE;
+  if (regime.bear) return BEAR_NAV_DEPLOY_SCALE;
+  const momentum = String(dynamic?.momentum ?? '');
+  const score = Number(dynamic?.momentum_score ?? 0);
+  if (
+    regime.bull &&
+    Number(regime.return_20d_pct ?? 0) > 0 &&
+    (momentum === MOMENTUM_STRONG || score >= BULL_STRONG_MIN_DYNAMIC_SCORE)
+  ) {
+    return BULL_NAV_DEPLOY_SCALE;
+  }
+  return 1.0;
 }
 
 function rule(id: string, name: string, criterion: string, passed: boolean | null, detail: string): SwingRule {
@@ -222,10 +278,37 @@ export function computeTradePlan(entryPrice: number, sma50: number | null, ema21
   const risk = entryPrice - effective;
   const riskPct = Math.round((risk / entryPrice) * 10000) / 100;
   let targetPct = Math.max(riskPct * TARGET_RR_RATIO, MIN_TARGET_PCT, MIN_CHARGE_AWARE_TARGET_PCT);
+  const targetCapped = targetPct > MAX_TARGET_PCT;
   targetPct = Math.min(targetPct, MAX_TARGET_PCT);
-  const target = Math.round(entryPrice * (1 + targetPct / 100) * 100) / 100;
-  const rMultiple = risk > 0 ? Math.round(((target - entryPrice) / risk) * 100) / 100 : null;
-  return { ...base, risk_pct: riskPct, profit_target: target, target_pct: targetPct, r_multiple: rMultiple, r_multiple_ok: rMultiple !== null && rMultiple >= MIN_R_MULTIPLE };
+  let target = Math.round(entryPrice * (1 + targetPct / 100) * 100) / 100;
+  let rMultiple = risk > 0 ? Math.round(((target - entryPrice) / risk) * 100) / 100 : null;
+
+  if (dynamic?.momentum === MOMENTUM_STRONG) {
+    const golden = Boolean(dynamic.golden_cross_active);
+    const surge = Boolean(dynamic.volume_surge);
+    if (golden || surge) {
+      const boostTargetPct = Math.min(MAX_TARGET_PCT, Math.round(targetPct * MOMENTUM_TARGET_BOOST * 100) / 100);
+      if (boostTargetPct > targetPct && risk > 0) {
+        const boostTarget = Math.round(entryPrice * (1 + boostTargetPct / 100) * 100) / 100;
+        const boostR = Math.round(((boostTarget - entryPrice) / risk) * 100) / 100;
+        if (boostR >= MIN_R_MULTIPLE) {
+          targetPct = boostTargetPct;
+          target = boostTarget;
+          rMultiple = boostR;
+        }
+      }
+    }
+  }
+
+  return {
+    ...base,
+    risk_pct: riskPct,
+    profit_target: target,
+    target_pct: targetPct,
+    r_multiple: rMultiple,
+    r_multiple_ok: rMultiple !== null && rMultiple >= MIN_R_MULTIPLE,
+    target_capped: targetCapped,
+  };
 }
 
 function resolveVerdicts(

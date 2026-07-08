@@ -1,6 +1,6 @@
 import type { OhlcBar, TaMetrics } from './types.js';
 
-const CROSS_LOOKBACK = 30;
+const CROSS_LOOKBACK = 60;
 
 export function sma(closes: number[], period: number): number | null {
   if (closes.length < period) return null;
@@ -85,6 +85,18 @@ export function macd(
     signal: Math.round(signal * 1000) / 1000,
     histogram: Math.round((line - signal) * 1000) / 1000,
   };
+}
+
+/** Prior session MACD histogram (for E3 “turning up” gate). */
+export function priorMacdHistogram(
+  closes: number[],
+  fastPeriod = 12,
+  slowPeriod = 26,
+  signalPeriod = 9,
+): number | null {
+  if (closes.length < slowPeriod + signalPeriod + 1) return null;
+  const prev = macd(closes.slice(0, -1), fastPeriod, slowPeriod, signalPeriod);
+  return prev?.histogram ?? null;
 }
 
 export function bollinger(closes: number[], period = 20): { pct_b: number } | null {

@@ -30,10 +30,16 @@ import {
   watchlistUpsertSchema,
   swingPositionCreateSchema,
   swingPositionCloseSchema,
+  swingPositionUpdateSchema,
   niftyIntradayPositionCreateSchema,
   niftyIntradayPositionCloseSchema,
   swingScanSchema,
+  swingAutoScanSchema,
+  swingEvaluateSchema,
+  swingEvaluateExitSchema,
+  swingBacktestSchema,
   strategyRunSchema,
+  intradayBacktestSchema,
   PERMISSIONS,
   initAppConfig,
   type ScreenerRow,
@@ -46,6 +52,7 @@ import { listScreenerPresets } from './services/screener-presets.js';
 import { createStrategyRun, getJob as getStrategyJob, getTradingStrategy, listTradingStrategies } from './services/strategies.js';
 import { exchangeListSummary } from '@sv/data-adapters';
 import { createSwingScanJob } from './services/swing.js';
+import { runSwingBacktestJob } from './services/swing-backtest.js';
 import { verifySymbol } from './services/verify.js';
 import { getVerifyFullPrefill, fetchVerifyFull, runVerifyFull, getVerifyFullDraft, saveVerifyFullDraft } from './services/verify-full.js';
 import { getAdminStats, importIndexCsv, importNseEquityCsv, importPromoterHoldingCsv, getIndexStatus, syncIndicesFromDisk } from './services/admin.js';
@@ -62,7 +69,7 @@ import { fetchDailySyncStatus, runDailySyncJob } from './services/daily-sync.js'
 import { getStockSummary, getStockChart, getStockProfile, refreshStockCaches } from './services/stock-details.js';
 import { getMorningBriefing, notifyMorningAlertsIfNeeded } from './services/morning.js';
 import { getTradingPresetById, listTradingPresets } from './services/trading-presets.js';
-import { evaluateSwingSymbol } from '@sv/data-adapters';
+import { evaluateSwingSymbol, evaluateSwingExit } from '@sv/data-adapters';
 import {
   listWatchlist,
   upsertWatchlistItem,
@@ -71,12 +78,24 @@ import {
 import { listVerificationHistory, getVerificationRun } from './services/verification-history.js';
 import {
   listSwingPositions,
+  listSwingPositionsLive,
+  exportSwingPositionsCsv,
   createSwingPosition,
   closeSwingPosition,
   reopenSwingPosition,
+  updateSwingPosition,
+  deleteSwingPosition,
 } from './services/swing-positions.js';
-import { getSwingAutoState, getSwingAutoPositions, getSwingAutoProfile, validateSwingAddPosition, refreshOpenPositions, startSwingAutoScan } from './services/swing-auto.js';
-import { getNiftyIntradayState, getIntradayInstruments } from './services/intraday.js';
+import { getSwingChart } from './services/swing-chart.js';
+import {
+  getSwingAutoState,
+  getSwingAutoPositions,
+  getSwingAutoProfile,
+  validateSwingAddPosition,
+  startSwingAutoScan,
+} from './services/swing-auto.js';
+import { getNiftyIntradayState, getIntradayInstruments, getIntradayChart } from './services/intraday.js';
+import { runIntradayBacktestJob } from './services/intraday-backtest.js';
 import {
   listIntradayPositions,
   createIntradayPosition,
@@ -445,12 +464,50 @@ export async function buildApp() {
 
   app.post('/api/v1/swing/evaluate', { preHandler: [authPreHandler] }, async (request, reply) => {
     requirePermission(request, PERMISSIONS.VIEW);
-    const body = request.body as { symbol?: string; refresh?: boolean };
-    const symbol = String(body.symbol ?? '').trim();
-    if (!symbol) return reply.status(400).send({ error: 'symbol required' });
-    const result = await evaluateSwingSymbol(symbol, Boolean(body.refresh));
+    const parsed = swingEvaluateSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    const { symbol, refresh, ...filters } = parsed.data;
+    const result = await evaluateSwingSymbol(symbol, Boolean(refresh), filters);
     if (!result.ok) return reply.status(404).send(result);
     return result;
+  });
+
+  app.post('/api/v1/swing/evaluate-exit', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const parsed = swingEvaluateExitSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    const { symbol, entry_price, entry_date, profit_target, target_pct, refresh } = parsed.data;
+    const result = await evaluateSwingExit(symbol, entry_price, entry_date, Boolean(refresh), {
+      profit_target,
+      target_pct,
+    });
+    if (!result.ok) return reply.status(404).send(result);
+    return result;
+  });
+
+  app.get('/api/v1/swing/chart/:symbol', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const { symbol } = request.params as { symbol: string };
+    const query = request.query as { tf?: string; refresh?: string };
+    const normalized = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
+    if (!normalized || normalized.length > 20) {
+      return reply.status(400).send({ ok: false, error: 'Invalid symbol' });
+    }
+    const refresh = query.refresh === '1' || query.refresh === 'true';
+    const result = await getSwingChart(normalized, query.tf ?? '2y', refresh);
+    if (!result.ok) return reply.status(404).send(result);
+    return result;
+  });
+
+  app.post('/api/v1/swing/backtest', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.RUN_SCREENER);
+    const parsed = swingBacktestSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    try {
+      return await runSwingBacktestJob(parsed.data);
+    } catch (err) {
+      return reply.status(400).send({ error: err instanceof Error ? err.message : 'Backtest failed' });
+    }
   });
 
   app.get('/api/v1/watchlist', { preHandler: [authPreHandler] }, async (request) => {
@@ -581,12 +638,27 @@ export async function buildApp() {
     return listSwingPositions(user.sub !== 'system' ? user.sub : undefined, status, { live });
   });
 
+  app.get('/api/v1/swing/positions/live', { preHandler: [authPreHandler] }, async (request) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    return listSwingPositionsLive(user.sub !== 'system' ? user.sub : undefined);
+  });
+
+  app.get('/api/v1/swing/positions/export', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const csv = await exportSwingPositionsCsv(user.sub !== 'system' ? user.sub : undefined);
+    return reply
+      .header('Content-Type', 'text/csv; charset=utf-8')
+      .header('Content-Disposition', 'attachment; filename="swing-positions.csv"')
+      .send(csv);
+  });
+
   app.get('/api/v1/swing/auto/state', { preHandler: [authPreHandler] }, async (request) => {
     const user = requirePermission(request, PERMISSIONS.VIEW);
-    const query = request.query as { live?: string; positions?: string };
+    const query = request.query as { live?: string; positions?: string; include_carried?: string };
     const live = query.live === '1' || query.live === 'true';
     const positions = query.positions !== '0' && query.positions !== 'false';
-    return getSwingAutoState(user.sub, { live, positions });
+    const include_carried = query.include_carried === '1' || query.include_carried === 'true';
+    return getSwingAutoState(user.sub, { live, positions, include_carried });
   });
 
   app.get('/api/v1/swing/auto/positions', { preHandler: [authPreHandler] }, async (request) => {
@@ -601,13 +673,17 @@ export async function buildApp() {
   app.post('/api/v1/swing/auto/check-add', { preHandler: [authPreHandler] }, async (request) => {
     const user = requirePermission(request, PERMISSIONS.VIEW);
     const body = (request.body ?? {}) as Record<string, unknown>;
-    const regime = (body.regime as Record<string, unknown> | undefined) ?? null;
-    return validateSwingAddPosition(user.sub, body, regime);
+    return validateSwingAddPosition(user.sub, body);
   });
 
   app.post('/api/v1/swing/auto/scan', { preHandler: [authPreHandler] }, async (request, reply) => {
     const user = requirePermission(request, PERMISSIONS.VIEW);
-    const result = await startSwingAutoScan(user.sub);
+    const parsed = swingAutoScanSchema.safeParse(request.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    const result = await startSwingAutoScan(user.sub, {
+      force: parsed.data.force ?? true,
+      full: parsed.data.full ?? true,
+    });
     if (!result.ok) return reply.status(409).send(result);
     return result;
   });
@@ -622,6 +698,28 @@ export async function buildApp() {
     const refresh = query.refresh === '1';
     const instrument = query.instrument ?? query.index ?? 'nifty50';
     return getNiftyIntradayState(interval, refresh, instrument);
+  });
+
+  app.get('/api/v1/intraday/chart/:instrument', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const { instrument } = request.params as { instrument: string };
+    const query = request.query as { interval?: string; refresh?: string };
+    const interval = query.interval === '5m' ? '5m' : '15m';
+    const refresh = query.refresh === '1' || query.refresh === 'true';
+    const result = await getIntradayChart(instrument, interval, refresh);
+    if (!result.ok) return reply.status(404).send(result);
+    return result;
+  });
+
+  app.post('/api/v1/intraday/backtests', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.RUN_SCREENER);
+    const parsed = intradayBacktestSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    try {
+      return await runIntradayBacktestJob(parsed.data);
+    } catch (err) {
+      return reply.status(400).send({ error: err instanceof Error ? err.message : 'Backtest failed' });
+    }
   });
 
   app.get('/api/v1/intraday/positions', { preHandler: [authPreHandler] }, async (request) => {
@@ -689,6 +787,24 @@ export async function buildApp() {
     if ('error' in result && result.error === 'undo_expired') {
       return reply.status(410).send({ error: 'Undo window expired (5 minutes)' });
     }
+    return result;
+  });
+
+  app.patch('/api/v1/swing/positions/:id', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const { id } = request.params as { id: string };
+    const parsed = swingPositionUpdateSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    const result = await updateSwingPosition(user.sub, id, parsed.data);
+    if (!result) return reply.status(404).send({ error: 'Open position not found' });
+    return result;
+  });
+
+  app.delete('/api/v1/swing/positions/:id', { preHandler: [authPreHandler] }, async (request, reply) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const { id } = request.params as { id: string };
+    const result = await deleteSwingPosition(user.sub, id);
+    if (!result) return reply.status(404).send({ error: 'Position not found' });
     return result;
   });
 

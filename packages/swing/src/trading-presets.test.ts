@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
   conservativeSwingScanHref,
+  enrichTradingPreset,
   etfRotationScanHref,
   getTradingPreset,
+  intradaySessionFilterId,
   intradayRadarHref,
   isValidTradingPresetId,
   normalizeTradingPresetId,
   PRESET_CONSERVATIVE_SWING,
   PRESET_ETF_ROTATION,
+  PRESET_GUIDE_TIPS,
   SWING_TIER_A_UNIVERSE_ID,
   tradingPresetIds,
+  tradingPresetReadiness,
 } from './trading-presets.js';
 
 describe('tradingPresetIds', () => {
@@ -66,5 +70,41 @@ describe('isValidTradingPresetId', () => {
   it('accepts normalized aliases', () => {
     expect(isValidTradingPresetId('scalp')).toBe(true);
     expect(isValidTradingPresetId('unknown')).toBe(false);
+  });
+});
+
+describe('tradingPresetReadiness', () => {
+  it('marks all three system presets ready', () => {
+    for (const id of tradingPresetIds()) {
+      const preset = getTradingPreset(id);
+      expect(preset).not.toBeNull();
+      expect(tradingPresetReadiness(preset!).ready).toBe(true);
+    }
+  });
+
+  it('enriches preset with ready flag', () => {
+    const preset = getTradingPreset(PRESET_CONSERVATIVE_SWING);
+    expect(enrichTradingPreset(preset!).ready).toBe(true);
+  });
+});
+
+describe('conservative swing links', () => {
+  it('includes strict ENTER tier on Swing Auto link', () => {
+    const preset = getTradingPreset(PRESET_CONSERVATIVE_SWING);
+    const autoLink = preset?.links.find((l) => l.label.includes('Swing Auto'));
+    expect(autoLink?.href).toContain('tier=strict_enter');
+  });
+});
+
+describe('intradaySessionFilterId', () => {
+  it('maps 5m to trend scalp and 15m to CFA precision', () => {
+    expect(intradaySessionFilterId('5m')).toBe('trend_scalp_5m');
+    expect(intradaySessionFilterId('15m')).toBe('cfa_precision');
+  });
+});
+
+describe('PRESET_GUIDE_TIPS', () => {
+  it('ships accuracy tips for hub banner', () => {
+    expect(PRESET_GUIDE_TIPS.length).toBeGreaterThanOrEqual(3);
   });
 });

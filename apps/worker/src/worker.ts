@@ -36,6 +36,9 @@ async function processSwingScanJob(data: {
     zone_52w?: string;
     gc9_only?: boolean;
     breakout_volume?: boolean;
+    min_rules_passed?: number;
+    require_rules?: string[];
+    sort_by?: string;
     refresh?: boolean;
     auto_radar?: boolean;
     scan_mode?: string;
@@ -69,6 +72,9 @@ async function processSwingScanJob(data: {
           zone_52w: input.zone_52w,
           gc9_only: input.gc9_only,
           breakout_volume: input.breakout_volume,
+          min_rules_passed: input.min_rules_passed,
+          require_rules: input.require_rules,
+          sort_by: input.sort_by,
           regime: input.regime,
         },
         input.refresh,

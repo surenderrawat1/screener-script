@@ -18,6 +18,8 @@ export interface ScreenerRow {
   ta_rsi14?: number | null;
   ta_pct_52w?: number | null;
   ta_bottom_out_hint?: boolean | null;
+  ta_above_sma50?: boolean | null;
+  ta_macd_hist?: number | null;
 }
 
 const PITCH_COLUMNS = [

@@ -2,13 +2,13 @@ import type { OhlcBar, SwingRule, TaMetrics } from './types.js';
 import { atrPct14 } from './ta-helper.js';
 import { analyzeDynamic } from './dynamic-signals.js';
 import { priceActionMetrics } from './price-action.js';
-import { computeTradePlan } from './evaluate-entry.js';
+import { computeTradePlan, MIN_R_MULTIPLE } from './evaluate-entry.js';
 
 export const DEFAULT_TIME_STOP_DAYS = 15;
 export const SIDEWAYS_TIME_STOP_DAYS = 15;
 export const DEFAULT_TRAIL_FROM_HIGH_PCT = 2.5;
 export const TRAIL_FROM_HIGH_BEAR_PCT = 1.8;
-export const TRAIL_FROM_HIGH_HIGH_VOL_PCT = 3.0;
+export const TRAIL_FROM_HIGH_HIGH_VOL_PCT = 3.2;
 export const DEFAULT_TRAIL_ARM_PCT = 2.0;
 export const BREAKEVEN_ARM_PCT = 2.0;
 export const BREAKEVEN_BUFFER_PCT = 0.35;
@@ -21,20 +21,30 @@ export const EXIT_MACD_MIN_GAIN_PCT = 4.0;
 export const EXIT_PA_MIN_GAIN_PCT = 5.0;
 export const MIN_TARGET_PCT = 6.0;
 export const MAX_TARGET_PCT = 24.0;
-export const MIN_R_MULTIPLE = 3.0;
+
+export const DEFAULT_STOP_LOSS_PCT = 5.0;
 
 export function exitRuleDefinitions(): string[] {
   return [
     'X1 Stop-loss — dynamic EMA/ATR hard + breakeven trail',
     `X2 Profit target — logical 3R from dynamic stop (+${MIN_TARGET_PCT}–${MAX_TARGET_PCT}% band)`,
     'X3 Trend break — SMA-50 (bear) or EMA-21 + weak momentum',
-    `X4 RSI overbought — RSI > ${EXIT_RSI_OVERBOUGHT} with gain ≥ 40% of target`,
+    `X4 RSI overbought — RSI > ${EXIT_RSI_OVERBOUGHT} with gain ≥ ${Math.round(EXIT_PARTIAL_TARGET_FRACTION * 100)}% of target`,
     `X5 MACD — active when momentum weak + gain ≥ ${EXIT_MACD_MIN_GAIN_PCT}%`,
     'X6 Trailing stop — high % trail or EMA-9 after 50% of target',
     `X7 Time stop — active in sideways (${SIDEWAYS_TIME_STOP_DAYS} sessions); advisory otherwise`,
     `X8 Price action — LH/LL or bearish engulfing with gain ≥ ${EXIT_PA_MIN_GAIN_PCT}%`,
     'X9 Hourly EMA bearish — EMA-9 < EMA-21 with partial gain',
   ];
+}
+
+export function exitRuleSummary(): string {
+  const partialPct = Math.round(EXIT_PARTIAL_TARGET_FRACTION * 100);
+  return (
+    `Exit when any active rule triggers: −${DEFAULT_STOP_LOSS_PCT}% hard stop (breakeven lifts after 50% of target) · ` +
+    `target = ${MIN_R_MULTIPLE}R frozen at entry (min +${MIN_TARGET_PCT}%) · RSI partial exit only after ${partialPct}% of target · ` +
+    'PA X8 · trail. X3/X5/X7 advisory.'
+  );
 }
 
 export function trailFromHighPct(regime?: Record<string, unknown> | null): number {
@@ -158,8 +168,8 @@ export function evaluateExit(
   let atrPct = num(ta.ta_atr_pct);
   if (atrPct === null && bars?.length) atrPct = atrPct14(bars);
 
-  const plan = computeTradePlan(entryPrice, sma50, ema21, atrPct);
   const dynamic = analyzeDynamic(ta, price, bars, hourlyBars);
+  const plan = computeTradePlan(entryPrice, sma50, ema21, atrPct, dynamic);
   const entryStop = Number(plan.effective_stop ?? plan.hard_stop ?? Math.round(entryPrice * 0.95 * 100) / 100);
   const trailStructural = num(dynamic.dynamic_stop);
   const hardStop = entryStop;

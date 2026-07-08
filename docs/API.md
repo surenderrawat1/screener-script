@@ -359,13 +359,46 @@ Runs E1–E11 entry rules + GC9/DC9 bias. Background when ≥ 25 symbols.
 
 ### `POST /api/v1/swing/evaluate`
 
-Permission: `run_screener`
+Permission: `view_app`
 
 ```json
-{ "symbol": "TCS", "refresh": false }
+{
+  "symbol": "TCS",
+  "refresh": false,
+  "min_verdict": "SETUP_PLUS",
+  "zone_52w": "any",
+  "gc9_only": false,
+  "breakout_volume": false,
+  "min_rules_passed": 6,
+  "require_rules": ["E1", "E7"]
+}
 ```
 
-Single-symbol entry evaluation.
+Single-symbol entry evaluation. Response includes:
+
+- `entry` — full E1–E11 result, trade plan (`stop_loss`, `hard_stop`, `profit_target`, `r_multiple`, `deploy_scale`, …)
+- `ta` — 2Y daily technical metrics
+- `regime` — NIFTYBEES proxy regime
+- `as_of_date` — last daily bar date (EOD)
+- `engine_meta` — thresholds, score caps, exit rule reference text
+- `scan_eligibility` — whether active filters would include symbol in universe scan
+
+### `POST /api/v1/swing/evaluate-exit`
+
+Permission: `view_app`
+
+```json
+{
+  "symbol": "TCS",
+  "entry_price": 3500,
+  "entry_date": "2026-07-01",
+  "profit_target": 3800,
+  "target_pct": 8.5,
+  "refresh": false
+}
+```
+
+Scores exit rules X1–X9 for a hypothetical or open entry against the current chart. Returns `exit.verdict` (`HOLD` | `EXIT`), triggered rule ids, and per-rule status.
 
 ---
 

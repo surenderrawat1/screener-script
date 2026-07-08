@@ -1,3 +1,4 @@
+import { riskFlagForGrade, scoreDelta } from './auto-backtest-truth.js';
 import { VOLUME_SURGE_MIN } from './dynamic-signals.js';
 import { strictFloor } from './entry-scorer.js';
 import { MIN_LIQUIDITY_CR } from './ranker.js';
@@ -23,16 +24,18 @@ const CUT_LOSS_PCT = -4.0;
 const TRIM_GAIN_PCT = 8.0;
 
 export function enrichHit(hit: Record<string, unknown>, regime?: Record<string, unknown> | null): Record<string, unknown> {
-  const flags = riskFlags(hit, regime);
-  const score = decisionScore(hit, regime, flags);
-  const action = entryAction(hit, score, flags, regime);
+  const normalized =
+    hit.incremental_stale && !hit.stale ? { ...hit, stale: true, incremental_stale: true } : hit;
+  const flags = riskFlags(normalized, regime);
+  const score = decisionScore(normalized, regime, flags);
+  const action = entryAction(normalized, score, flags, regime);
   return {
-    ...hit,
+    ...normalized,
     decision_score: score,
     decision_action: action,
     decision_label: actionLabel(action),
     risk_flags: flags,
-    high_conviction: isHighConviction(hit, score, action, flags),
+    high_conviction: isHighConviction(normalized, score, action, flags),
   };
 }
 
@@ -143,6 +146,12 @@ export function riskFlags(hit: Record<string, unknown>, regime?: Record<string, 
 
   if (regime?.high_vol && !hit.volume_surge) flags.push('HIGH_VOL_NO_SURGE');
 
+  const truth = hit.backtest_truth as Record<string, unknown> | undefined;
+  if (truth) {
+    const btFlag = riskFlagForGrade(String(truth.grade ?? ''));
+    if (btFlag) flags.push(btFlag);
+  }
+
   return flags;
 }
 
@@ -170,6 +179,11 @@ export function decisionScore(hit: Record<string, unknown>, regime: Record<strin
   const zone = String(hit.ta_52w_chart_zone ?? '');
   if (regime?.bear && zone === 'green') score += 5;
   else if (regime?.bull && zone === 'red' && hit.broke_swing_high) score += 4;
+
+  const truth = hit.backtest_truth as Record<string, unknown> | undefined;
+  if (truth) {
+    score += Number(truth.score_delta ?? scoreDelta(String(truth.grade ?? '')));
+  }
 
   const penalties: Record<string, number> = {
     STALE_DATA: 18,
@@ -202,6 +216,13 @@ export function entryAction(
     return score >= 58 ? ACTION_WATCH : ACTION_SKIP;
   }
 
+  const truth = hit.backtest_truth as Record<string, unknown> | undefined;
+  if (truth) {
+    const grade = String(truth.grade ?? '').toUpperCase();
+    if (grade === 'FAIL' && score < 72) return ACTION_WATCH;
+    if (grade === 'WEAK' && score < 62) return ACTION_SKIP;
+  }
+
   const strict = String(hit.strict_verdict ?? '') === 'ENTER';
   const rOk = hit.r_multiple_ok === true;
 
@@ -221,6 +242,9 @@ export function isHighConviction(
   if (action !== ACTION_BUY || score < 72) return false;
   if (String(hit.strict_verdict ?? '') !== 'ENTER') return false;
   if (flags.includes('STALE_DATA') || flags.includes('LOW_R')) return false;
+  if (flags.includes('BACKTEST_FAIL')) return false;
+  if (flags.includes('BACKTEST_WEAK') && score < 78) return false;
+
   return hit.r_multiple_ok === true;
 }
 
@@ -229,7 +253,6 @@ export function evaluatePositionAction(
   hitMatch?: Record<string, unknown> | null,
   regime?: Record<string, unknown> | null,
 ) {
-  void regime;
   const reasons: string[] = [];
   const exitV = String(row.exit_verdict ?? 'HOLD');
   const gain = num(row.gain_pct);
@@ -272,7 +295,7 @@ export function evaluatePositionAction(
     return positionResult(POS_TIGHTEN, reasons, entry, price, activeStop);
   }
 
-  if (gain !== null && gain >= TRIM_GAIN_PCT && row.chop_regime) {
+  if (gain !== null && gain >= TRIM_GAIN_PCT && (row.chop_regime || regime?.sideways || regime?.chop)) {
     reasons.push('Chop regime — lock partial gains');
     return positionResult(POS_TRIM, reasons, entry, price, activeStop);
   }

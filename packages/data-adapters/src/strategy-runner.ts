@@ -5,6 +5,7 @@ import {
   STRATEGY_ENGINE_SCREENER,
   STRATEGY_ENGINE_SWING,
   type StrategyDefinition,
+  type SwingScanOptions,
 } from '@sv/swing';
 import { resolveUniverseSymbols } from './universe.js';
 import { runLiveScreener } from './screener-run.js';
@@ -78,7 +79,7 @@ export async function runStrategy(input: StrategyRunInput): Promise<StrategyRunR
         min_verdict: def.min_verdict,
         zone_52w: def.zone_52w,
         breakout_volume: def.breakout_volume,
-        sort_by: def.sort_by,
+        sort_by: def.sort_by as SwingScanOptions['sort_by'],
       },
       refresh,
     );
@@ -126,7 +127,7 @@ export async function runStrategy(input: StrategyRunInput): Promise<StrategyRunR
       passerSymbols,
       {
         min_verdict: def.min_verdict,
-        sort_by: def.sort_by,
+        sort_by: def.sort_by as SwingScanOptions['sort_by'],
       },
       refresh,
     );

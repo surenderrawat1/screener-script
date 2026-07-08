@@ -418,6 +418,13 @@ export default function StrategiesPage() {
                       <th>P/E</th>
                       <th>ROE</th>
                       <th>MOS</th>
+                      {result.rows.some((r) => r.ta_ready) ? (
+                        <>
+                          <th>RSI</th>
+                          <th>52w%</th>
+                          <th>Bottom</th>
+                        </>
+                      ) : null}
                       <th>Score</th>
                       <th>Zone</th>
                       <th></th>
@@ -434,6 +441,13 @@ export default function StrategiesPage() {
                         <td>{r.pe}</td>
                         <td>{r.roe}%</td>
                         <td>{r.mos != null ? `${r.mos}%` : '—'}</td>
+                        {result.rows.some((row) => row.ta_ready) ? (
+                          <>
+                            <td>{r.ta_ready && r.ta_rsi14 != null ? r.ta_rsi14.toFixed(1) : '—'}</td>
+                            <td>{r.ta_ready && r.ta_pct_52w != null ? `${r.ta_pct_52w}%` : '—'}</td>
+                            <td>{r.ta_bottom_out_hint ? '✓' : '—'}</td>
+                          </>
+                        ) : null}
                         <td>{r.composite_score}</td>
                         <td>
                           <span className={zoneClass(r.zone)}>{r.zone}</span>

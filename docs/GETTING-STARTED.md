@@ -64,7 +64,7 @@ Expected `sync:indices` output:
 
 ```
 ✓ nifty50: 50 symbols
-✓ nifty500: 750 symbols
+✓ nifty500: ~500 symbols (from MW-NIFTY-500-*.csv or ind_nifty500list.csv — **not** Total Market)
 ✗ nifty100: No CSV found   (upload CSV via Admin when available)
 ```
 

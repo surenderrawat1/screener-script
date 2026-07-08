@@ -29,3 +29,5 @@ export * from './promoter-holding.js';
 export * from './screener-annual.js';
 export * from './stock-metrics-enrich.js';
 export * from './screener-financials.js';
+export * from './auto-backtest-truth.js';
+export * from './live-quote.js';

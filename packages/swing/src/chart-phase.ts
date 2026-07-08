@@ -52,11 +52,11 @@ function findRecentMaCross(
   slowLabel: string,
 ): MaCrossover | null {
   if (!fastSeries.length || !slowSeries.length) return null;
-  const slowByTime = new Map(slowSeries.map((p) => [p.time, p.value]));
+  const slowByTime = new Map(slowSeries.map((p) => [String(p.time), p.value]));
   const aligned: { time: string; fast: number; slow: number }[] = [];
   for (const point of fastSeries) {
-    const slow = slowByTime.get(point.time);
-    if (slow !== undefined) aligned.push({ time: point.time, fast: point.value, slow });
+    const slow = slowByTime.get(String(point.time));
+    if (slow !== undefined) aligned.push({ time: String(point.time), fast: point.value, slow });
   }
   if (aligned.length < 2) return null;
   const slice = aligned.slice(-Math.max(2, lookback));

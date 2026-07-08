@@ -1,0 +1,2366 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Swing Positions — Track &amp; Exit Rules</title><link rel="stylesheet" href="assets/style.css"><style>
+    .swp-summary { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.75rem; }
+    .swp-summary span { background:var(--surface2); border:1px solid var(--border); border-radius:999px; padding:0.25rem 0.6rem; font-size:0.75rem; }
+    .swp-exit-count { border-color:rgba(239,68,68,0.45); color:#fca5a5; }
+    .swp-form { display:grid; gap:0.55rem; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); align-items:end; margin-bottom:1rem; }
+    .swp-table { width:100%; border-collapse:collapse; font-size:0.75rem; margin-top:0.5rem; }
+    .swp-table th, .swp-table td { padding:0.4rem 0.45rem; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+    .swp-table th { font-size:0.62rem; text-transform:uppercase; color:var(--muted); }
+    .swp-verdict { display:inline-block; padding:0.15rem 0.5rem; border-radius:999px; font-size:0.68rem; font-weight:700; }
+    .swp-exit { background:#7f1d1d; color:#fecaca; }
+    .swp-hold { background:#1e3a5f; color:#bfdbfe; }
+    .swp-muted { background:var(--surface3); color:var(--muted); }
+    .swp-pos { color:var(--success); font-weight:600; }
+    .swp-neg { color:var(--danger); font-weight:600; }
+    .swp-actions { display:flex; gap:0.35rem; flex-wrap:wrap; align-items:center; }
+    .swp-actions form { display:inline-flex; gap:0.25rem; flex-wrap:wrap; align-items:center; }
+    .swp-actions input[type=number] { width:5.5rem; padding:0.2rem 0.35rem; font-size:0.72rem; }
+    .swp-actions input[type=text] { width:6rem; padding:0.2rem 0.35rem; font-size:0.72rem; }
+    .swp-inline-close { font-size:0.72rem; }
+    .swp-triggers { font-size:0.68rem; color:var(--warning); }
+    details.swp-closed { margin-top:1rem; }
+    details.swp-edit { margin-top:0.35rem; }
+    details.swp-edit summary { cursor:pointer; font-size:0.65rem; color:var(--accent); }
+    .swp-edit-form { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:0.35rem; margin-top:0.4rem; padding:0.45rem; background:var(--surface2); border-radius:6px; min-width:14rem; }
+    .swp-edit-form input { font-size:0.68rem; padding:0.2rem 0.35rem; }
+    .swp-edit-form .field-name { font-size:0.6rem; }
+    .swp-fetch-price { font-size:0.62rem; padding:0.15rem 0.4rem; margin-top:0.2rem; }
+    .swp-live-tag { font-size:0.58rem; color:var(--success); text-transform:uppercase; letter-spacing:0.03em; }
+    .swp-src { display:inline-block; margin-top:0.2rem; padding:0.1rem 0.4rem; border-radius:999px; font-size:0.58rem; font-weight:600; letter-spacing:0.02em; border:1px solid var(--border); background:var(--surface2); color:var(--muted); }
+    .swp-src-swing_auto { border-color:rgba(167,139,250,0.45); color:#c4b5fd; }
+    .swp-src-swing_etf { border-color:rgba(52,211,153,0.45); color:#6ee7b7; }
+    .swp-src-swing_universe, .swp-src-swing_symbol { border-color:rgba(96,165,250,0.45); color:#93c5fd; }
+    .swp-src-manual { border-color:rgba(251,191,36,0.4); color:#fcd34d; }
+    .swp-journal { display:flex; gap:0.45rem; flex-wrap:wrap; margin:0.5rem 0 0.65rem; font-size:0.72rem; }
+    .swp-journal span { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:0.35rem 0.55rem; }
+    .swp-journal-head { display:flex; align-items:center; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; margin-top:0.75rem; }
+        .pf-badge { display:inline-block; font-size:0.58rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; border-radius:999px; padding:0.08rem 0.38rem; border:1px solid var(--border); }
+    .pf-live { border-color:rgba(34,197,94,0.45); color:#86efac; background:rgba(34,197,94,0.08); }
+    .pf-close { border-color:rgba(148,163,184,0.35); color:#cbd5e1; background:rgba(148,163,184,0.08); }
+    .pf-last_bar { border-color:rgba(251,191,36,0.4); color:#fcd34d; background:rgba(251,191,36,0.08); }
+    .pf-stale { border-color:rgba(239,68,68,0.45); color:#fca5a5; background:rgba(239,68,68,0.1); }
+    .pf-detail { color:var(--muted); font-size:0.62rem; line-height:1.35; }
+    .pf-session { display:flex; gap:0.45rem; flex-wrap:wrap; align-items:center; margin:0 0 0.65rem; padding:0.45rem 0.6rem; border-radius:8px; font-size:0.72rem; border:1px solid var(--border); background:var(--surface2); }
+    .pf-session-open { border-color:rgba(34,197,94,0.35); }
+    .pf-session-pre, .pf-session-post, .pf-session-weekend { border-color:rgba(251,191,36,0.35); }
+    .pf-session-label strong { color:var(--text); }
+    .pf-session-time { color:var(--muted); }
+    .pf-session-eod strong { color:var(--text); }
+    .pf-session-msg { color:var(--muted); flex:1 1 12rem; min-width:10rem; }
+    .swp-entry-price-wrap { display:flex; flex-direction:column; gap:0.2rem; }
+    .swp-pnl-detail { margin-top:0.25rem; }
+    .swp-pnl-detail summary { cursor:pointer; font-size:0.68rem; list-style:none; }
+    .swp-pnl-detail summary::-webkit-details-marker { display:none; }
+    .swp-pnl-breakdown { margin-top:0.35rem; padding:0.4rem; background:var(--surface2); border-radius:6px; min-width:11rem; font-size:0.62rem; }
+    .swp-pnl-row { display:flex; justify-content:space-between; gap:0.5rem; padding:0.12rem 0; border-bottom:1px solid var(--border); }
+    .swp-pnl-row:last-child { border-bottom:none; }
+    .swp-pnl-section { font-size:0.58rem; text-transform:uppercase; color:var(--muted); margin:0.35rem 0 0.15rem; letter-spacing:0.04em; }
+    .swp-charge-row span:first-child { color:var(--muted); }
+    .swp-pnl-note { margin:0.35rem 0 0; font-size:0.58rem; color:var(--muted); line-height:1.35; }
+    .swp-portfolio-pnl { display:flex; gap:0.5rem; flex-wrap:wrap; margin:0.5rem 0 0.75rem; font-size:0.72rem; }
+    .swp-portfolio-pnl span { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:0.35rem 0.55rem; }
+    .swp-live-bar { display:flex; gap:0.45rem; flex-wrap:wrap; align-items:center; margin-bottom:0.55rem; font-size:0.72rem; }
+    .swp-pill { background:var(--surface2); border:1px solid var(--border); border-radius:999px; padding:0.22rem 0.55rem; }
+    .swp-pill.swp-live { border-color:rgba(34,197,94,0.45); color:#86efac; }
+    .swp-pill.swp-error { border-color:rgba(239,68,68,0.45); color:#fca5a5; }
+    .swp-pos-alert { padding:0.65rem 0.85rem; border-radius:8px; margin-bottom:0.55rem; border-left:4px solid #ef4444; background:rgba(239,68,68,0.1); color:#fecaca; font-size:0.78rem; }
+    .swp-flash { animation:swpPriceFlash 0.65s ease; }
+    @keyframes swpPriceFlash { 0%,100% { background:transparent; } 35% { background:rgba(59,130,246,0.18); } }
+</style></head><body><div class="container"><nav class="app-nav"><div class="app-nav-group"><span class="app-nav-group-label">Start</span><a href="help.php" class="app-nav-help">How to Use</a></div><div class="app-nav-group"><span class="app-nav-group-label">Research</span><a href="verify.php">CFA Verify</a><a href="index.php">Full Verify</a><a href="stock-details.php">Stock Details</a><a href="screener.php">Screener</a><a href="fundamental-auto-screener.php">LTG Auto</a><a href="watchlist.php">Watchlist</a></div><div class="app-nav-group"><span class="app-nav-group-label">Trading</span><a href="morning-dashboard.php">Morning</a><a href="trading-presets.php">Trading Presets</a><a href="strategies.php">Strategies</a><a href="swing-trading.php">Swing Trading</a><a href="swing-auto-screener.php">Swing Auto</a><a href="swing-positions.php" class="active">Swing Positions</a><a href="intraday-app.php">Intraday App</a><a href="nifty-15m.php">Nifty 5/15m</a><a href="nifty-positions.php">Nifty Positions</a></div><div class="app-nav-group"><span class="app-nav-group-label">System</span><a href="cache.php">Cache</a><a href="users.php">Users</a></div><span class="app-nav-meta"><a href="/swing-positions.php?lang=hi" class="lang-switch">हिंदी</a> · <span title="admin">surenderrawat</span> · <a href="logout.php">Logout</a> · 1481 cached · <code>file</code></span></nav><header><h1>Swing Positions</h1><p>Track open swings · live price · exit rules X1–X8 (PA-aware)</p></header><div class="disclaimer"><strong>Educational tracker only.</strong> Now price uses Yahoo live quote; exit rules use daily TA from <a href="swing-trading.php">Swing Trading rules</a> (strict ENTER for backtest; SETUP+ for universe scan). Active exits: stop, target, RSI, trail, price-action (X8). Confirm on NSE before orders.</div>
+        <div class="pf-session pf-session-open" id="pf-session-banner" title="NSE cash session open — intraday quotes refresh during market hours.">
+            <span class="pf-session-label">NSE <strong>Open</strong></span>
+            <span class="pf-session-time">11:30 IST</span>
+                            <span class="pf-session-eod">Last EOD <strong>2026-07-07</strong></span>
+                        <span class="pf-session-msg">NSE cash session open — intraday quotes refresh during market hours.</span>
+        </div>
+        
+<section class="card">
+        
+    <h2 style="font-size:0.9rem;margin:0 0 0.5rem;">Add position</h2>
+    <form method="post" class="swp-form">
+        <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">        <input type="hidden" name="action" value="add">
+        <label>
+            <span class="field-name">Symbol</span>
+            <input type="text" name="symbol" value="" placeholder="TCS" required autocomplete="off">
+        </label>
+        <label>
+            <span class="field-name">Entry price (₹)</span>
+            <div class="swp-entry-price-wrap">
+                <input type="number" name="entry_price" step="0.05" min="0.01" value="" required>
+                <button type="button" class="btn btn-ghost swp-fetch-price" data-symbol-input="symbol">Fetch now</button>
+            </div>
+        </label>
+        <label>
+            <span class="field-name">Entry date</span>
+            <input type="date" name="entry_date" value="2026-07-07" required>
+        </label>
+        <label>
+            <span class="field-name">Shares (for P&amp;L)</span>
+            <input type="number" name="shares" step="1" min="0" placeholder="Qty">
+        </label>
+        <label>
+            <span class="field-name">Stop (₹)</span>
+            <input type="number" name="stop_loss" step="0.05" min="0" value="" placeholder="Auto">
+        </label>
+        <label>
+            <span class="field-name">Target (₹)</span>
+            <input type="number" name="profit_target" step="0.05" min="0" value="" placeholder="Auto">
+        </label>
+        <label style="grid-column:1/-1;">
+            <span class="field-name">Notes</span>
+            <input type="text" name="notes" placeholder="Thesis / setup tag">
+        </label>
+        <div>
+            <button type="submit" class="btn" style="width:auto;">Add open position</button>
+        </div>
+    </form>
+    <p style="font-size:0.72rem;color:var(--muted);margin:0;">
+        Prefill from <a href="swing-trading.php">Swing Trading</a> (ENTER, SETUP+, or symbol scan) · defaults:
+        −5% max stop · target = 3R from effective stop (min +6%) ·
+        trail after +2% · X8 PA exit when in profit
+    </p>
+</section>
+
+<section class="card" style="margin-top:0.75rem;">
+    <div class="swp-live-bar">
+        <span class="swp-pill swp-live" id="swp-status-pill">Live · auto</span>
+        <span style="color:var(--muted);">Updated <strong id="swp-updated">—</strong></span>
+        <span style="color:var(--muted);">Next <strong id="swp-countdown">60s</strong></span>
+        <button type="button" class="btn btn-ghost" id="swp-refresh-btn" style="width:auto;padding:0.15rem 0.45rem;font-size:0.68rem;">Refresh now</button>
+    </div>
+    <div id="swp-pos-alert" class="swp-pos-alert" hidden></div>
+
+    <h2 style="font-size:0.9rem;margin:0 0 0.5rem;">Open positions — live tracking</h2>
+    <div class="swp-summary" id="swp-summary">
+        <span>Open <strong id="swp-open-count">6</strong></span>
+        <span class="" id="swp-exit-wrap">EXIT signals <strong id="swp-exit-count">0</strong></span>
+        <span>Closed (history) <strong>8</strong></span>
+    </div>
+    <div class="swp-portfolio-pnl" id="swp-portfolio">
+        <span>Invested <strong id="swp-inv">₹111,021</strong></span>
+        <span>Now <strong id="swp-now-val">₹114,262</strong></span>
+        <span class="swp-pos" id="swp-gross-wrap">Gross <strong id="swp-gross">₹3,241</strong></span>
+        <span>Charges (est.) <strong id="swp-charges">₹347</strong></span>
+        <span class="swp-pos" id="swp-net-wrap">Net <strong id="swp-net">₹2,894</strong></span>
+    </div>
+
+        <p id="swp-empty-msg" hidden style="font-size:0.82rem;color:var(--muted);">No open positions. Add one above or from a SETUP+ / ENTER hit on Swing Trading.</p>
+    <div style="overflow:auto;" id="swp-open-wrap">
+        <table class="swp-table">
+            <thead>
+                <tr>
+                    <th>Symbol</th><th>Entry</th><th>Now</th><th>P&amp;L &amp; charges</th><th>Sessions</th><th>Exit</th><th>Triggers</th><th>Stop / Target</th><th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="swp-open-body">
+                                            <tr data-pos-id="e6fa49ca83b86e3f">
+                    <td>
+                        <a href="swing-trading.php?run=1&amp;mode=symbol&amp;symbol=IPCALAB">IPCALAB</a>
+                            <span class="swp-src swp-src-swing_auto" title="Logged from Swing Auto">Swing Auto</span>
+                                                        <div style="color:var(--muted);font-size:0.62rem;margin-top:0.15rem;">Auto Strong buy · D80</div>
+                                            </td>
+                    <td>
+                        ₹1,690.01<br>
+                        <span style="color:var(--muted);font-size:0.65rem;">2026-06-30</span>
+                                                    <br><span style="color:var(--muted);font-size:0.65rem;">10 sh</span>
+                                                <details class="swp-edit">
+                            <summary>Edit entry</summary>
+                            <form method="post" class="swp-edit-form">
+                                <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                                <input type="hidden" name="action" value="update">
+                                <input type="hidden" name="position_id" value="e6fa49ca83b86e3f">
+                                <input type="hidden" name="symbol" value="IPCALAB">
+                                <label>
+                                    <span class="field-name">Entry ₹</span>
+                                    <div class="swp-entry-price-wrap">
+                                        <input type="number" name="entry_price" step="0.05" min="0.01" value="1690.01" required>
+                                        <button type="button" class="btn btn-ghost swp-fetch-price">Fetch now</button>
+                                    </div>
+                                </label>
+                                <label>
+                                    <span class="field-name">Date</span>
+                                    <input type="date" name="entry_date" value="2026-06-30" required>
+                                </label>
+                                <label>
+                                    <span class="field-name">Shares</span>
+                                    <input type="number" name="shares" step="1" min="0" value="10">
+                                </label>
+                                <label>
+                                    <span class="field-name">Stop ₹</span>
+                                    <input type="number" name="stop_loss" step="0.05" min="0" value="1657.5">
+                                </label>
+                                <label>
+                                    <span class="field-name">Target ₹</span>
+                                    <input type="number" name="profit_target" step="0.05" min="0" value="1921.05">
+                                </label>
+                                <label style="grid-column:1/-1;">
+                                    <span class="field-name">Notes</span>
+                                    <input type="text" name="notes" value="Auto Strong buy · D80">
+                                </label>
+                                <div style="grid-column:1/-1;">
+                                    <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.5rem;font-size:0.65rem;">Save</button>
+                                </div>
+                            </form>
+                        </details>
+                    </td>
+                    <td class="swp-now" data-price="1772.8">
+                                                    ₹1,772.80                            <br><span class="pf-badge pf-live" title="Yahoo live quote · 2026-07-07 05:56:51 UTC · EOD 2026-07-07">Live</span><br><span class="pf-detail" title="Yahoo live quote · 2026-07-07 05:56:51 UTC · EOD 2026-07-07">2026-07-07 05:56:51 UTC</span>                                                            <br><span class="pf-detail">EOD ₹1,776.00</span>
+                                                                        </td>
+                    <td class="swp-pnl">
+                                                    <span class="swp-pnl-pct swp-pos">4.9%</span>
+                                                            <span class="swp-pnl-gross swp-pos" style="font-size:0.65rem;"> · gross ₹828</span>
+                                                                                <details class="swp-pnl-detail">
+        <summary class="swp-pos">
+            Net 4.58%
+            <span style="font-weight:400;color:var(--muted);">· ₹773</span>
+        </summary>
+        <div class="swp-pnl-breakdown">
+            <div class="swp-pnl-row">
+                <span>Buy value</span>
+                <span>₹16,900.10</span>
+            </div>
+            <div class="swp-pnl-row">
+                <span>Now value</span>
+                <span>₹17,728.00</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <span>Gross P&amp;L</span>
+                <span>₹827.90 (4.9%)</span>
+            </div>
+            <div class="swp-pnl-section">Charges (est.)</div>
+                                                                                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (buy 0.1%)</span>
+                    <span>₹16.90</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (sell 0.1%)</span>
+                    <span>₹17.73</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (buy)</span>
+                    <span>₹0.58</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (sell)</span>
+                    <span>₹0.61</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (buy)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (sell)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Stamp duty (buy)</span>
+                    <span>₹2.54</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>GST (18% on fees)</span>
+                    <span>₹0.22</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>DP charge (sell)</span>
+                    <span>₹15.93</span>
+                </div>
+                        <div class="swp-pnl-row">
+                <span>Total charges</span>
+                <span>₹54.55</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <strong>Net P&amp;L</strong>
+                <strong>₹773.35 (4.58%)</strong>
+            </div>
+            <p class="swp-pnl-note">NSE delivery (CNC) estimate — STT 0.1% both legs, stamp 0.015% on buy. Excludes STCG/LTCG tax.</p>
+        </div>
+    </details>
+                        </td>
+                    <td class="swp-sessions">4</td>
+                    <td class="swp-exit-cell"><span class="swp-verdict swp-hold">HOLD</span></td>
+                    <td class="swp-triggers swp-triggers-cell">
+                        —                    </td>
+                    <td class="swp-levels" style="font-size:0.68rem;">
+                                                                            <span style="color:var(--muted);">Trail arms +4.94%</span>
+                            <br><span style="color:var(--muted);font-size:0.58rem;">need +0.04% gain</span>
+                                                                            <br>Floor ₹1,634.41                                                                            <br>T ₹1,921.05                    </td>
+                    <td class="swp-actions">
+                        <form method="post" class="swp-inline-close" onsubmit="return confirm('Mark position closed?');">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="close">
+                            <input type="hidden" name="position_id" value="e6fa49ca83b86e3f">
+                            <input type="number" name="closed_price" step="0.05" min="0.01" placeholder="Exit ₹" value="1772.8" required>
+                            <input type="text" name="closed_reason" placeholder="X1, X2, X4, X8…">
+                            <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.45rem;font-size:0.68rem;">Close</button>
+                        </form>
+                        <form method="post" style="display:inline;" onsubmit="return confirm('Delete this record?');">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="remove">
+                            <input type="hidden" name="position_id" value="e6fa49ca83b86e3f">
+                            <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.35rem;font-size:0.65rem;color:var(--danger);">×</button>
+                        </form>
+                    </td>
+                </tr>
+                                            <tr data-pos-id="3958a68dd9fe13eb">
+                    <td>
+                        <a href="swing-trading.php?run=1&amp;mode=symbol&amp;symbol=MANKIND">MANKIND</a>
+                            <span class="swp-src swp-src-swing_auto" title="Logged from Swing Auto">Swing Auto</span>
+                                                        <div style="color:var(--muted);font-size:0.62rem;margin-top:0.15rem;">Auto Buy · D65</div>
+                                            </td>
+                    <td>
+                        ₹2,495.01<br>
+                        <span style="color:var(--muted);font-size:0.65rem;">2026-06-29</span>
+                                                    <br><span style="color:var(--muted);font-size:0.65rem;">5 sh</span>
+                                                <details class="swp-edit">
+                            <summary>Edit entry</summary>
+                            <form method="post" class="swp-edit-form">
+                                <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                                <input type="hidden" name="action" value="update">
+                                <input type="hidden" name="position_id" value="3958a68dd9fe13eb">
+                                <input type="hidden" name="symbol" value="MANKIND">
+                                <label>
+                                    <span class="field-name">Entry ₹</span>
+                                    <div class="swp-entry-price-wrap">
+                                        <input type="number" name="entry_price" step="0.05" min="0.01" value="2495.01" required>
+                                        <button type="button" class="btn btn-ghost swp-fetch-price">Fetch now</button>
+                                    </div>
+                                </label>
+                                <label>
+                                    <span class="field-name">Date</span>
+                                    <input type="date" name="entry_date" value="2026-06-29" required>
+                                </label>
+                                <label>
+                                    <span class="field-name">Shares</span>
+                                    <input type="number" name="shares" step="1" min="0" value="5">
+                                </label>
+                                <label>
+                                    <span class="field-name">Stop ₹</span>
+                                    <input type="number" name="stop_loss" step="0.05" min="0" value="2438.05">
+                                </label>
+                                <label>
+                                    <span class="field-name">Target ₹</span>
+                                    <input type="number" name="profit_target" step="0.05" min="0" value="2738.65">
+                                </label>
+                                <label style="grid-column:1/-1;">
+                                    <span class="field-name">Notes</span>
+                                    <input type="text" name="notes" value="Auto Buy · D65">
+                                </label>
+                                <div style="grid-column:1/-1;">
+                                    <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.5rem;font-size:0.65rem;">Save</button>
+                                </div>
+                            </form>
+                        </details>
+                    </td>
+                    <td class="swp-now" data-price="2535.3">
+                                                    ₹2,535.30                            <br><span class="pf-badge pf-live" title="Yahoo live quote · 2026-07-07 05:57:07 UTC · EOD 2026-07-07">Live</span><br><span class="pf-detail" title="Yahoo live quote · 2026-07-07 05:57:07 UTC · EOD 2026-07-07">2026-07-07 05:57:07 UTC</span>                                                            <br><span class="pf-detail">EOD ₹2,538.00</span>
+                                                                        </td>
+                    <td class="swp-pnl">
+                                                    <span class="swp-pnl-pct swp-pos">1.61%</span>
+                                                            <span class="swp-pnl-gross swp-pos" style="font-size:0.65rem;"> · gross ₹201</span>
+                                                                                <details class="swp-pnl-detail">
+        <summary class="swp-pos">
+            Net 1.26%
+            <span style="font-weight:400;color:var(--muted);">· ₹157</span>
+        </summary>
+        <div class="swp-pnl-breakdown">
+            <div class="swp-pnl-row">
+                <span>Buy value</span>
+                <span>₹12,475.05</span>
+            </div>
+            <div class="swp-pnl-row">
+                <span>Now value</span>
+                <span>₹12,676.50</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <span>Gross P&amp;L</span>
+                <span>₹201.45 (1.61%)</span>
+            </div>
+            <div class="swp-pnl-section">Charges (est.)</div>
+                                                                                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (buy 0.1%)</span>
+                    <span>₹12.48</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (sell 0.1%)</span>
+                    <span>₹12.68</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (buy)</span>
+                    <span>₹0.43</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (sell)</span>
+                    <span>₹0.44</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (buy)</span>
+                    <span>₹0.01</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (sell)</span>
+                    <span>₹0.01</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Stamp duty (buy)</span>
+                    <span>₹1.87</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>GST (18% on fees)</span>
+                    <span>₹0.16</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>DP charge (sell)</span>
+                    <span>₹15.93</span>
+                </div>
+                        <div class="swp-pnl-row">
+                <span>Total charges</span>
+                <span>₹44.01</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <strong>Net P&amp;L</strong>
+                <strong>₹157.44 (1.26%)</strong>
+            </div>
+            <p class="swp-pnl-note">NSE delivery (CNC) estimate — STT 0.1% both legs, stamp 0.015% on buy. Excludes STCG/LTCG tax.</p>
+        </div>
+    </details>
+                        </td>
+                    <td class="swp-sessions">6</td>
+                    <td class="swp-exit-cell"><span class="swp-verdict swp-hold">HOLD</span></td>
+                    <td class="swp-triggers swp-triggers-cell">
+                        —                    </td>
+                    <td class="swp-levels" style="font-size:0.68rem;">
+                                                                            <span style="color:var(--muted);">Trail arms +4.13%</span>
+                            <br><span style="color:var(--muted);font-size:0.58rem;">need +2.52% gain</span>
+                                                                            <br>Floor ₹2,426.40                                                                            <br>T ₹2,738.65                    </td>
+                    <td class="swp-actions">
+                        <form method="post" class="swp-inline-close" onsubmit="return confirm('Mark position closed?');">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="close">
+                            <input type="hidden" name="position_id" value="3958a68dd9fe13eb">
+                            <input type="number" name="closed_price" step="0.05" min="0.01" placeholder="Exit ₹" value="2535.3" required>
+                            <input type="text" name="closed_reason" placeholder="X1, X2, X4, X8…">
+                            <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.45rem;font-size:0.68rem;">Close</button>
+                        </form>
+                        <form method="post" style="display:inline;" onsubmit="return confirm('Delete this record?');">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="remove">
+                            <input type="hidden" name="position_id" value="3958a68dd9fe13eb">
+                            <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.35rem;font-size:0.65rem;color:var(--danger);">×</button>
+                        </form>
+                    </td>
+                </tr>
+                                            <tr data-pos-id="f5ac5ab1e0ae2af6">
+                    <td>
+                        <a href="swing-trading.php?run=1&amp;mode=symbol&amp;symbol=MEDANTA">MEDANTA</a>
+                            <span class="swp-src swp-src-swing_auto" title="Logged from Swing Auto">Swing Auto</span>
+                                                        <div style="color:var(--muted);font-size:0.62rem;margin-top:0.15rem;">Auto Strong buy · D100</div>
+                                            </td>
+                    <td>
+                        ₹1,315.01<br>
+                        <span style="color:var(--muted);font-size:0.65rem;">2026-06-30</span>
+                                                    <br><span style="color:var(--muted);font-size:0.65rem;">15 sh</span>
+                                                <details class="swp-edit">
+                            <summary>Edit entry</summary>
+                            <form method="post" class="swp-edit-form">
+                                <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                                <input type="hidden" name="action" value="update">
+                                <input type="hidden" name="position_id" value="f5ac5ab1e0ae2af6">
+                                <input type="hidden" name="symbol" value="MEDANTA">
+                                <label>
+                                    <span class="field-name">Entry ₹</span>
+                                    <div class="swp-entry-price-wrap">
+                                        <input type="number" name="entry_price" step="0.05" min="0.01" value="1315.01" required>
+                                        <button type="button" class="btn btn-ghost swp-fetch-price">Fetch now</button>
+                                    </div>
+                                </label>
+                                <label>
+                                    <span class="field-name">Date</span>
+                                    <input type="date" name="entry_date" value="2026-06-30" required>
+                                </label>
+                                <label>
+                                    <span class="field-name">Shares</span>
+                                    <input type="number" name="shares" step="1" min="0" value="15">
+                                </label>
+                                <label>
+                                    <span class="field-name">Stop ₹</span>
+                                    <input type="number" name="stop_loss" step="0.05" min="0" value="1278.05">
+                                </label>
+                                <label>
+                                    <span class="field-name">Target ₹</span>
+                                    <input type="number" name="profit_target" step="0.05" min="0" value="1435.05">
+                                </label>
+                                <label style="grid-column:1/-1;">
+                                    <span class="field-name">Notes</span>
+                                    <input type="text" name="notes" value="Auto Strong buy · D100">
+                                </label>
+                                <div style="grid-column:1/-1;">
+                                    <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.5rem;font-size:0.65rem;">Save</button>
+                                </div>
+                            </form>
+                        </details>
+                    </td>
+                    <td class="swp-now" data-price="1322.8">
+                                                    ₹1,322.80                            <br><span class="pf-badge pf-live" title="Yahoo live quote · 2026-07-07 05:57:00 UTC · EOD 2026-07-07">Live</span><br><span class="pf-detail" title="Yahoo live quote · 2026-07-07 05:57:00 UTC · EOD 2026-07-07">2026-07-07 05:57:00 UTC</span>                                                            <br><span class="pf-detail">EOD ₹1,325.10</span>
+                                                                        </td>
+                    <td class="swp-pnl">
+                                                    <span class="swp-pnl-pct swp-pos">0.59%</span>
+                                                            <span class="swp-pnl-gross swp-pos" style="font-size:0.65rem;"> · gross ₹117</span>
+                                                                                <details class="swp-pnl-detail">
+        <summary class="swp-pos">
+            Net 0.29%
+            <span style="font-weight:400;color:var(--muted);">· ₹57</span>
+        </summary>
+        <div class="swp-pnl-breakdown">
+            <div class="swp-pnl-row">
+                <span>Buy value</span>
+                <span>₹19,725.15</span>
+            </div>
+            <div class="swp-pnl-row">
+                <span>Now value</span>
+                <span>₹19,842.00</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <span>Gross P&amp;L</span>
+                <span>₹116.85 (0.59%)</span>
+            </div>
+            <div class="swp-pnl-section">Charges (est.)</div>
+                                                                                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (buy 0.1%)</span>
+                    <span>₹19.73</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (sell 0.1%)</span>
+                    <span>₹19.84</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (buy)</span>
+                    <span>₹0.68</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (sell)</span>
+                    <span>₹0.68</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (buy)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (sell)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Stamp duty (buy)</span>
+                    <span>₹2.96</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>GST (18% on fees)</span>
+                    <span>₹0.25</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>DP charge (sell)</span>
+                    <span>₹15.93</span>
+                </div>
+                        <div class="swp-pnl-row">
+                <span>Total charges</span>
+                <span>₹60.11</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <strong>Net P&amp;L</strong>
+                <strong>₹56.74 (0.29%)</strong>
+            </div>
+            <p class="swp-pnl-note">NSE delivery (CNC) estimate — STT 0.1% both legs, stamp 0.015% on buy. Excludes STCG/LTCG tax.</p>
+        </div>
+    </details>
+                        </td>
+                    <td class="swp-sessions">4</td>
+                    <td class="swp-exit-cell"><span class="swp-verdict swp-hold">HOLD</span></td>
+                    <td class="swp-triggers swp-triggers-cell">
+                        —                    </td>
+                    <td class="swp-levels" style="font-size:0.68rem;">
+                                                                            <span style="color:var(--muted);">Trail arms +4.25%</span>
+                            <br><span style="color:var(--muted);font-size:0.58rem;">need +3.66% gain</span>
+                                                                            <br>Floor ₹1,285.34                                                                            <br>T ₹1,435.05                    </td>
+                    <td class="swp-actions">
+                        <form method="post" class="swp-inline-close" onsubmit="return confirm('Mark position closed?');">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="close">
+                            <input type="hidden" name="position_id" value="f5ac5ab1e0ae2af6">
+                            <input type="number" name="closed_price" step="0.05" min="0.01" placeholder="Exit ₹" value="1322.8" required>
+                            <input type="text" name="closed_reason" placeholder="X1, X2, X4, X8…">
+                            <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.45rem;font-size:0.68rem;">Close</button>
+                        </form>
+                        <form method="post" style="display:inline;" onsubmit="return confirm('Delete this record?');">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="remove">
+                            <input type="hidden" name="position_id" value="f5ac5ab1e0ae2af6">
+                            <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.35rem;font-size:0.65rem;color:var(--danger);">×</button>
+                        </form>
+                    </td>
+                </tr>
+                                            <tr data-pos-id="a575584822e54226">
+                    <td>
+                        <a href="swing-trading.php?run=1&amp;mode=symbol&amp;symbol=MOTILALOFS">MOTILALOFS</a>
+                            <span class="swp-src swp-src-swing_auto" title="Logged from Swing Auto">Swing Auto</span>
+                                                        <div style="color:var(--muted);font-size:0.62rem;margin-top:0.15rem;">Auto Strong buy · D100</div>
+                                            </td>
+                    <td>
+                        ₹953.01<br>
+                        <span style="color:var(--muted);font-size:0.65rem;">2026-06-30</span>
+                                                    <br><span style="color:var(--muted);font-size:0.65rem;">20 sh</span>
+                                                <details class="swp-edit">
+                            <summary>Edit entry</summary>
+                            <form method="post" class="swp-edit-form">
+                                <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                                <input type="hidden" name="action" value="update">
+                                <input type="hidden" name="position_id" value="a575584822e54226">
+                                <input type="hidden" name="symbol" value="MOTILALOFS">
+                                <label>
+                                    <span class="field-name">Entry ₹</span>
+                                    <div class="swp-entry-price-wrap">
+                                        <input type="number" name="entry_price" step="0.05" min="0.01" value="953.01" required>
+                                        <button type="button" class="btn btn-ghost swp-fetch-price">Fetch now</button>
+                                    </div>
+                                </label>
+                                <label>
+                                    <span class="field-name">Date</span>
+                                    <input type="date" name="entry_date" value="2026-06-30" required>
+                                </label>
+                                <label>
+                                    <span class="field-name">Shares</span>
+                                    <input type="number" name="shares" step="1" min="0" value="20">
+                                </label>
+                                <label>
+                                    <span class="field-name">Stop ₹</span>
+                                    <input type="number" name="stop_loss" step="0.05" min="0" value="927.05">
+                                </label>
+                                <label>
+                                    <span class="field-name">Target ₹</span>
+                                    <input type="number" name="profit_target" step="0.05" min="0" value="1041.05">
+                                </label>
+                                <label style="grid-column:1/-1;">
+                                    <span class="field-name">Notes</span>
+                                    <input type="text" name="notes" value="Auto Strong buy · D100">
+                                </label>
+                                <div style="grid-column:1/-1;">
+                                    <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.5rem;font-size:0.65rem;">Save</button>
+                                </div>
+                            </form>
+                        </details>
+                    </td>
+                    <td class="swp-now" data-price="946.35">
+                                                    ₹946.35                            <br><span class="pf-badge pf-live" title="Yahoo live quote · 2026-07-07 05:57:15 UTC · EOD 2026-07-07">Live</span><br><span class="pf-detail" title="Yahoo live quote · 2026-07-07 05:57:15 UTC · EOD 2026-07-07">2026-07-07 05:57:15 UTC</span>                                                            <br><span class="pf-detail">EOD ₹942.10</span>
+                                                                        </td>
+                    <td class="swp-pnl">
+                                                    <span class="swp-pnl-pct swp-neg">-0.7%</span>
+                                                            <span class="swp-pnl-gross swp-neg" style="font-size:0.65rem;"> · gross ₹-133</span>
+                                                                                <details class="swp-pnl-detail">
+        <summary class="swp-neg">
+            Net -1.01%
+            <span style="font-weight:400;color:var(--muted);">· ₹-192</span>
+        </summary>
+        <div class="swp-pnl-breakdown">
+            <div class="swp-pnl-row">
+                <span>Buy value</span>
+                <span>₹19,060.20</span>
+            </div>
+            <div class="swp-pnl-row">
+                <span>Now value</span>
+                <span>₹18,927.00</span>
+            </div>
+            <div class="swp-pnl-row swp-neg">
+                <span>Gross P&amp;L</span>
+                <span>₹-133.20 (-0.7%)</span>
+            </div>
+            <div class="swp-pnl-section">Charges (est.)</div>
+                                                                                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (buy 0.1%)</span>
+                    <span>₹19.06</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (sell 0.1%)</span>
+                    <span>₹18.93</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (buy)</span>
+                    <span>₹0.66</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (sell)</span>
+                    <span>₹0.65</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (buy)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (sell)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Stamp duty (buy)</span>
+                    <span>₹2.86</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>GST (18% on fees)</span>
+                    <span>₹0.24</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>DP charge (sell)</span>
+                    <span>₹15.93</span>
+                </div>
+                        <div class="swp-pnl-row">
+                <span>Total charges</span>
+                <span>₹58.37</span>
+            </div>
+            <div class="swp-pnl-row swp-neg">
+                <strong>Net P&amp;L</strong>
+                <strong>₹-191.57 (-1.01%)</strong>
+            </div>
+            <p class="swp-pnl-note">NSE delivery (CNC) estimate — STT 0.1% both legs, stamp 0.015% on buy. Excludes STCG/LTCG tax.</p>
+        </div>
+    </details>
+                        </td>
+                    <td class="swp-sessions">4</td>
+                    <td class="swp-exit-cell"><span class="swp-verdict swp-hold">HOLD</span></td>
+                    <td class="swp-triggers swp-triggers-cell">
+                        —                    </td>
+                    <td class="swp-levels" style="font-size:0.68rem;">
+                                                                            <span style="color:var(--muted);">Trail arms +4.68%</span>
+                            <br><span style="color:var(--muted);font-size:0.58rem;">need +5.38% gain</span>
+                                                                            <br>Floor ₹923.28                                                                            <br>T ₹1,041.05                    </td>
+                    <td class="swp-actions">
+                        <form method="post" class="swp-inline-close" onsubmit="return confirm('Mark position closed?');">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="close">
+                            <input type="hidden" name="position_id" value="a575584822e54226">
+                            <input type="number" name="closed_price" step="0.05" min="0.01" placeholder="Exit ₹" value="946.35" required>
+                            <input type="text" name="closed_reason" placeholder="X1, X2, X4, X8…">
+                            <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.45rem;font-size:0.68rem;">Close</button>
+                        </form>
+                        <form method="post" style="display:inline;" onsubmit="return confirm('Delete this record?');">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="remove">
+                            <input type="hidden" name="position_id" value="a575584822e54226">
+                            <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.35rem;font-size:0.65rem;color:var(--danger);">×</button>
+                        </form>
+                    </td>
+                </tr>
+                                            <tr data-pos-id="6dde89da49802752">
+                    <td>
+                        <a href="swing-trading.php?run=1&amp;mode=symbol&amp;symbol=PNBHOUSING">PNBHOUSING</a>
+                            <span class="swp-src swp-src-unknown" title="Logged from Legacy">Legacy</span>
+                                                        <div style="color:var(--muted);font-size:0.62rem;margin-top:0.15rem;">ENTER 6/6</div>
+                                            </td>
+                    <td>
+                        ₹1,025.01<br>
+                        <span style="color:var(--muted);font-size:0.65rem;">2026-06-24</span>
+                                                    <br><span style="color:var(--muted);font-size:0.65rem;">20 sh</span>
+                                                <details class="swp-edit">
+                            <summary>Edit entry</summary>
+                            <form method="post" class="swp-edit-form">
+                                <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                                <input type="hidden" name="action" value="update">
+                                <input type="hidden" name="position_id" value="6dde89da49802752">
+                                <input type="hidden" name="symbol" value="PNBHOUSING">
+                                <label>
+                                    <span class="field-name">Entry ₹</span>
+                                    <div class="swp-entry-price-wrap">
+                                        <input type="number" name="entry_price" step="0.05" min="0.01" value="1025.01" required>
+                                        <button type="button" class="btn btn-ghost swp-fetch-price">Fetch now</button>
+                                    </div>
+                                </label>
+                                <label>
+                                    <span class="field-name">Date</span>
+                                    <input type="date" name="entry_date" value="2026-06-24" required>
+                                </label>
+                                <label>
+                                    <span class="field-name">Shares</span>
+                                    <input type="number" name="shares" step="1" min="0" value="20">
+                                </label>
+                                <label>
+                                    <span class="field-name">Stop ₹</span>
+                                    <input type="number" name="stop_loss" step="0.05" min="0" value="1014">
+                                </label>
+                                <label>
+                                    <span class="field-name">Target ₹</span>
+                                    <input type="number" name="profit_target" step="0.05" min="0" value="1130">
+                                </label>
+                                <label style="grid-column:1/-1;">
+                                    <span class="field-name">Notes</span>
+                                    <input type="text" name="notes" value="ENTER 6/6">
+                                </label>
+                                <div style="grid-column:1/-1;">
+                                    <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.5rem;font-size:0.65rem;">Save</button>
+                                </div>
+                            </form>
+                        </details>
+                    </td>
+                    <td class="swp-now" data-price="1089.1">
+                                                    ₹1,089.10                            <br><span class="pf-badge pf-live" title="Yahoo live quote · 2026-07-07 05:57:17 UTC · EOD 2026-07-07">Live</span><br><span class="pf-detail" title="Yahoo live quote · 2026-07-07 05:57:17 UTC · EOD 2026-07-07">2026-07-07 05:57:17 UTC</span>                                                            <br><span class="pf-detail">EOD ₹1,084.40</span>
+                                                                        </td>
+                    <td class="swp-pnl">
+                                                    <span class="swp-pnl-pct swp-pos">6.25%</span>
+                                                            <span class="swp-pnl-gross swp-pos" style="font-size:0.65rem;"> · gross ₹1,282</span>
+                                                                                <details class="swp-pnl-detail">
+        <summary class="swp-pos">
+            Net 5.95%
+            <span style="font-weight:400;color:var(--muted);">· ₹1,219</span>
+        </summary>
+        <div class="swp-pnl-breakdown">
+            <div class="swp-pnl-row">
+                <span>Buy value</span>
+                <span>₹20,500.20</span>
+            </div>
+            <div class="swp-pnl-row">
+                <span>Now value</span>
+                <span>₹21,782.00</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <span>Gross P&amp;L</span>
+                <span>₹1,281.80 (6.25%)</span>
+            </div>
+            <div class="swp-pnl-section">Charges (est.)</div>
+                                                                                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (buy 0.1%)</span>
+                    <span>₹20.50</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (sell 0.1%)</span>
+                    <span>₹21.78</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (buy)</span>
+                    <span>₹0.71</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (sell)</span>
+                    <span>₹0.75</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (buy)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (sell)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Stamp duty (buy)</span>
+                    <span>₹3.08</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>GST (18% on fees)</span>
+                    <span>₹0.27</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>DP charge (sell)</span>
+                    <span>₹15.93</span>
+                </div>
+                        <div class="swp-pnl-row">
+                <span>Total charges</span>
+                <span>₹63.06</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <strong>Net P&amp;L</strong>
+                <strong>₹1,218.74 (5.95%)</strong>
+            </div>
+            <p class="swp-pnl-note">NSE delivery (CNC) estimate — STT 0.1% both legs, stamp 0.015% on buy. Excludes STCG/LTCG tax.</p>
+        </div>
+    </details>
+                        </td>
+                    <td class="swp-sessions">9</td>
+                    <td class="swp-exit-cell"><span class="swp-verdict swp-hold">HOLD</span></td>
+                    <td class="swp-triggers swp-triggers-cell">
+                        —                    </td>
+                    <td class="swp-levels" style="font-size:0.68rem;">
+                                                                            <span style="color:#5eead4;font-weight:600;">Trail ₹1,077.25</span>
+                                                            <br><span style="color:var(--muted);font-size:0.58rem;">−1.8% from ₹1,097.00</span>
+                                                                                        <br><span style="color:var(--muted);font-size:0.58rem;">ratchet ₹1,077.25</span>
+                                                                                                        <br>Floor ₹1,077.25                                                            <span style="color:var(--success);font-size:0.58rem;"> BE+</span>
+                                                                            <br>T ₹1,130.00                    </td>
+                    <td class="swp-actions">
+                        <form method="post" class="swp-inline-close" onsubmit="return confirm('Mark position closed?');">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="close">
+                            <input type="hidden" name="position_id" value="6dde89da49802752">
+                            <input type="number" name="closed_price" step="0.05" min="0.01" placeholder="Exit ₹" value="1089.1" required>
+                            <input type="text" name="closed_reason" placeholder="X1, X2, X4, X8…">
+                            <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.45rem;font-size:0.68rem;">Close</button>
+                        </form>
+                        <form method="post" style="display:inline;" onsubmit="return confirm('Delete this record?');">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="remove">
+                            <input type="hidden" name="position_id" value="6dde89da49802752">
+                            <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.35rem;font-size:0.65rem;color:var(--danger);">×</button>
+                        </form>
+                    </td>
+                </tr>
+                                            <tr data-pos-id="fc479e8df1b225ad">
+                    <td>
+                        <a href="swing-trading.php?run=1&amp;mode=symbol&amp;symbol=ZYDUSLIFE">ZYDUSLIFE</a>
+                            <span class="swp-src swp-src-swing_auto" title="Logged from Swing Auto">Swing Auto</span>
+                                                        <div style="color:var(--muted);font-size:0.62rem;margin-top:0.15rem;">Auto Buy · D74</div>
+                                            </td>
+                    <td>
+                        ₹1,118.01<br>
+                        <span style="color:var(--muted);font-size:0.65rem;">2026-06-30</span>
+                                                    <br><span style="color:var(--muted);font-size:0.65rem;">20 sh</span>
+                                                <details class="swp-edit">
+                            <summary>Edit entry</summary>
+                            <form method="post" class="swp-edit-form">
+                                <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                                <input type="hidden" name="action" value="update">
+                                <input type="hidden" name="position_id" value="fc479e8df1b225ad">
+                                <input type="hidden" name="symbol" value="ZYDUSLIFE">
+                                <label>
+                                    <span class="field-name">Entry ₹</span>
+                                    <div class="swp-entry-price-wrap">
+                                        <input type="number" name="entry_price" step="0.05" min="0.01" value="1118.01" required>
+                                        <button type="button" class="btn btn-ghost swp-fetch-price">Fetch now</button>
+                                    </div>
+                                </label>
+                                <label>
+                                    <span class="field-name">Date</span>
+                                    <input type="date" name="entry_date" value="2026-06-30" required>
+                                </label>
+                                <label>
+                                    <span class="field-name">Shares</span>
+                                    <input type="number" name="shares" step="1" min="0" value="20">
+                                </label>
+                                <label>
+                                    <span class="field-name">Stop ₹</span>
+                                    <input type="number" name="stop_loss" step="0.05" min="0" value="1084">
+                                </label>
+                                <label>
+                                    <span class="field-name">Target ₹</span>
+                                    <input type="number" name="profit_target" step="0.05" min="0" value="1206">
+                                </label>
+                                <label style="grid-column:1/-1;">
+                                    <span class="field-name">Notes</span>
+                                    <input type="text" name="notes" value="Auto Buy · D74">
+                                </label>
+                                <div style="grid-column:1/-1;">
+                                    <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.5rem;font-size:0.65rem;">Save</button>
+                                </div>
+                            </form>
+                        </details>
+                    </td>
+                    <td class="swp-now" data-price="1165.3">
+                                                    ₹1,165.30                            <br><span class="pf-badge pf-live" title="Yahoo live quote · 2026-07-07 05:57:11 UTC · EOD 2026-07-07">Live</span><br><span class="pf-detail" title="Yahoo live quote · 2026-07-07 05:57:11 UTC · EOD 2026-07-07">2026-07-07 05:57:11 UTC</span>                                                            <br><span class="pf-detail">EOD ₹1,165.50</span>
+                                                                        </td>
+                    <td class="swp-pnl">
+                                                    <span class="swp-pnl-pct swp-pos">4.23%</span>
+                                                            <span class="swp-pnl-gross swp-pos" style="font-size:0.65rem;"> · gross ₹946</span>
+                                                                                <details class="swp-pnl-detail">
+        <summary class="swp-pos">
+            Net 3.93%
+            <span style="font-weight:400;color:var(--muted);">· ₹879</span>
+        </summary>
+        <div class="swp-pnl-breakdown">
+            <div class="swp-pnl-row">
+                <span>Buy value</span>
+                <span>₹22,360.20</span>
+            </div>
+            <div class="swp-pnl-row">
+                <span>Now value</span>
+                <span>₹23,306.00</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <span>Gross P&amp;L</span>
+                <span>₹945.80 (4.23%)</span>
+            </div>
+            <div class="swp-pnl-section">Charges (est.)</div>
+                                                                                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (buy 0.1%)</span>
+                    <span>₹22.36</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (sell 0.1%)</span>
+                    <span>₹23.31</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (buy)</span>
+                    <span>₹0.77</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (sell)</span>
+                    <span>₹0.80</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (buy)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (sell)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Stamp duty (buy)</span>
+                    <span>₹3.35</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>GST (18% on fees)</span>
+                    <span>₹0.29</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>DP charge (sell)</span>
+                    <span>₹15.93</span>
+                </div>
+                        <div class="swp-pnl-row">
+                <span>Total charges</span>
+                <span>₹66.85</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <strong>Net P&amp;L</strong>
+                <strong>₹878.95 (3.93%)</strong>
+            </div>
+            <p class="swp-pnl-note">NSE delivery (CNC) estimate — STT 0.1% both legs, stamp 0.015% on buy. Excludes STCG/LTCG tax.</p>
+        </div>
+    </details>
+                        </td>
+                    <td class="swp-sessions">5</td>
+                    <td class="swp-exit-cell"><span class="swp-verdict swp-hold">HOLD</span></td>
+                    <td class="swp-triggers swp-triggers-cell">
+                        —                    </td>
+                    <td class="swp-levels" style="font-size:0.68rem;">
+                                                                            <span style="color:#5eead4;font-weight:600;">Trail ₹1,147.76</span>
+                                                            <br><span style="color:var(--muted);font-size:0.58rem;">−1.8% from ₹1,168.80</span>
+                                                                                        <br><span style="color:var(--muted);font-size:0.58rem;">ratchet ₹1,147.76</span>
+                                                                                                        <br>Floor ₹1,147.76                                                            <span style="color:var(--success);font-size:0.58rem;"> BE+</span>
+                                                                            <br>T ₹1,206.00                    </td>
+                    <td class="swp-actions">
+                        <form method="post" class="swp-inline-close" onsubmit="return confirm('Mark position closed?');">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="close">
+                            <input type="hidden" name="position_id" value="fc479e8df1b225ad">
+                            <input type="number" name="closed_price" step="0.05" min="0.01" placeholder="Exit ₹" value="1165.3" required>
+                            <input type="text" name="closed_reason" placeholder="X1, X2, X4, X8…">
+                            <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.45rem;font-size:0.68rem;">Close</button>
+                        </form>
+                        <form method="post" style="display:inline;" onsubmit="return confirm('Delete this record?');">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="remove">
+                            <input type="hidden" name="position_id" value="fc479e8df1b225ad">
+                            <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.35rem;font-size:0.65rem;color:var(--danger);">×</button>
+                        </form>
+                    </td>
+                </tr>
+                        </tbody>
+        </table>
+    </div>
+    </section>
+
+<div class="swp-journal-head">
+    <h2 style="font-size:0.88rem;margin:0;">Trade journal</h2>
+    <a href="swing-positions-export.php" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.55rem;font-size:0.68rem;">Export CSV</a>
+</div>
+<div class="swp-journal">
+    <span>Closed <strong>8</strong></span>
+    <span>Win rate <strong class="swp-neg">37.5%</strong>
+        <span style="color:var(--muted);font-weight:400;">(3W / 5L)</span></span>
+    <span>Avg R <strong>0.07</strong>
+            </span>
+    <span>Net total <strong class="swp-neg">₹-310</strong></span>
+            <span>Stocks <strong>8</strong>
+            · 37.5% wins             · 0.07R        </span>
+                    <span>Best <strong class="swp-pos">OBEROIRLTY</strong>
+            ₹1,363             · 3.17R        </span>
+                <span>Worst <strong class="swp-neg">UNIONBANK</strong>
+            ₹-1,469             · -2.97R        </span>
+    </div>
+<details class="card swp-closed" style="margin-top:0.35rem;">
+    <summary style="cursor:pointer;font-weight:600;font-size:0.88rem;">Closed positions (8)</summary>
+    <table class="swp-table">
+        <thead>
+            <tr><th>Symbol</th><th>Entry</th><th>Exit</th><th>P&amp;L &amp; charges</th><th>Reason</th><th></th></tr>
+        </thead>
+        <tbody>
+                                <tr>
+                <td>SUZLON    <span class="swp-src swp-src-unknown" title="Logged from Legacy">Legacy</span>
+    </td>
+                <td>₹58.51 · 2026-06-24                    <details class="swp-edit">
+                        <summary>Edit entry</summary>
+                        <form method="post" class="swp-edit-form">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="update">
+                            <input type="hidden" name="position_id" value="451ef33b21ef95fc">
+                            <input type="hidden" name="symbol" value="SUZLON">
+                            <label>
+                                <span class="field-name">Entry ₹</span>
+                                <div class="swp-entry-price-wrap">
+                                    <input type="number" name="entry_price" step="0.05" min="0.01" value="58.51" required>
+                                    <button type="button" class="btn btn-ghost swp-fetch-price">Fetch now</button>
+                                </div>
+                            </label>
+                            <label>
+                                <span class="field-name">Date</span>
+                                <input type="date" name="entry_date" value="2026-06-24" required>
+                            </label>
+                            <label>
+                                <span class="field-name">Shares</span>
+                                <input type="number" name="shares" step="1" min="0" value="300">
+                            </label>
+                            <label>
+                                <span class="field-name">Stop ₹</span>
+                                <input type="number" name="stop_loss" step="0.05" min="0" value="54.7">
+                            </label>
+                            <label>
+                                <span class="field-name">Target ₹</span>
+                                <input type="number" name="profit_target" step="0.05" min="0" value="64.05">
+                            </label>
+                            <label style="grid-column:1/-1;">
+                                <span class="field-name">Notes</span>
+                                <input type="text" name="notes" value="ENTER 5/6">
+                            </label>
+                            <div style="grid-column:1/-1;">
+                                <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.5rem;font-size:0.65rem;">Save</button>
+                            </div>
+                        </form>
+                    </details>
+                </td>
+                <td>₹56.01</td>
+                <td>
+                    <span class="swp-neg">-4.27%</span>
+                        <details class="swp-pnl-detail">
+        <summary class="swp-neg">
+            Net -4.58%
+            <span style="font-weight:400;color:var(--muted);">· ₹-804</span>
+        </summary>
+        <div class="swp-pnl-breakdown">
+            <div class="swp-pnl-row">
+                <span>Buy value</span>
+                <span>₹17,553.00</span>
+            </div>
+            <div class="swp-pnl-row">
+                <span>Sell value</span>
+                <span>₹16,803.00</span>
+            </div>
+            <div class="swp-pnl-row swp-neg">
+                <span>Gross P&amp;L</span>
+                <span>₹-750.00 (-4.27%)</span>
+            </div>
+            <div class="swp-pnl-section">Charges (est.)</div>
+                                                                                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (buy 0.1%)</span>
+                    <span>₹17.55</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (sell 0.1%)</span>
+                    <span>₹16.80</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (buy)</span>
+                    <span>₹0.61</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (sell)</span>
+                    <span>₹0.58</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (buy)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (sell)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Stamp duty (buy)</span>
+                    <span>₹2.63</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>GST (18% on fees)</span>
+                    <span>₹0.22</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>DP charge (sell)</span>
+                    <span>₹15.93</span>
+                </div>
+                        <div class="swp-pnl-row">
+                <span>Total charges</span>
+                <span>₹54.36</span>
+            </div>
+            <div class="swp-pnl-row swp-neg">
+                <strong>Net P&amp;L</strong>
+                <strong>₹-804.36 (-4.58%)</strong>
+            </div>
+            <p class="swp-pnl-note">NSE delivery (CNC) estimate — STT 0.1% both legs, stamp 0.015% on buy. Excludes STCG/LTCG tax.</p>
+        </div>
+    </details>
+                    </td>
+                <td></td>
+                <td>
+                    <form method="post" onsubmit="return confirm('Delete record?');">
+                        <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                        <input type="hidden" name="action" value="remove">
+                        <input type="hidden" name="position_id" value="451ef33b21ef95fc">
+                        <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.15rem 0.4rem;font-size:0.65rem;">Delete</button>
+                    </form>
+                </td>
+            </tr>
+                                <tr>
+                <td>OBEROIRLTY    <span class="swp-src swp-src-swing_auto" title="Logged from Swing Auto">Swing Auto</span>
+    </td>
+                <td>₹1,764.01 · 2026-06-29                    <details class="swp-edit">
+                        <summary>Edit entry</summary>
+                        <form method="post" class="swp-edit-form">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="update">
+                            <input type="hidden" name="position_id" value="c78770056f5b3478">
+                            <input type="hidden" name="symbol" value="OBEROIRLTY">
+                            <label>
+                                <span class="field-name">Entry ₹</span>
+                                <div class="swp-entry-price-wrap">
+                                    <input type="number" name="entry_price" step="0.05" min="0.01" value="1764.01" required>
+                                    <button type="button" class="btn btn-ghost swp-fetch-price">Fetch now</button>
+                                </div>
+                            </label>
+                            <label>
+                                <span class="field-name">Date</span>
+                                <input type="date" name="entry_date" value="2026-06-29" required>
+                            </label>
+                            <label>
+                                <span class="field-name">Shares</span>
+                                <input type="number" name="shares" step="1" min="0" value="10">
+                            </label>
+                            <label>
+                                <span class="field-name">Stop ₹</span>
+                                <input type="number" name="stop_loss" step="0.05" min="0" value="1719.25">
+                            </label>
+                            <label>
+                                <span class="field-name">Target ₹</span>
+                                <input type="number" name="profit_target" step="0.05" min="0" value="1955.05">
+                            </label>
+                            <label style="grid-column:1/-1;">
+                                <span class="field-name">Notes</span>
+                                <input type="text" name="notes" value="Auto Buy · D65">
+                            </label>
+                            <div style="grid-column:1/-1;">
+                                <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.5rem;font-size:0.65rem;">Save</button>
+                            </div>
+                        </form>
+                    </details>
+                </td>
+                <td>₹1,906.01</td>
+                <td>
+                    <span class="swp-pos">8.05%</span>
+                        <details class="swp-pnl-detail">
+        <summary class="swp-pos">
+            Net 7.73%
+            <span style="font-weight:400;color:var(--muted);">· ₹1,363</span>
+        </summary>
+        <div class="swp-pnl-breakdown">
+            <div class="swp-pnl-row">
+                <span>Buy value</span>
+                <span>₹17,640.10</span>
+            </div>
+            <div class="swp-pnl-row">
+                <span>Sell value</span>
+                <span>₹19,060.10</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <span>Gross P&amp;L</span>
+                <span>₹1,420.00 (8.05%)</span>
+            </div>
+            <div class="swp-pnl-section">Charges (est.)</div>
+                                                                                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (buy 0.1%)</span>
+                    <span>₹17.64</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (sell 0.1%)</span>
+                    <span>₹19.06</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (buy)</span>
+                    <span>₹0.61</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (sell)</span>
+                    <span>₹0.66</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (buy)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (sell)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Stamp duty (buy)</span>
+                    <span>₹2.65</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>GST (18% on fees)</span>
+                    <span>₹0.24</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>DP charge (sell)</span>
+                    <span>₹15.93</span>
+                </div>
+                        <div class="swp-pnl-row">
+                <span>Total charges</span>
+                <span>₹56.83</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <strong>Net P&amp;L</strong>
+                <strong>₹1,363.17 (7.73%)</strong>
+            </div>
+            <p class="swp-pnl-note">NSE delivery (CNC) estimate — STT 0.1% both legs, stamp 0.015% on buy. Excludes STCG/LTCG tax.</p>
+        </div>
+    </details>
+                    </td>
+                <td>X4</td>
+                <td>
+                    <form method="post" onsubmit="return confirm('Delete record?');">
+                        <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                        <input type="hidden" name="action" value="remove">
+                        <input type="hidden" name="position_id" value="c78770056f5b3478">
+                        <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.15rem 0.4rem;font-size:0.65rem;">Delete</button>
+                    </form>
+                </td>
+            </tr>
+                                <tr>
+                <td>UNIONBANK    <span class="swp-src swp-src-unknown" title="Logged from Legacy">Legacy</span>
+    </td>
+                <td>₹175.91 · 2026-06-25                    <details class="swp-edit">
+                        <summary>Edit entry</summary>
+                        <form method="post" class="swp-edit-form">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="update">
+                            <input type="hidden" name="position_id" value="e9e41afa1faf8e3d">
+                            <input type="hidden" name="symbol" value="UNIONBANK">
+                            <label>
+                                <span class="field-name">Entry ₹</span>
+                                <div class="swp-entry-price-wrap">
+                                    <input type="number" name="entry_price" step="0.05" min="0.01" value="175.91" required>
+                                    <button type="button" class="btn btn-ghost swp-fetch-price">Fetch now</button>
+                                </div>
+                            </label>
+                            <label>
+                                <span class="field-name">Date</span>
+                                <input type="date" name="entry_date" value="2026-06-25" required>
+                            </label>
+                            <label>
+                                <span class="field-name">Shares</span>
+                                <input type="number" name="shares" step="1" min="0" value="100">
+                            </label>
+                            <label>
+                                <span class="field-name">Stop ₹</span>
+                                <input type="number" name="stop_loss" step="0.05" min="0" value="171.15">
+                            </label>
+                            <label>
+                                <span class="field-name">Target ₹</span>
+                                <input type="number" name="profit_target" step="0.05" min="0" value="184.15">
+                            </label>
+                            <label style="grid-column:1/-1;">
+                                <span class="field-name">Notes</span>
+                                <input type="text" name="notes" value="ENTER 6/8">
+                            </label>
+                            <div style="grid-column:1/-1;">
+                                <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.5rem;font-size:0.65rem;">Save</button>
+                            </div>
+                        </form>
+                    </details>
+                </td>
+                <td>₹161.76</td>
+                <td>
+                    <span class="swp-neg">-8.04%</span>
+                        <details class="swp-pnl-detail">
+        <summary class="swp-neg">
+            Net -8.35%
+            <span style="font-weight:400;color:var(--muted);">· ₹-1,469</span>
+        </summary>
+        <div class="swp-pnl-breakdown">
+            <div class="swp-pnl-row">
+                <span>Buy value</span>
+                <span>₹17,591.00</span>
+            </div>
+            <div class="swp-pnl-row">
+                <span>Sell value</span>
+                <span>₹16,176.00</span>
+            </div>
+            <div class="swp-pnl-row swp-neg">
+                <span>Gross P&amp;L</span>
+                <span>₹-1,415.00 (-8.04%)</span>
+            </div>
+            <div class="swp-pnl-section">Charges (est.)</div>
+                                                                                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (buy 0.1%)</span>
+                    <span>₹17.59</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (sell 0.1%)</span>
+                    <span>₹16.18</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (buy)</span>
+                    <span>₹0.61</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (sell)</span>
+                    <span>₹0.56</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (buy)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (sell)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Stamp duty (buy)</span>
+                    <span>₹2.64</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>GST (18% on fees)</span>
+                    <span>₹0.22</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>DP charge (sell)</span>
+                    <span>₹15.93</span>
+                </div>
+                        <div class="swp-pnl-row">
+                <span>Total charges</span>
+                <span>₹53.77</span>
+            </div>
+            <div class="swp-pnl-row swp-neg">
+                <strong>Net P&amp;L</strong>
+                <strong>₹-1,468.77 (-8.35%)</strong>
+            </div>
+            <p class="swp-pnl-note">NSE delivery (CNC) estimate — STT 0.1% both legs, stamp 0.015% on buy. Excludes STCG/LTCG tax.</p>
+        </div>
+    </details>
+                    </td>
+                <td>X1, X3</td>
+                <td>
+                    <form method="post" onsubmit="return confirm('Delete record?');">
+                        <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                        <input type="hidden" name="action" value="remove">
+                        <input type="hidden" name="position_id" value="e9e41afa1faf8e3d">
+                        <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.15rem 0.4rem;font-size:0.65rem;">Delete</button>
+                    </form>
+                </td>
+            </tr>
+                                <tr>
+                <td>CUB    <span class="swp-src swp-src-unknown" title="Logged from Legacy">Legacy</span>
+    </td>
+                <td>₹199.41 · 2026-06-24                    <details class="swp-edit">
+                        <summary>Edit entry</summary>
+                        <form method="post" class="swp-edit-form">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="update">
+                            <input type="hidden" name="position_id" value="e9c47e5df6591ad8">
+                            <input type="hidden" name="symbol" value="CUB">
+                            <label>
+                                <span class="field-name">Entry ₹</span>
+                                <div class="swp-entry-price-wrap">
+                                    <input type="number" name="entry_price" step="0.05" min="0.01" value="199.41" required>
+                                    <button type="button" class="btn btn-ghost swp-fetch-price">Fetch now</button>
+                                </div>
+                            </label>
+                            <label>
+                                <span class="field-name">Date</span>
+                                <input type="date" name="entry_date" value="2026-06-24" required>
+                            </label>
+                            <label>
+                                <span class="field-name">Shares</span>
+                                <input type="number" name="shares" step="1" min="0" value="50">
+                            </label>
+                            <label>
+                                <span class="field-name">Stop ₹</span>
+                                <input type="number" name="stop_loss" step="0.05" min="0" value="192.4">
+                            </label>
+                            <label>
+                                <span class="field-name">Target ₹</span>
+                                <input type="number" name="profit_target" step="0.05" min="0" value="220">
+                            </label>
+                            <label style="grid-column:1/-1;">
+                                <span class="field-name">Notes</span>
+                                <input type="text" name="notes" value="ENTER 6/6">
+                            </label>
+                            <div style="grid-column:1/-1;">
+                                <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.5rem;font-size:0.65rem;">Save</button>
+                            </div>
+                        </form>
+                    </details>
+                </td>
+                <td>₹217.61</td>
+                <td>
+                    <span class="swp-pos">9.13%</span>
+                        <details class="swp-pnl-detail">
+        <summary class="swp-pos">
+            Net 8.73%
+            <span style="font-weight:400;color:var(--muted);">· ₹871</span>
+        </summary>
+        <div class="swp-pnl-breakdown">
+            <div class="swp-pnl-row">
+                <span>Buy value</span>
+                <span>₹9,970.50</span>
+            </div>
+            <div class="swp-pnl-row">
+                <span>Sell value</span>
+                <span>₹10,880.50</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <span>Gross P&amp;L</span>
+                <span>₹910.00 (9.13%)</span>
+            </div>
+            <div class="swp-pnl-section">Charges (est.)</div>
+                                                                                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (buy 0.1%)</span>
+                    <span>₹9.97</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (sell 0.1%)</span>
+                    <span>₹10.88</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (buy)</span>
+                    <span>₹0.34</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (sell)</span>
+                    <span>₹0.38</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (buy)</span>
+                    <span>₹0.01</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (sell)</span>
+                    <span>₹0.01</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Stamp duty (buy)</span>
+                    <span>₹1.50</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>GST (18% on fees)</span>
+                    <span>₹0.13</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>DP charge (sell)</span>
+                    <span>₹15.93</span>
+                </div>
+                        <div class="swp-pnl-row">
+                <span>Total charges</span>
+                <span>₹39.15</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <strong>Net P&amp;L</strong>
+                <strong>₹870.85 (8.73%)</strong>
+            </div>
+            <p class="swp-pnl-note">NSE delivery (CNC) estimate — STT 0.1% both legs, stamp 0.015% on buy. Excludes STCG/LTCG tax.</p>
+        </div>
+    </details>
+                    </td>
+                <td>X4</td>
+                <td>
+                    <form method="post" onsubmit="return confirm('Delete record?');">
+                        <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                        <input type="hidden" name="action" value="remove">
+                        <input type="hidden" name="position_id" value="e9c47e5df6591ad8">
+                        <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.15rem 0.4rem;font-size:0.65rem;">Delete</button>
+                    </form>
+                </td>
+            </tr>
+                                <tr>
+                <td>DMART    <span class="swp-src swp-src-swing_auto" title="Logged from Swing Auto">Swing Auto</span>
+    </td>
+                <td>₹4,360.01 · 2026-06-30                    <details class="swp-edit">
+                        <summary>Edit entry</summary>
+                        <form method="post" class="swp-edit-form">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="update">
+                            <input type="hidden" name="position_id" value="b78012c3bf69f7cc">
+                            <input type="hidden" name="symbol" value="DMART">
+                            <label>
+                                <span class="field-name">Entry ₹</span>
+                                <div class="swp-entry-price-wrap">
+                                    <input type="number" name="entry_price" step="0.05" min="0.01" value="4360.01" required>
+                                    <button type="button" class="btn btn-ghost swp-fetch-price">Fetch now</button>
+                                </div>
+                            </label>
+                            <label>
+                                <span class="field-name">Date</span>
+                                <input type="date" name="entry_date" value="2026-06-30" required>
+                            </label>
+                            <label>
+                                <span class="field-name">Shares</span>
+                                <input type="number" name="shares" step="1" min="0" value="5">
+                            </label>
+                            <label>
+                                <span class="field-name">Stop ₹</span>
+                                <input type="number" name="stop_loss" step="0.05" min="0" value="4233">
+                            </label>
+                            <label>
+                                <span class="field-name">Target ₹</span>
+                                <input type="number" name="profit_target" step="0.05" min="0" value="4778">
+                            </label>
+                            <label style="grid-column:1/-1;">
+                                <span class="field-name">Notes</span>
+                                <input type="text" name="notes" value="Auto Buy · D67">
+                            </label>
+                            <div style="grid-column:1/-1;">
+                                <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.5rem;font-size:0.65rem;">Save</button>
+                            </div>
+                        </form>
+                    </details>
+                </td>
+                <td>₹4,233.01</td>
+                <td>
+                    <span class="swp-neg">-2.91%</span>
+                        <details class="swp-pnl-detail">
+        <summary class="swp-neg">
+            Net -3.21%
+            <span style="font-weight:400;color:var(--muted);">· ₹-699</span>
+        </summary>
+        <div class="swp-pnl-breakdown">
+            <div class="swp-pnl-row">
+                <span>Buy value</span>
+                <span>₹21,800.05</span>
+            </div>
+            <div class="swp-pnl-row">
+                <span>Sell value</span>
+                <span>₹21,165.05</span>
+            </div>
+            <div class="swp-pnl-row swp-neg">
+                <span>Gross P&amp;L</span>
+                <span>₹-635.00 (-2.91%)</span>
+            </div>
+            <div class="swp-pnl-section">Charges (est.)</div>
+                                                                                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (buy 0.1%)</span>
+                    <span>₹21.80</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (sell 0.1%)</span>
+                    <span>₹21.17</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (buy)</span>
+                    <span>₹0.75</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (sell)</span>
+                    <span>₹0.73</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (buy)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (sell)</span>
+                    <span>₹0.02</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Stamp duty (buy)</span>
+                    <span>₹3.27</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>GST (18% on fees)</span>
+                    <span>₹0.27</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>DP charge (sell)</span>
+                    <span>₹15.93</span>
+                </div>
+                        <div class="swp-pnl-row">
+                <span>Total charges</span>
+                <span>₹63.96</span>
+            </div>
+            <div class="swp-pnl-row swp-neg">
+                <strong>Net P&amp;L</strong>
+                <strong>₹-698.96 (-3.21%)</strong>
+            </div>
+            <p class="swp-pnl-note">NSE delivery (CNC) estimate — STT 0.1% both legs, stamp 0.015% on buy. Excludes STCG/LTCG tax.</p>
+        </div>
+    </details>
+                    </td>
+                <td>SL</td>
+                <td>
+                    <form method="post" onsubmit="return confirm('Delete record?');">
+                        <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                        <input type="hidden" name="action" value="remove">
+                        <input type="hidden" name="position_id" value="b78012c3bf69f7cc">
+                        <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.15rem 0.4rem;font-size:0.65rem;">Delete</button>
+                    </form>
+                </td>
+            </tr>
+                                <tr>
+                <td>KARURVYSYA    <span class="swp-src swp-src-unknown" title="Logged from Legacy">Legacy</span>
+    </td>
+                <td>₹291.51 · 2026-06-24                    <details class="swp-edit">
+                        <summary>Edit entry</summary>
+                        <form method="post" class="swp-edit-form">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="update">
+                            <input type="hidden" name="position_id" value="478b545052d5adaf">
+                            <input type="hidden" name="symbol" value="KARURVYSYA">
+                            <label>
+                                <span class="field-name">Entry ₹</span>
+                                <div class="swp-entry-price-wrap">
+                                    <input type="number" name="entry_price" step="0.05" min="0.01" value="291.51" required>
+                                    <button type="button" class="btn btn-ghost swp-fetch-price">Fetch now</button>
+                                </div>
+                            </label>
+                            <label>
+                                <span class="field-name">Date</span>
+                                <input type="date" name="entry_date" value="2026-06-24" required>
+                            </label>
+                            <label>
+                                <span class="field-name">Shares</span>
+                                <input type="number" name="shares" step="1" min="0" value="20">
+                            </label>
+                            <label>
+                                <span class="field-name">Stop ₹</span>
+                                <input type="number" name="stop_loss" step="0.05" min="0" value="288.5">
+                            </label>
+                            <label>
+                                <span class="field-name">Target ₹</span>
+                                <input type="number" name="profit_target" step="0.05" min="0" value="320">
+                            </label>
+                            <label style="grid-column:1/-1;">
+                                <span class="field-name">Notes</span>
+                                <input type="text" name="notes" value="ENTER 6/6">
+                            </label>
+                            <div style="grid-column:1/-1;">
+                                <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.5rem;font-size:0.65rem;">Save</button>
+                            </div>
+                        </form>
+                    </details>
+                </td>
+                <td>₹288.51</td>
+                <td>
+                    <span class="swp-neg">-1.03%</span>
+                        <details class="swp-pnl-detail">
+        <summary class="swp-neg">
+            Net -1.52%
+            <span style="font-weight:400;color:var(--muted);">· ₹-89</span>
+        </summary>
+        <div class="swp-pnl-breakdown">
+            <div class="swp-pnl-row">
+                <span>Buy value</span>
+                <span>₹5,830.20</span>
+            </div>
+            <div class="swp-pnl-row">
+                <span>Sell value</span>
+                <span>₹5,770.20</span>
+            </div>
+            <div class="swp-pnl-row swp-neg">
+                <span>Gross P&amp;L</span>
+                <span>₹-60.00 (-1.03%)</span>
+            </div>
+            <div class="swp-pnl-section">Charges (est.)</div>
+                                                                                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (buy 0.1%)</span>
+                    <span>₹5.83</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (sell 0.1%)</span>
+                    <span>₹5.77</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (buy)</span>
+                    <span>₹0.20</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (sell)</span>
+                    <span>₹0.20</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (buy)</span>
+                    <span>₹0.01</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (sell)</span>
+                    <span>₹0.01</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Stamp duty (buy)</span>
+                    <span>₹0.87</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>GST (18% on fees)</span>
+                    <span>₹0.08</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>DP charge (sell)</span>
+                    <span>₹15.93</span>
+                </div>
+                        <div class="swp-pnl-row">
+                <span>Total charges</span>
+                <span>₹28.90</span>
+            </div>
+            <div class="swp-pnl-row swp-neg">
+                <strong>Net P&amp;L</strong>
+                <strong>₹-88.90 (-1.52%)</strong>
+            </div>
+            <p class="swp-pnl-note">NSE delivery (CNC) estimate — STT 0.1% both legs, stamp 0.015% on buy. Excludes STCG/LTCG tax.</p>
+        </div>
+    </details>
+                    </td>
+                <td>SL</td>
+                <td>
+                    <form method="post" onsubmit="return confirm('Delete record?');">
+                        <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                        <input type="hidden" name="action" value="remove">
+                        <input type="hidden" name="position_id" value="478b545052d5adaf">
+                        <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.15rem 0.4rem;font-size:0.65rem;">Delete</button>
+                    </form>
+                </td>
+            </tr>
+                                <tr>
+                <td>GRSE    <span class="swp-src swp-src-unknown" title="Logged from Legacy">Legacy</span>
+    </td>
+                <td>₹2,795.71 · 2026-06-24                    <details class="swp-edit">
+                        <summary>Edit entry</summary>
+                        <form method="post" class="swp-edit-form">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="update">
+                            <input type="hidden" name="position_id" value="dfea1aab3c1c3254">
+                            <input type="hidden" name="symbol" value="GRSE">
+                            <label>
+                                <span class="field-name">Entry ₹</span>
+                                <div class="swp-entry-price-wrap">
+                                    <input type="number" name="entry_price" step="0.05" min="0.01" value="2795.71" required>
+                                    <button type="button" class="btn btn-ghost swp-fetch-price">Fetch now</button>
+                                </div>
+                            </label>
+                            <label>
+                                <span class="field-name">Date</span>
+                                <input type="date" name="entry_date" value="2026-06-24" required>
+                            </label>
+                            <label>
+                                <span class="field-name">Shares</span>
+                                <input type="number" name="shares" step="1" min="0" value="5">
+                            </label>
+                            <label>
+                                <span class="field-name">Stop ₹</span>
+                                <input type="number" name="stop_loss" step="0.05" min="0" value="2728">
+                            </label>
+                            <label>
+                                <span class="field-name">Target ₹</span>
+                                <input type="number" name="profit_target" step="0.05" min="0" value="3076">
+                            </label>
+                            <label style="grid-column:1/-1;">
+                                <span class="field-name">Notes</span>
+                                <input type="text" name="notes" value="ENTER 6/6">
+                            </label>
+                            <div style="grid-column:1/-1;">
+                                <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.5rem;font-size:0.65rem;">Save</button>
+                            </div>
+                        </form>
+                    </details>
+                </td>
+                <td>₹2,727.91</td>
+                <td>
+                    <span class="swp-neg">-2.43%</span>
+                        <details class="swp-pnl-detail">
+        <summary class="swp-neg">
+            Net -2.76%
+            <span style="font-weight:400;color:var(--muted);">· ₹-386</span>
+        </summary>
+        <div class="swp-pnl-breakdown">
+            <div class="swp-pnl-row">
+                <span>Buy value</span>
+                <span>₹13,978.55</span>
+            </div>
+            <div class="swp-pnl-row">
+                <span>Sell value</span>
+                <span>₹13,639.55</span>
+            </div>
+            <div class="swp-pnl-row swp-neg">
+                <span>Gross P&amp;L</span>
+                <span>₹-339.00 (-2.43%)</span>
+            </div>
+            <div class="swp-pnl-section">Charges (est.)</div>
+                                                                                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (buy 0.1%)</span>
+                    <span>₹13.98</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (sell 0.1%)</span>
+                    <span>₹13.64</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (buy)</span>
+                    <span>₹0.48</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (sell)</span>
+                    <span>₹0.47</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (buy)</span>
+                    <span>₹0.01</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (sell)</span>
+                    <span>₹0.01</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Stamp duty (buy)</span>
+                    <span>₹2.10</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>GST (18% on fees)</span>
+                    <span>₹0.17</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>DP charge (sell)</span>
+                    <span>₹15.93</span>
+                </div>
+                        <div class="swp-pnl-row">
+                <span>Total charges</span>
+                <span>₹46.79</span>
+            </div>
+            <div class="swp-pnl-row swp-neg">
+                <strong>Net P&amp;L</strong>
+                <strong>₹-385.79 (-2.76%)</strong>
+            </div>
+            <p class="swp-pnl-note">NSE delivery (CNC) estimate — STT 0.1% both legs, stamp 0.015% on buy. Excludes STCG/LTCG tax.</p>
+        </div>
+    </details>
+                    </td>
+                <td>SL</td>
+                <td>
+                    <form method="post" onsubmit="return confirm('Delete record?');">
+                        <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                        <input type="hidden" name="action" value="remove">
+                        <input type="hidden" name="position_id" value="dfea1aab3c1c3254">
+                        <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.15rem 0.4rem;font-size:0.65rem;">Delete</button>
+                    </form>
+                </td>
+            </tr>
+                                <tr>
+                <td>CREDITACC    <span class="swp-src swp-src-unknown" title="Logged from Legacy">Legacy</span>
+    </td>
+                <td>₹1,376.01 · 2026-06-24                    <details class="swp-edit">
+                        <summary>Edit entry</summary>
+                        <form method="post" class="swp-edit-form">
+                            <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                            <input type="hidden" name="action" value="update">
+                            <input type="hidden" name="position_id" value="75e28ac3e3a895ca">
+                            <input type="hidden" name="symbol" value="CREDITACC">
+                            <label>
+                                <span class="field-name">Entry ₹</span>
+                                <div class="swp-entry-price-wrap">
+                                    <input type="number" name="entry_price" step="0.05" min="0.01" value="1376.01" required>
+                                    <button type="button" class="btn btn-ghost swp-fetch-price">Fetch now</button>
+                                </div>
+                            </label>
+                            <label>
+                                <span class="field-name">Date</span>
+                                <input type="date" name="entry_date" value="2026-06-24" required>
+                            </label>
+                            <label>
+                                <span class="field-name">Shares</span>
+                                <input type="number" name="shares" step="1" min="0" value="10">
+                            </label>
+                            <label>
+                                <span class="field-name">Stop ₹</span>
+                                <input type="number" name="stop_loss" step="0.05" min="0" value="1311.1">
+                            </label>
+                            <label>
+                                <span class="field-name">Target ₹</span>
+                                <input type="number" name="profit_target" step="0.05" min="0" value="1501.5">
+                            </label>
+                            <label style="grid-column:1/-1;">
+                                <span class="field-name">Notes</span>
+                                <input type="text" name="notes" value="ENTER 6/6">
+                            </label>
+                            <div style="grid-column:1/-1;">
+                                <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.2rem 0.5rem;font-size:0.65rem;">Save</button>
+                            </div>
+                        </form>
+                    </details>
+                </td>
+                <td>₹1,471.01</td>
+                <td>
+                    <span class="swp-pos">6.9%</span>
+                        <details class="swp-pnl-detail">
+        <summary class="swp-pos">
+            Net 6.56%
+            <span style="font-weight:400;color:var(--muted);">· ₹902</span>
+        </summary>
+        <div class="swp-pnl-breakdown">
+            <div class="swp-pnl-row">
+                <span>Buy value</span>
+                <span>₹13,760.10</span>
+            </div>
+            <div class="swp-pnl-row">
+                <span>Sell value</span>
+                <span>₹14,710.10</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <span>Gross P&amp;L</span>
+                <span>₹950.00 (6.9%)</span>
+            </div>
+            <div class="swp-pnl-section">Charges (est.)</div>
+                                                                                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (buy 0.1%)</span>
+                    <span>₹13.76</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>STT (sell 0.1%)</span>
+                    <span>₹14.71</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (buy)</span>
+                    <span>₹0.47</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Exchange txn (sell)</span>
+                    <span>₹0.51</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (buy)</span>
+                    <span>₹0.01</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>SEBI fee (sell)</span>
+                    <span>₹0.01</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>Stamp duty (buy)</span>
+                    <span>₹2.06</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>GST (18% on fees)</span>
+                    <span>₹0.18</span>
+                </div>
+                                                            <div class="swp-pnl-row swp-charge-row">
+                    <span>DP charge (sell)</span>
+                    <span>₹15.93</span>
+                </div>
+                        <div class="swp-pnl-row">
+                <span>Total charges</span>
+                <span>₹47.64</span>
+            </div>
+            <div class="swp-pnl-row swp-pos">
+                <strong>Net P&amp;L</strong>
+                <strong>₹902.36 (6.56%)</strong>
+            </div>
+            <p class="swp-pnl-note">NSE delivery (CNC) estimate — STT 0.1% both legs, stamp 0.015% on buy. Excludes STCG/LTCG tax.</p>
+        </div>
+    </details>
+                    </td>
+                <td>X4</td>
+                <td>
+                    <form method="post" onsubmit="return confirm('Delete record?');">
+                        <input type="hidden" name="_csrf" value="495390.a032906376da12cb862d1d081cfbd6e7a46ca099ae432cea2e408e0f6144a888">                        <input type="hidden" name="action" value="remove">
+                        <input type="hidden" name="position_id" value="75e28ac3e3a895ca">
+                        <button type="submit" class="btn btn-ghost" style="width:auto;padding:0.15rem 0.4rem;font-size:0.65rem;">Delete</button>
+                    </form>
+                </td>
+            </tr>
+                </tbody>
+    </table>
+</details>
+
+<script>window.PriceFreshness = {
+    esc(s) {
+        const d = document.createElement('div');
+        d.textContent = String(s ?? '');
+        return d.innerHTML;
+    },
+    renderBadge(r) {
+        const live = !!r.live;
+        const stale = !!r.stale;
+        const quoteTime = r.quote_time || '';
+        const asOfDate = r.as_of_date || r.as_of || '';
+        const staleReason = r.stale_reason || '';
+        const ds = String(r.data_source || '');
+        const isIntraday = ds.indexOf('yahoo_intraday_') === 0;
+        let mode = 'close';
+        let label = 'EOD';
+        let detail = asOfDate ? ('close ' + asOfDate) : quoteTime;
+        let title = 'Yahoo daily close';
+        if (stale) {
+            mode = 'stale';
+            label = 'Stale';
+            title = staleReason || 'Stale chart — refresh daily closes.';
+        } else if (isIntraday) {
+            if (live) {
+                mode = 'live';
+                label = 'Live';
+                detail = asOfDate || quoteTime || 'now';
+                title = 'Yahoo intraday bar · ' + detail;
+            } else {
+                mode = 'last_bar';
+                label = 'Last bar';
+                detail = asOfDate || quoteTime || 'session';
+                title = 'Last intraday bar · ' + detail;
+            }
+        } else if (live) {
+            mode = 'live';
+            label = 'Live';
+            detail = quoteTime || 'now';
+            title = 'Yahoo live quote · ' + detail + (asOfDate ? (' · EOD ' + asOfDate) : '');
+        } else if (quoteTime) {
+            detail = quoteTime;
+        }
+        let html = '<span class="pf-badge pf-' + mode + '" title="' + this.esc(title) + '">' + this.esc(label) + '</span>';
+        if (detail) {
+            html += '<br><span class="pf-detail" title="' + this.esc(title) + '">' + this.esc(detail) + '</span>';
+        }
+        return html;
+    }
+};</script><script>
+(function() {
+    const REFRESH_MS = 60000;
+    const API = 'swing-positions-api.php';
+    let nextRefreshAt = Date.now() + REFRESH_MS;
+    let polling = false;
+
+    const el = id => document.getElementById(id);
+
+    function esc(s) {
+        const d = document.createElement('div');
+        d.textContent = String(s ?? '');
+        return d.innerHTML;
+    }
+
+    function fmtRs(n) {
+        if (n === null || n === undefined || n === '') return '—';
+        return Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function pnlClass(n) {
+        if (n === null || n === undefined) return '';
+        return Number(n) >= 0 ? 'swp-pos' : 'swp-neg';
+    }
+
+    function verdictClass(v) {
+        return v === 'EXIT' ? 'swp-exit' : (v === 'HOLD' ? 'swp-hold' : 'swp-muted');
+    }
+
+    function renderLevels(r) {
+        const parts = [];
+        if (r.trail_armed && r.trail_stop != null) {
+            parts.push('<span style="color:#5eead4;font-weight:600;">Trail ₹' + fmtRs(r.trail_stop) + '</span>');
+            if (r.high_water != null && r.trail_from_high_pct != null) {
+                parts.push('<span style="color:var(--muted);font-size:0.58rem;">−' + esc(r.trail_from_high_pct) + '% from ₹' + fmtRs(r.high_water) + '</span>');
+            }
+            if (r.trailed_stop_loss != null && r.trail_stop != null && Number(r.trailed_stop_loss) > Number(r.trail_stop) - 0.02) {
+                parts.push('<span style="color:var(--muted);font-size:0.58rem;">ratchet ₹' + fmtRs(r.trailed_stop_loss) + '</span>');
+            }
+        } else if (r.gain_to_arm_trail_pct != null && Number(r.gain_to_arm_trail_pct) > 0) {
+            parts.push('<span style="color:var(--muted);">Trail arms +' + esc(r.trail_arm_pct || '2') + '%</span>');
+            parts.push('<span style="color:var(--muted);font-size:0.58rem;">need +' + esc(r.gain_to_arm_trail_pct) + '% gain</span>');
+        }
+        const eff = r.effective_stop ?? r.active_stop;
+        if (eff != null) {
+            parts.push('Floor ₹' + fmtRs(eff) + (r.breakeven_armed ? ' <span style="color:var(--success);font-size:0.58rem;">BE+</span>' : ''));
+        } else if (r.stop_loss != null) {
+            parts.push('S ₹' + fmtRs(r.stop_loss));
+        }
+        if (r.profit_target != null) {
+            parts.push('T ₹' + fmtRs(r.profit_target));
+        }
+        return parts.join('<br>') || '—';
+    }
+
+    function renderNow(r) {
+        if (!r.ok || r.current_price == null) {
+            return '<span class="swp-triggers">' + esc(r.error || 'No data') + '</span>';
+        }
+        let html = '₹' + fmtRs(r.current_price);
+        if (window.PriceFreshness) {
+            html += window.PriceFreshness.renderBadge(r);
+        }
+        if (r.live && r.close_price != null) {
+            html += '<br><span class="pf-detail">EOD ₹' + fmtRs(r.close_price) + '</span>';
+        }
+        return html;
+    }
+
+    function updateSummary(pos) {
+        const open = pos?.open ?? 0;
+        const exits = pos?.exit_count ?? 0;
+        const openEl = el('swp-open-count');
+        const exitEl = el('swp-exit-count');
+        const exitWrap = el('swp-exit-wrap');
+        if (openEl) openEl.textContent = String(open);
+        if (exitEl) exitEl.textContent = String(exits);
+        if (exitWrap) exitWrap.classList.toggle('swp-exit-count', exits > 0);
+
+        const pf = pos?.portfolio ?? {};
+        const pfBox = el('swp-portfolio');
+        if (pfBox && (pf.count ?? 0) > 0) {
+            pfBox.hidden = false;
+            const set = (id, text, clsWrap, cls) => {
+                const n = el(id);
+                const w = clsWrap ? el(clsWrap) : null;
+                if (n) n.textContent = text;
+                if (w && cls) w.className = cls;
+            };
+            set('swp-inv', '₹' + Math.round(pf.invested || 0).toLocaleString('en-IN'));
+            set('swp-now-val', '₹' + Math.round(pf.current_value || 0).toLocaleString('en-IN'));
+            set('swp-gross', '₹' + Math.round(pf.gross_pnl || 0).toLocaleString('en-IN'), 'swp-gross-wrap', 'Gross ' + pnlClass(pf.gross_pnl));
+            set('swp-charges', '₹' + Math.round(pf.total_charges || 0).toLocaleString('en-IN'));
+            const netEl = el('swp-net');
+            const netWrap = el('swp-net-wrap');
+            if (netEl) netEl.textContent = '₹' + Math.round(pf.net_pnl || 0).toLocaleString('en-IN');
+            if (netWrap) netWrap.className = 'Net ' + pnlClass(pf.net_pnl);
+        } else if (pfBox) {
+            pfBox.hidden = true;
+        }
+    }
+
+    function updateAlert(pos) {
+        const alert = el('swp-pos-alert');
+        if (!alert) return;
+        const urgent = (pos?.rows || []).filter(r => r.exit_verdict === 'EXIT');
+        if (urgent.length) {
+            alert.hidden = false;
+            alert.textContent = urgent.length + ' position(s) triggered EXIT — '
+                + urgent.map(r => r.symbol + ' (' + (r.exit_triggers || []).join(', ') + ')').join('; ');
+        } else {
+            alert.hidden = true;
+        }
+    }
+
+    function updateRows(pos) {
+        const body = el('swp-open-body');
+        const empty = el('swp-empty-msg');
+        const wrap = el('swp-open-wrap');
+        if (!body) return;
+
+        const rows = pos?.rows || [];
+        updateSummary(pos);
+        updateAlert(pos);
+
+        if (!rows.length) {
+            if (empty) empty.hidden = false;
+            if (wrap) wrap.hidden = true;
+            return;
+        }
+        if (empty) empty.hidden = true;
+        if (wrap) wrap.hidden = false;
+
+        rows.forEach(r => {
+            const tr = body.querySelector('tr[data-pos-id="' + r.id + '"]');
+            if (!tr) return;
+
+            const nowEl = tr.querySelector('.swp-now');
+            if (nowEl) {
+                const priceKey = r.current_price != null ? String(r.current_price) : '';
+                if (priceKey && nowEl.dataset.price !== priceKey) {
+                    nowEl.classList.add('swp-flash');
+                    setTimeout(() => nowEl.classList.remove('swp-flash'), 650);
+                }
+                nowEl.dataset.price = priceKey;
+                nowEl.innerHTML = renderNow(r);
+            }
+
+            const pnlEl = tr.querySelector('.swp-pnl');
+            if (pnlEl) {
+                const pctEl = pnlEl.querySelector('.swp-pnl-pct');
+                const grossEl = pnlEl.querySelector('.swp-pnl-gross');
+                if (r.gain_pct != null && pctEl) {
+                    const cls = pnlClass(r.gain_pct);
+                    pctEl.className = 'swp-pnl-pct ' + cls;
+                    pctEl.textContent = r.gain_pct + '%';
+                    if (grossEl) {
+                        grossEl.className = 'swp-pnl-gross ' + cls;
+                        grossEl.style.fontSize = '0.65rem';
+                        grossEl.textContent = r.pnl_inr != null ? ' · gross ₹' + Math.round(r.pnl_inr).toLocaleString('en-IN') : '';
+                    }
+                }
+            }
+
+            const sessEl = tr.querySelector('.swp-sessions');
+            if (sessEl) sessEl.textContent = r.sessions_held != null ? String(r.sessions_held) : '—';
+
+            const exitEl = tr.querySelector('.swp-exit-cell');
+            if (exitEl) {
+                const v = r.exit_verdict || 'HOLD';
+                exitEl.innerHTML = '<span class="swp-verdict ' + verdictClass(v) + '">' + esc(v) + '</span>';
+            }
+
+            const trigEl = tr.querySelector('.swp-triggers-cell');
+            if (trigEl) {
+                const t = r.exit_triggers || [];
+                trigEl.textContent = t.length ? t.join(', ') : '—';
+            }
+
+            const lvlEl = tr.querySelector('.swp-levels');
+            if (lvlEl) lvlEl.innerHTML = renderLevels(r);
+
+            const closeInput = tr.querySelector('input[name="closed_price"]');
+            if (closeInput && !closeInput.value && r.current_price != null) {
+                closeInput.value = String(r.current_price);
+            }
+        });
+    }
+
+    function setStatus(ok) {
+        const pill = el('swp-status-pill');
+        if (!pill) return;
+        pill.classList.remove('swp-live', 'swp-error');
+        if (ok) {
+            pill.textContent = 'Live · auto';
+            pill.classList.add('swp-live');
+        } else {
+            pill.textContent = 'Connection error';
+            pill.classList.add('swp-error');
+        }
+    }
+
+    function tickCountdown() {
+        const cd = el('swp-countdown');
+        if (!cd) return;
+        const sec = Math.max(0, Math.ceil((nextRefreshAt - Date.now()) / 1000));
+        cd.textContent = sec + 's';
+    }
+
+    async function poll(refresh) {
+        if (polling) return;
+        polling = true;
+        const btn = el('swp-refresh-btn');
+        if (btn && refresh) btn.disabled = true;
+        try {
+            const r = await fetch(API + (refresh ? '?refresh=1' : ''), { credentials: 'same-origin' });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const data = await r.json();
+            if (!data.ok) throw new Error(data.error || 'API error');
+            if (data.positions) updateRows(data.positions);
+            const updated = el('swp-updated');
+            if (updated && data.positions?.refreshed_at) {
+                updated.textContent = new Date(data.positions.refreshed_at).toLocaleTimeString();
+            }
+            setStatus(true);
+            nextRefreshAt = Date.now() + REFRESH_MS;
+        } catch (e) {
+            setStatus(false);
+        } finally {
+            polling = false;
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    const refreshBtn = el('swp-refresh-btn');
+    if (refreshBtn) refreshBtn.addEventListener('click', () => poll(true));
+
+    setInterval(tickCountdown, 1000);
+    setInterval(() => poll(false), REFRESH_MS);
+    tickCountdown();
+    if (el('swp-open-body')) poll(true);
+})();
+
+(function () {
+    function symbolFromBtn(btn) {
+        const form = btn.closest('form');
+        if (!form) return '';
+        const named = btn.getAttribute('data-symbol-input');
+        const symInput = named
+            ? (form.querySelector('[name="' + named + '"]') || document.querySelector('[name="' + named + '"]'))
+            : form.querySelector('[name="symbol"]');
+        return symInput ? String(symInput.value || '').trim().toUpperCase() : '';
+    }
+
+    document.querySelectorAll('.swp-fetch-price').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const form = btn.closest('form');
+            const priceInput = form ? form.querySelector('[name="entry_price"]') : null;
+            const symbol = symbolFromBtn(btn);
+            if (!priceInput || symbol === '') {
+                alert('Enter a symbol first.');
+                return;
+            }
+            const label = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '…';
+            fetch('swing-live-price.php?symbol=' + encodeURIComponent(symbol))
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data.success || !data.price) {
+                        throw new Error(data.error || 'No quote');
+                    }
+                    priceInput.value = Number(data.price).toFixed(2);
+                })
+                .catch(function (e) {
+                    alert(e.message || 'Live fetch failed');
+                })
+                .finally(function () {
+                    btn.disabled = false;
+                    btn.textContent = label;
+                });
+        });
+    });
+})();
+</script>
+
+<footer><a href="help.php">How to Use</a> · <a href="../../99-complete-stock-verification-guide.md">Ch.99 Guide</a> · <a href="verify.php">CFA Verify</a> · <a href="index.php">Full Verification</a> · <a href="stock-details.php">Stock Details</a> · <a href="screener.php">Screener</a> · <a href="strategies.php">Strategies</a> · <a href="swing-trading.php">Swing Trading</a> · <a href="swing-auto-screener.php">Swing Auto</a> · <a href="watchlist.php">Watchlist</a> · <a href="cache.php">Cache</a> · <a href="users.php">Users</a></footer></div></body></html>

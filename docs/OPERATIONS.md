@@ -85,7 +85,7 @@ Admin UI: **Admin → Run daily sync** (`POST /api/v1/admin/sync/daily`) or uplo
 Supported CSV formats:
 
 - Standard NSE: `ind_nifty50list.csv` (SYMBOL column)
-- Market Watch: `MW-NIFTY-50-*.csv`, `MW-NIFTY-TOTAL-MKT-*.csv`
+- Market Watch: `MW-NIFTY-50-*.csv`, `MW-NIFTY-500-*.csv` (Nifty 500), `MW-NIFTY-TOTAL-MKT-*.csv` (Total Market — **not** Nifty 500)
 
 ### Full NSE equity list
 
@@ -232,7 +232,7 @@ Upload missing index CSV via Admin, or add files to `INDICES_DIR`:
 | nifty50 | `ind_nifty50list.csv` or `MW-NIFTY-50-*` |
 | nifty100 | `ind_nifty100list.csv` or `MW-NIFTY-100-*` |
 | nifty250 | `ind_niftylargemidcap250list.csv` |
-| nifty500 | `ind_nifty500list.csv` or `MW-NIFTY-TOTAL-MKT-*` |
+| nifty500 | `ind_nifty500list.csv` or `MW-NIFTY-500-*` (not Total Market) |
 | smallcap250 | `ind_niftysmallcap250list.csv` |
 
 ### Prisma schema out of date

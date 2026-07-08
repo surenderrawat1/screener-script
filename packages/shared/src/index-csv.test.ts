@@ -29,7 +29,12 @@ describe('index CSV parser', () => {
 
   it('guesses universe from filename', () => {
     expect(guessUniverseFromFilename('MW-NIFTY-50-17-Jun-2026.csv')).toBe('nifty50');
-    expect(guessUniverseFromFilename('MW-NIFTY-TOTAL-MKT-19-Jun-2026.csv')).toBe('nifty500');
+    expect(guessUniverseFromFilename('MW-NIFTY-500-06-Jul-2026.csv')).toBe('nifty500');
+    expect(guessUniverseFromFilename('MW-NIFTY-500-06-Jul-2026')).toBe('nifty500');
+    expect(guessUniverseFromFilename('MW-NIFTY-TOTAL-MKT-19-Jun-2026.csv')).toBeNull();
+    expect(guessUniverseFromFilename('MW-NIFTY-LARGEMIDCAP-250-06-Jul-2026.csv')).toBe('nifty250');
+    expect(guessUniverseFromFilename('MW-NIFTY-LARGEMIDCAP-250-06-Jul-2026')).toBe('nifty250');
     expect(guessUniverseFromFilename('ind_nifty50list.csv')).toBe('nifty50');
+    expect(guessUniverseFromFilename('C:\\Downloads\\MW-NIFTY-500-06-Jul-2026.csv')).toBe('nifty500');
   });
 });

@@ -4,6 +4,8 @@
 
 This document maps the **PHP stock-verifier** position ledger to **Script Screener** architecture, explains performance characteristics, and defines the plan to reach full PHP parity.
 
+> **CFA verification:** See [SWING-POSITIONS-CFA-VERIFICATION.md](SWING-POSITIONS-CFA-VERIFICATION.md) for graded parity report (7 Jul 2026).
+
 > **Educational research tool only** — exit signals are advisory; user confirms all closes manually.
 
 ---
@@ -54,24 +56,24 @@ This document maps the **PHP stock-verifier** position ledger to **Script Screen
 | **Storage** | `data/swing_positions.json` (single file) | PostgreSQL `swing_positions` table |
 | **Concurrency** | File lock on write | Prisma upserts, per-user rows |
 | **Live API** | `swing-positions-api.php?refresh=1` | `GET /api/v1/swing/positions?live=1` |
-| **Full UI** | `swing-positions.php` — CRUD, live table, P&L, journal | `PositionsPage` — **static table only** |
-| **Live eval UI** | Inline on positions page + auto screener | **Auto Radar** (`/swing/auto`) primarily |
-| **Live quote** | `liveQuoteForSymbol()` (Yahoo intraday) | Daily close from cached bars (`ta_price`) |
-| **Hourly bars (X9)** | Fetched in tracker | **Not wired** (`hourlyBars = null`) |
-| **Regime in refresh** | Passed to `evaluateExit` | **Not passed** in `refreshOpenPositions` |
-| **Trail persistence** | `updateTrailStop` / `updateHighest` each refresh | DB columns exist; **not written back** on refresh |
-| **P&L** | `SwingTradePnl` with STT, stamp, GST | **Not ported** |
-| **Closed stats** | `SwingClosedTradeStats`, CSV export | **Not ported** |
-| **60s poll** | Dedicated positions endpoint | Bundled in `/auto/state` or `?live=1` |
+| **Full UI** | `swing-positions.php` — CRUD, live table, P&L, journal | `PositionsPage` — live eval, add/close/edit, journal |
+| **Live eval UI** | Inline on positions page + auto screener | `/positions` + `/swing/auto` |
+| **Live quote** | `liveQuoteForSymbol()` (Yahoo intraday) | Same when NSE open |
+| **Hourly bars (X9)** | Fetched in tracker | **Not wired** in `buildSymbolContext` |
+| **Regime in refresh** | Passed to `evaluateExit` | ✓ via snapshot / `currentMarketRegime` |
+| **Trail persistence** | JSON each refresh | ✓ `persistPositionTrailRatchet` |
+| **P&L** | `SwingTradePnl` with STT, stamp, GST | ✓ `trade-pnl.ts` |
+| **Closed stats** | `SwingClosedTradeStats`, CSV export | ✓ `summarizeClosedSwingPositions` + export |
+| **60s poll** | Dedicated positions endpoint | ✓ `?live=1` on `/positions` |
 | **Multi-user** | Single JSON file (implicit single user) | `userId` FK per position |
 
 ### Page mapping
 
 | PHP | v2 | Status |
 |-----|-----|--------|
-| `swing-positions.php` | `/positions` | Partial — ledger only |
+| `swing-positions.php` | `/positions` | Live ledger + journal |
 | `swing-positions-api.php` | `GET /api/v1/swing/positions?live=1` | API exists |
-| `swing-positions-export.php` | — | Not ported |
+| `swing-positions-export.php` | `GET /api/v1/swing/positions/export` | ✓ |
 | Auto screener positions panel | `/swing/auto` open positions table | Live eval shown |
 
 ---
@@ -538,22 +540,21 @@ SwingTradePnl::compute()
 
 | Feature | PHP | v2 | Gap |
 |---------|-----|-----|-----|
-| Exit X1–X9 logic | ✓ | ✓ tested | — |
+| Exit X1–X9 logic | ✓ | ✓ tested | X9 needs hourly data |
 | Position actions | ✓ | ✓ tested | — |
 | Heat gate 10 / 4% | ✓ | ✓ | — |
-| CRUD open/close | ✓ | API ✓ | UI partial |
-| Edit / delete position | ✓ | ✗ | API missing |
-| Live quote (intraday) | ✓ | Daily close | **Phase B** |
-| Hourly X9 | ✓ | ✗ | **Phase B** |
-| Regime in exit eval on refresh | ✓ | ✗ on `?live=1` path | **Phase A** |
-| Trail/high persist on refresh | ✓ | ✗ | **Phase A** |
-| P&L + charges | ✓ | ✗ | **Phase B** |
-| Closed trade stats | ✓ | ✗ | **Phase C** |
-| CSV export | ✓ | ✗ | **Phase C** |
-| Full positions page UI | ✓ | Partial | **Phase A** |
-| 60s positions-only endpoint | ✓ | `?live=1` | OK |
+| CRUD open/close/edit/delete | ✓ | ✓ API + UI | Edit UX (prompts) |
+| Live quote (intraday) | ✓ | ✓ NSE session | — |
+| Regime in exit eval | ✓ | ✓ | — |
+| Trail/high persist | ✓ | ✓ DB ratchet | — |
+| P&L + charges (open) | ✓ | ✓ | Expandable breakdown UI |
+| Closed journal stats | ✓ | ✓ charge-aware net | — |
+| CSV export | ✓ | ✓ | — |
+| Reopen / undo close | — | ✓ | v2 enhancement |
+| Full positions page UI | ✓ | B+ | Countdown, fetch-now, inline edit |
 | Multi-user positions | ✗ | ✓ | v2 improvement |
-| PostgreSQL durability | ✗ | ✓ | v2 improvement |
+
+See [SWING-POSITIONS-CFA-VERIFICATION.md](SWING-POSITIONS-CFA-VERIFICATION.md) for full checklist.
 
 ---
 

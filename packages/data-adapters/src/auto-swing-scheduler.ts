@@ -64,16 +64,40 @@ export async function shouldStartAutoScan(): Promise<boolean> {
   return Date.now() - savedAt >= SCAN_INTERVAL_SEC * 1000;
 }
 
-export async function triggerSwingAutoScan(userId?: string) {
-  if (!(await shouldStartAutoScan())) {
-    return { ok: false as const, error: 'Scan not due or already running.' };
+export async function buildForcedFullScanPlan() {
+  const regime = await resolveAutoScanRegime(false);
+  const base = scanInput();
+  const symbols = await resolveUniverseSymbols(base.universe, 0);
+  return {
+    ...base,
+    scan_mode: 'full',
+    symbols,
+    auto_radar: true,
+    regime,
+    forced: true,
+  };
+}
+
+export async function triggerSwingAutoScan(
+  userId?: string,
+  options: { force?: boolean; full?: boolean } = {},
+) {
+  if (await hasActiveAutoScanJob()) {
+    return { ok: false as const, error: 'A scan is already running — wait for it to finish.' };
   }
 
-  const plan = await buildAutoScanPlan();
+  if (!options.force && !(await shouldStartAutoScan())) {
+    return { ok: false as const, error: 'Scan not due yet — try again in a few minutes or use force refresh.' };
+  }
+
+  const plan =
+    options.full || options.force
+      ? await buildForcedFullScanPlan()
+      : await buildAutoScanPlan();
   const symbols = plan.symbols ?? [];
 
   if (symbols.length === 0) {
-    return { ok: false as const, error: 'No symbols to scan.' };
+    return { ok: false as const, error: 'No symbols to scan — sync Nifty 250 index CSV in Admin.' };
   }
 
   if (shouldRunSwingInBackground(symbols.length)) {
@@ -87,11 +111,23 @@ export async function triggerSwingAutoScan(userId?: string) {
       },
     });
     await enqueueSwingScanJob({ jobId: job.id, input: plan as never, symbols, userId });
-    return { ok: true as const, jobId: job.id, background: true, scan_mode: plan.scan_mode };
+    return {
+      ok: true as const,
+      jobId: job.id,
+      background: true,
+      scan_mode: plan.scan_mode,
+      symbol_count: symbols.length,
+    };
   }
 
-  const result = await executeAutoScanPlan(plan as AutoScanPlan, false);
-  return { ok: true as const, background: false, scan_mode: plan.scan_mode, result };
+  const result = await executeAutoScanPlan(plan as AutoScanPlan, options.force ?? false);
+  return {
+    ok: true as const,
+    background: false,
+    scan_mode: plan.scan_mode,
+    symbol_count: symbols.length,
+    result,
+  };
 }
 
 export async function tickSwingAutoScan(userId?: string) {

@@ -20,6 +20,62 @@ export type IntradayBar = Omit<OhlcBar, 'time'> & {
   time_label: string;
 };
 
+export type IntradayChartSmaPoint = { time: number; value: number };
+
+export type IntradayChartPayload = {
+  symbol: string;
+  interval: '5m' | '15m';
+  range: string;
+  bars: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>;
+  sma9: IntradayChartSmaPoint[];
+  sma20: IntradayChartSmaPoint[];
+  sma50: IntradayChartSmaPoint[];
+  sma200: IntradayChartSmaPoint[];
+  fetched_at: string;
+  intraday: true;
+};
+
+/** Simple moving average over intraday closes, keyed by each bar's unix time. */
+function intradaySma(bars: IntradayBar[], period: number): IntradayChartSmaPoint[] {
+  if (period < 1 || bars.length < period) return [];
+  const out: IntradayChartSmaPoint[] = [];
+  let sum = 0;
+  for (let i = 0; i < period; i++) sum += bars[i].close;
+  out.push({ time: bars[period - 1].time, value: Math.round((sum / period) * 100) / 100 });
+  for (let i = period; i < bars.length; i++) {
+    sum += bars[i].close - bars[i - period].close;
+    out.push({ time: bars[i].time, value: Math.round((sum / period) * 100) / 100 });
+  }
+  return out;
+}
+
+/**
+ * Convert a fetched {@link IntradayChart} into a candlestick payload with SMA
+ * overlays for the web chart (lightweight-charts, unix-second time axis).
+ */
+export function buildIntradayChartPayload(chart: IntradayChart): IntradayChartPayload {
+  const bars = chart.bars.map((b) => ({
+    time: b.time,
+    open: b.open,
+    high: b.high,
+    low: b.low,
+    close: b.close,
+    volume: b.volume,
+  }));
+  return {
+    symbol: chart.symbol,
+    interval: chart.interval,
+    range: chart.range,
+    bars,
+    sma9: intradaySma(chart.bars, 9),
+    sma20: intradaySma(chart.bars, 20),
+    sma50: intradaySma(chart.bars, 50),
+    sma200: intradaySma(chart.bars, 200),
+    fetched_at: chart.fetched_at,
+    intraday: true,
+  };
+}
+
 function istLabel(unixSec: number): string {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Kolkata',
@@ -44,16 +100,17 @@ export async function fetchInstrumentIntradayChart(
   displaySymbol: string,
   interval: '5m' | '15m' = '15m',
   refresh = false,
+  range = '5d',
 ): Promise<IntradayChart | null> {
   const normalizedKey = instrumentCacheKey.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-  const cacheKeyStr = cacheKey(CACHE_PREFIX.TA, `intraday:${normalizedKey}:${interval}`);
+  const cacheKeyStr = cacheKey(CACHE_PREFIX.TA, `intraday:${normalizedKey}:${interval}:${range}`);
   if (!refresh) {
     const cached = await cacheGetJson<IntradayChart>(cacheKeyStr);
     if (cached?.bars?.length) return cached;
   }
 
   for (const yahooSymbol of yahooSymbols) {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${yahooInterval(interval)}&range=5d`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${yahooInterval(interval)}&range=${encodeURIComponent(range)}`;
     const body = await httpGet(url);
     if (!body) continue;
     try {

@@ -9,6 +9,7 @@ import {
   guessUniverseFromFilename,
   indexAgeDays,
   parseIndexCsvContent,
+  validateIndexSymbolCount,
 } from '@sv/shared';
 
 export type IndexSyncResult = {
@@ -34,6 +35,10 @@ export async function syncIndexUniverse(
   }
 
   const unique = [...new Set(symbols.map((s) => s.toUpperCase()))].sort();
+  const boundsError = validateIndexSymbolCount(indexKey, unique.length);
+  if (boundsError) {
+    return { ok: false, indexKey, count: unique.length, added: [], removed: [], sourceFile, error: boundsError };
+  }
   const now = new Date();
 
   const previous = await prisma.indexConstituent.findMany({

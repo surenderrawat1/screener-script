@@ -47,6 +47,12 @@ describe('strategy-registry', () => {
     expect(isValidStrategy('nope')).toBe(false);
   });
 
+  it('marks all 21 system strategies ready', () => {
+    const blocked = listStrategies().filter((s) => !s.ready);
+    expect(blocked).toEqual([]);
+    expect(readyStrategyCount()).toBe(21);
+  });
+
   it('has at least 18 ready strategies', () => {
     expect(readyStrategyCount()).toBeGreaterThanOrEqual(18);
   });

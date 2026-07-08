@@ -64,7 +64,7 @@ export async function getStockSummary(symbol: string, refresh = false) {
     throw new Error(`Could not load market data for ${normalized}`);
   }
 
-  const valuation = valuationFromAnalysis(analysis as Record<string, unknown>);
+  const valuation = valuationFromAnalysis(analysis as unknown as Record<string, unknown>);
   let iv_drift = null;
   try {
     const screenerRow = screenSymbol(String(metrics.symbol ?? symbol), metrics);

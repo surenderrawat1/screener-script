@@ -79,7 +79,7 @@ const STRATEGY_SEEDS: Record<string, StrategySeed> = {
   },
   swing_strict_enter: {
     label: 'Swing — Strict ENTER',
-    description: 'Full E1–E8 + price action · same rules as backtest / live orders',
+    description: 'Full E1–E11 + price action · same rules as backtest / live orders',
     style: STRATEGY_STYLE_SWING,
     engine: STRATEGY_ENGINE_SWING,
     horizon: '2–6 weeks',

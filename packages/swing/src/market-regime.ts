@@ -3,6 +3,14 @@ import { sma, atrPct14 } from './ta-helper.js';
 
 export const PROXY_SYMBOL = 'NIFTYBEES';
 
+/** PHP parity: "Bear (NIFTYBEES)" in universe scan KPI. */
+export function formatRegimeLabel(regime?: Record<string, unknown> | null): string {
+  if (!regime?.label) return '—';
+  const label = String(regime.label);
+  const proxy = String(regime.proxy ?? PROXY_SYMBOL);
+  return `${label} (${proxy})`;
+}
+
 export function entry52wBand(regime?: Record<string, unknown> | null) {
   const min = Number(regime?.pct_52w_min ?? 32);
   const max = Number(regime?.pct_52w_max ?? 68);

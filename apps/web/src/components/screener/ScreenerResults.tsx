@@ -129,6 +129,8 @@ export function ScreenerResults({
                 <>
                   <th>RSI</th>
                   <th>52w%</th>
+                  <th>SMA50</th>
+                  <th>MACD</th>
                   <th>Bottom</th>
                 </>
               ) : null}
@@ -162,6 +164,8 @@ export function ScreenerResults({
                   <>
                     <td>{r.ta_rsi14 != null ? fmtNum(r.ta_rsi14, 1) : '—'}</td>
                     <td>{r.ta_pct_52w != null ? `${fmtNum(r.ta_pct_52w, 0)}%` : '—'}</td>
+                    <td>{r.ta_above_sma50 ? '✓' : '—'}</td>
+                    <td>{r.ta_macd_hist != null ? fmtNum(r.ta_macd_hist, 2) : '—'}</td>
                     <td>{r.ta_bottom_out_hint ? '✓' : '—'}</td>
                   </>
                 ) : null}

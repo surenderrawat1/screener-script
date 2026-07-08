@@ -35,7 +35,11 @@ export function matchesMinVerdict(strictVerdict: string, discoveryVerdict: strin
 }
 
 export function rankHits<T extends SwingScanHit>(hits: T[]): T[] {
-  const ranked = hits.map((h) => ({ ...h, swing_rank: scoreHit(h) }));
+  const ranked = hits.map((h) => ({
+    ...h,
+    swing_rank: scoreHit(h),
+    swing_tier: tier(h.entry_score),
+  }));
   ranked.sort((a, b) => {
     const byRank = (b.swing_rank ?? 0) - (a.swing_rank ?? 0);
     if (byRank !== 0) return byRank;

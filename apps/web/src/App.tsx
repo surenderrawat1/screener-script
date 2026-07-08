@@ -9,8 +9,10 @@ import AdminPage from './pages/AdminPage';
 import WatchlistPage from './pages/WatchlistPage';
 import PositionsPage from './pages/PositionsPage';
 import SwingScanPage from './pages/SwingScanPage';
+import SwingBacktestPage from './pages/SwingBacktestPage';
 import SwingAutoPage from './pages/SwingAutoPage';
 import IntradayPage from './pages/IntradayPage';
+import IntradayBacktestPage from './pages/IntradayBacktestPage';
 import IntradayPositionsPage from './pages/IntradayPositionsPage';
 import StockDetailsPage from './pages/StockDetailsPage';
 import MorningPage from './pages/MorningPage';
@@ -42,6 +44,7 @@ function Layout() {
         <NavLink to="/swing">Swing</NavLink>
         <NavLink to="/swing/auto">Auto Radar</NavLink>
         <NavLink to="/intraday">Intraday</NavLink>
+        <NavLink to="/intraday/backtest">Backtest</NavLink>
         <NavLink to="/intraday/positions">Nifty Pos</NavLink>
         <NavLink to="/admin">Admin</NavLink>
         <span className="nav-user muted">{user.email}</span>
@@ -74,8 +77,10 @@ function AppRoutes() {
         <Route path="watchlist" element={<WatchlistPage />} />
         <Route path="positions" element={<PositionsPage />} />
         <Route path="swing" element={<SwingScanPage />} />
+        <Route path="swing/backtest" element={<SwingBacktestPage />} />
         <Route path="swing/auto" element={<SwingAutoPage />} />
         <Route path="intraday" element={<IntradayPage />} />
+        <Route path="intraday/backtest" element={<IntradayBacktestPage />} />
         <Route path="intraday/positions" element={<IntradayPositionsPage />} />
         <Route path="admin" element={<AdminPage />} />
         <Route path="admin/cfa-docs" element={<AdminCfaDocsPage />} />

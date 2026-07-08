@@ -18,6 +18,7 @@ import {
   portfolioHeatPct,
   suggestedShares,
 } from './portfolio-risk.js';
+import { computeTradePnl, summarizeOpenTradePnl } from './trade-pnl.js';
 import { FULL_SCAN_INTERVAL_SEC } from './incremental-scan.js';
 
 export { FULL_SCAN_INTERVAL_SEC };
@@ -55,21 +56,42 @@ export function serializeHit(hit: Record<string, unknown>) {
   const discovery = String(hit.verdict ?? 'AVOID');
   const strict = String(hit.strict_verdict ?? discovery);
   const pct = num(hit.ta_pct_52w);
+  const truth = (hit.backtest_truth ?? {}) as Record<string, unknown>;
 
   return {
     symbol: String(hit.symbol ?? ''),
     swing_rank: Number(hit.swing_rank ?? 0),
-    tier: tier(Number(hit.swing_rank ?? 0)),
+    tier: tier(Number(hit.entry_score ?? 0)),
     entry_score: Number(hit.entry_score ?? 0),
     discovery,
     strict,
     decision_score: Number(hit.decision_score ?? 0),
     decision_action: String(hit.decision_action ?? ACTION_SKIP),
     decision_label: String(hit.decision_label ?? ''),
+    already_held: Boolean(hit.already_held),
+    held_near_stop: Boolean(hit.held_near_stop),
+    held_action_label: String(hit.held_action_label ?? ''),
+    held_stop_distance_pct:
+      num(hit.held_stop_distance_pct) !== null ? Math.round(Number(hit.held_stop_distance_pct) * 10) / 10 : null,
     high_conviction: Boolean(hit.high_conviction),
     risk_flags: Array.isArray(hit.risk_flags) ? hit.risk_flags : [],
+    backtest_grade: String(truth.grade ?? ''),
+    backtest_label: String(truth.grade_label ?? ''),
+    backtest_pf: num(truth.profit_factor) !== null ? Math.round(Number(truth.profit_factor) * 100) / 100 : null,
+    backtest_win_rate_pct:
+      num(truth.win_rate_pct) !== null ? Math.round(Number(truth.win_rate_pct) * 10) / 10 : null,
+    backtest_trades: Number(truth.trades_closed ?? 0),
+    backtest_expectancy_pct:
+      num(truth.expectancy_pct) !== null ? Math.round(Number(truth.expectancy_pct) * 100) / 100 : null,
+    backtest_compounded_return_pct:
+      num(truth.compounded_return_pct) !== null
+        ? Math.round(Number(truth.compounded_return_pct) * 100) / 100
+        : null,
+    incremental_stale: Boolean(hit.incremental_stale),
     rules_passed: Number(hit.rules_passed ?? 0),
     rules_scored: Number(hit.rules_scored ?? 0),
+    rules_failed: failedRuleIds(hit),
+    entry_rules: (hit.entry_rules ?? hit.rules ?? []) as unknown[],
     price: Math.round(Number(hit.price ?? 0) * 100) / 100,
     stop_loss: Math.round(Number(hit.stop_loss ?? 0) * 100) / 100,
     profit_target: Math.round(Number(hit.profit_target ?? 0) * 100) / 100,
@@ -81,7 +103,10 @@ export function serializeHit(hit: Record<string, unknown>) {
     broke_swing_high: Boolean(hit.broke_swing_high),
     as_of_date: String(hit.as_of_date ?? ''),
     suggested_shares: suggestedSharesForHit(hit),
-    add_allowed: !['SKIP'].includes(String(hit.decision_action ?? '')),
+    add_allowed:
+      hit.add_allowed === false || hit.already_held
+        ? false
+        : !['SKIP'].includes(String(hit.decision_action ?? '')),
   };
 }
 
@@ -92,12 +117,19 @@ function exitField(row: Record<string, unknown>, key: string): unknown {
   return row[key] ?? exit?.[key];
 }
 
-function grossPnlInr(row: Record<string, unknown>): number | null {
+function positionPnl(row: Record<string, unknown>) {
   const entry = Number(row.entry_price ?? 0);
   const cur = num(row.current_price);
   const shares = num(row.shares);
-  if (cur === null || shares === null || shares <= 0 || entry <= 0) return null;
-  return Math.round((cur - entry) * shares * 100) / 100;
+  if (cur === null || shares === null || shares <= 0 || entry <= 0) {
+    return { gross_pnl: null as number | null, net_pnl: null as number | null, pnl_detail: null as Record<string, unknown> | null };
+  }
+  const pnl = computeTradePnl(entry, cur, shares);
+  return {
+    gross_pnl: pnl.gross_pnl,
+    net_pnl: pnl.net_pnl,
+    pnl_detail: pnl.charges as unknown as Record<string, unknown>,
+  };
 }
 
 export function serializePosition(
@@ -112,6 +144,8 @@ export function serializePosition(
     Boolean(hitMatch.high_conviction) &&
     (posAction === POS_HOLD || posAction === POS_TRAIL);
 
+  const pnl = positionPnl(row);
+
   return {
     id: String(row.id ?? (row.position as Record<string, unknown> | undefined)?.id ?? ''),
     symbol: String(row.symbol ?? ''),
@@ -123,9 +157,14 @@ export function serializePosition(
     shares: num(row.shares),
     current_price: num(row.current_price),
     gain_pct: num(row.gain_pct),
-    net_pnl: grossPnlInr(row),
+    gross_pnl: pnl.gross_pnl,
+    net_pnl: pnl.net_pnl,
+    pnl_detail: pnl.pnl_detail,
     exit_verdict: String(row.exit_verdict ?? 'HOLD'),
     exit_triggers: Array.isArray(row.exit_triggers) ? row.exit_triggers : [],
+    exit_rules: Array.isArray((row.exit as Record<string, unknown> | undefined)?.rules)
+      ? ((row.exit as Record<string, unknown>).rules as Array<Record<string, unknown>>)
+      : [],
     active_stop: num(row.active_stop),
     effective_stop: num(exitField(row, 'effective_stop') ?? row.active_stop),
     profit_target: num(row.profit_target),
@@ -175,25 +214,17 @@ export function buildPositionsBlock(
   regime?: Record<string, unknown> | null,
 ) {
   const rows = openPositions.map((p) =>
-    serializePosition(p, findHitMatch(hits, String(p.symbol ?? '')), regime),
+    serializePosition(p, findHitMatch(hits, String(p.symbol ?? ''), regime), regime),
   );
   const open = sortPositionsByUrgency(rows);
   const exitCount = open.filter((r) => r.exit_verdict === 'EXIT').length;
-  let netPnl = 0;
-  let pnlCount = 0;
-  let invested = 0;
-  let currentValue = 0;
-  for (const r of open) {
-    const sh = r.shares ?? 0;
-    if (sh > 0 && r.entry_price > 0) {
-      invested += r.entry_price * sh;
-      if (r.current_price != null) currentValue += r.current_price * sh;
-    }
-    if (r.net_pnl != null) {
-      netPnl += r.net_pnl;
-      pnlCount += 1;
-    }
-  }
+  const portfolio = summarizeOpenTradePnl(
+    open.map((r) => ({
+      entry_price: r.entry_price,
+      current_price: r.current_price,
+      shares: r.shares,
+    })),
+  );
 
   return {
     open,
@@ -212,11 +243,12 @@ export function buildPositionsBlock(
     refreshed_at: new Date().toISOString(),
     summary: { open: open.length, exit_signals: exitCount },
     portfolio: {
-      count: pnlCount,
-      net_pnl: pnlCount > 0 ? Math.round(netPnl * 100) / 100 : 0,
-      gross_pnl: pnlCount > 0 ? Math.round(netPnl * 100) / 100 : 0,
-      invested: Math.round(invested),
-      current_value: Math.round(currentValue),
+      count: portfolio.count,
+      net_pnl: portfolio.net_pnl,
+      gross_pnl: portfolio.gross_pnl,
+      charges_total: portfolio.charges_total,
+      invested: portfolio.invested,
+      current_value: portfolio.current_value,
     },
   };
 }
@@ -237,7 +269,8 @@ export function summarizeClosedSwingPositions(closed: Record<string, unknown>[])
     const shares = Number(pos.shares ?? 0) || 1;
     if (entry <= 0 || exit <= 0) continue;
 
-    const net = Math.round((exit - entry) * shares * 100) / 100;
+    const pnl = computeTradePnl(entry, exit, shares);
+    const net = pnl.net_pnl;
     withPnl += 1;
     netSum += net;
     if (net >= 0) wins += 1;
@@ -294,22 +327,79 @@ export function summarizeScan(
   };
 }
 
+export function actionableScanHits(hits: Record<string, unknown>[]) {
+  return hits.filter((h) => !h.incremental_stale);
+}
+
+export interface BuildStateOptions {
+  includeCarried?: boolean;
+  backtestAttached?: number;
+}
+
+export function buildScanTransparency(
+  scanResult: Record<string, unknown> | null,
+  allHits: Record<string, unknown>[],
+  freshHits: Record<string, unknown>[],
+  options: BuildStateOptions = {},
+) {
+  const staleCarried = allHits.length - freshHits.length;
+  const regime = (scanResult?.regime as Record<string, unknown> | undefined) ?? null;
+
+  return {
+    engine_version: String(scanResult?.engine_version ?? ''),
+    scan_mode: String(scanResult?.scan_mode ?? ''),
+    universe_size: Number(scanResult?.universe_size ?? scanResult?.scanned ?? 0),
+    scanned: Number(scanResult?.scanned ?? 0),
+    total_hits_raw: allHits.length,
+    fresh_hits: freshHits.length,
+    stale_carried: staleCarried,
+    incremental_refreshed: Number(scanResult?.incremental_refreshed ?? 0),
+    incremental_carried: Number(scanResult?.incremental_carried ?? staleCarried),
+    tiers_source: options.includeCarried ? 'all_hits_including_stale' : 'fresh_hits_only',
+    filter_stats: scanResult?.filter_stats ?? null,
+    elapsed_sec: Number(scanResult?.elapsed_sec ?? 0),
+    backtest_truth_preload: options.backtestAttached ?? 0,
+    backtest_method: 'walk_forward_2y',
+    regime_blocks_strict_enter: Boolean(regime?.blocks_strict_enter),
+    regime_key: String(regime?.key ?? regime?.label ?? ''),
+    accuracy_note:
+      'Default tiers exclude stale incremental hits. Toggle “Show carried” to include them (PHP parity). BT 2y grades top 40 hits by rank.',
+  };
+}
+
 export function buildState(
   scanResult: Record<string, unknown> | null,
   openPositions: Record<string, unknown>[],
   regime?: Record<string, unknown> | null,
+  options: BuildStateOptions = {},
 ) {
-  const hits = Array.isArray(scanResult?.hits) ? (scanResult!.hits as Record<string, unknown>[]) : [];
-  let tiers = categorizeHits(hits, regime, false);
-  const positionsBlock = buildPositionsBlock(openPositions, hits, regime);
+  const allHits = Array.isArray(scanResult?.hits) ? (scanResult!.hits as Record<string, unknown>[]) : [];
+  const freshHits = actionableScanHits(allHits);
+  const staleCarried = allHits.length - freshHits.length;
+  const hitsForTiers = options.includeCarried ? allHits : freshHits;
+  let tiers = categorizeHits(hitsForTiers, regime, false);
+  const positionsBlock = buildPositionsBlock(openPositions, allHits, regime);
   tiers = overlayOpenPositionsOnTiers(tiers, positionsBlock.open) as typeof tiers;
+
+  const scan = scanResult
+    ? {
+        ...scanResult,
+        hit_count: options.includeCarried ? allHits.length : freshHits.length,
+        fresh_hit_count: freshHits.length,
+        incremental_carried: Number(scanResult.incremental_carried ?? staleCarried),
+        universe_size: Number(scanResult.universe_size ?? scanResult.scanned ?? 0),
+      }
+    : { hits: [], hit_count: 0, fresh_hit_count: 0, scanned: 0, incremental_carried: 0 };
+
+  const transparency = buildScanTransparency(scanResult, allHits, freshHits, options);
 
   return {
     ok: true,
     profile: profile(),
     regime: regime ?? null,
     guidance: regimeGuidance(regime),
-    scan: scanResult ?? { hits: [], hit_count: 0, scanned: 0 },
+    scan,
+    transparency,
     tiers: {
       high_conviction: tiers.high_conviction.map(serializeHit),
       strict_enter: tiers.strict_enter.map(serializeHit),
@@ -382,14 +472,19 @@ export function suggestedSharesForHit(hit: Record<string, unknown>): number {
   return suggestedShares(entry, stop);
 }
 
-function findHitMatch(hits: Record<string, unknown>[], symbol: string) {
+function findHitMatch(hits: Record<string, unknown>[], symbol: string, regime?: Record<string, unknown> | null) {
   const sym = symbol.toUpperCase();
   const raw = hits.find((h) => String(h.symbol ?? '').toUpperCase() === sym);
-  return raw ? enrichHit(raw) : null;
+  return raw ? enrichHit(raw, regime) : null;
 }
 
 function num(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function failedRuleIds(hit: Record<string, unknown>): string[] {
+  const rules = (hit.entry_rules ?? hit.rules ?? []) as Array<{ id?: string; passed?: boolean | null }>;
+  return rules.filter((r) => r.passed === false).map((r) => String(r.id ?? '')).filter(Boolean);
 }

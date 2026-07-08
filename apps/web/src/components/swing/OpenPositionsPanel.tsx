@@ -2,7 +2,9 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import { EmptyState } from '../PageLayout';
-
+import { PnlBreakdown } from './PnlBreakdown';
+import { PositionInlineClose, PositionInlineEdit } from './PositionInlineForms';
+import { PositionPriceCell, sourceBadgeClass, sourceBadgeLabel } from './PositionPriceCell';
 export interface OpenPositionRow {
   id: string;
   symbol: string;
@@ -15,7 +17,9 @@ export interface OpenPositionRow {
   sessions_held?: number;
   current_price: number | null;
   gain_pct: number | null;
+  gross_pnl?: number | null;
   net_pnl: number | null;
+  pnl_detail?: Record<string, unknown> | null;
   exit_verdict: string;
   exit_triggers: string[];
   position_action: string;
@@ -24,6 +28,7 @@ export interface OpenPositionRow {
   active_stop: number | null;
   effective_stop: number | null;
   profit_target: number | null;
+  stop_loss?: number | null;
   trail_armed: boolean;
   trail_stop: number | null;
   trail_arm_pct: number | null;
@@ -34,6 +39,12 @@ export interface OpenPositionRow {
   stop_distance_pct: number | null;
   r_unrealized: number | null;
   in_high_conviction?: boolean;
+  live?: boolean;
+  stale?: boolean;
+  as_of_date?: string;
+  quote_time?: string;
+  data_source?: string;
+  stale_reason?: string;
   ok: boolean;
   error?: string;
 }
@@ -48,9 +59,10 @@ export interface PositionsBlock {
   portfolio?: {
     count: number;
     net_pnl: number;
+    gross_pnl?: number;
+    charges_total?: number;
     invested?: number;
     current_value?: number;
-    gross_pnl?: number;
   };
 }
 
@@ -145,20 +157,24 @@ export function OpenPositionsPanel({
   onClosed,
   mode = 'radar',
   showSessions = false,
+  sessionLive = false,
 }: {
   positions: PositionsBlock;
   onRefresh?: () => void | Promise<void>;
   onClosed?: () => void | Promise<void>;
   mode?: 'radar' | 'ledger';
   showSessions?: boolean;
+  sessionLive?: boolean;
 }) {
   const [closeBusy, setCloseBusy] = useState<string | null>(null);
+  const [editBusy, setEditBusy] = useState<string | null>(null);
   const [closeError, setCloseError] = useState('');
 
   const rows = positions.open;
   const exitCount = positions.exit_count ?? positions.summary?.exit_signals ?? 0;
   const netPnl = positions.portfolio?.net_pnl;
-  const invested = positions.portfolio?.invested;
+  const grossPnl = positions.portfolio?.gross_pnl;
+  const chargesTotal = positions.portfolio?.charges_total;  const invested = positions.portfolio?.invested;
   const currentValue = positions.portfolio?.current_value;
   const refreshedAt = positions.refreshed_at
     ? new Date(positions.refreshed_at).toLocaleTimeString()
@@ -166,42 +182,24 @@ export function OpenPositionsPanel({
 
   const urgent = rows.filter((r) => URGENT_ACTIONS.has(r.position_action));
 
-  async function closePosition(p: OpenPositionRow) {
-    if (!p.id || p.current_price == null) return;
-    const reason =
-      mode === 'ledger'
-        ? window.prompt(`Close ${p.symbol} at ${fmtRs(p.current_price)} — exit reason (e.g. X1, X4):`, 'manual')
-        : null;
-    if (mode === 'ledger' && reason === null) return;
-
-    const ok = window.confirm(
-      `Close ${p.symbol} at ${fmtRs(p.current_price)}? This marks the position closed in the ledger.`,
-    );
-    if (!ok) return;
-
-    setCloseBusy(p.id);
+  async function removePosition(p: OpenPositionRow) {    if (!p.id || mode !== 'ledger') return;
+    if (!window.confirm(`Remove ${p.symbol} from the ledger? This cannot be undone.`)) return;
+    setEditBusy(p.id);
     setCloseError('');
     try {
-      await api(`/api/v1/swing/positions/${p.id}/close`, {
-        method: 'POST',
-        body: JSON.stringify({
-          closed_price: p.current_price,
-          closed_reason: reason || 'auto_radar',
-        }),
-      });
+      await api(`/api/v1/swing/positions/${p.id}`, { method: 'DELETE' });
       if (onClosed) await onClosed();
       else await onRefresh?.();
     } catch (err) {
-      setCloseError(err instanceof Error ? err.message : 'Close failed');
+      setCloseError(err instanceof Error ? err.message : 'Delete failed');
     } finally {
-      setCloseBusy(null);
+      setEditBusy(null);
     }
   }
 
-  function sourceBadge(source: string | null | undefined): string | null {
-    if (!source || source === 'manual') return null;
-    if (source === 'auto_radar') return 'Radar';
-    return source.replace(/_/g, ' ');
+  function handleSaved() {
+    setEditBusy(null);
+    return onRefresh?.();
   }
 
   return (
@@ -245,13 +243,22 @@ export function OpenPositionsPanel({
                 Now <strong>₹{currentValue.toLocaleString('en-IN')}</strong>
               </span>
             ) : null}
-            {netPnl != null && (positions.portfolio?.count ?? 0) > 0 ? (
-              <span>
-                Gross P&amp;L{' '}
-                <strong className={pnlClass(netPnl)}>₹{Math.round(netPnl).toLocaleString('en-IN')}</strong>
+            {grossPnl != null && (positions.portfolio?.count ?? 0) > 0 ? (
+              <span className={pnlClass(grossPnl)}>
+                Gross <strong>₹{Math.round(grossPnl).toLocaleString('en-IN')}</strong>
               </span>
             ) : null}
-            {refreshedAt ? <span className="muted">Updated {refreshedAt}</span> : null}
+            {chargesTotal != null && chargesTotal > 0 ? (
+              <span>
+                Charges (est.) <strong>₹{Math.round(chargesTotal).toLocaleString('en-IN')}</strong>
+              </span>
+            ) : null}
+            {netPnl != null && (positions.portfolio?.count ?? 0) > 0 ? (
+              <span>
+                Net P&amp;L{' '}
+                <strong className={pnlClass(netPnl)}>₹{Math.round(netPnl).toLocaleString('en-IN')}</strong>
+              </span>
+            ) : null}            {refreshedAt ? <span className="muted">Updated {refreshedAt}</span> : null}
           </>
         ) : (
           <span className="muted">No open positions</span>
@@ -286,19 +293,22 @@ export function OpenPositionsPanel({
                 <th>R</th>
                 <th>Action</th>
                 <th>Exit</th>
-                <th>Stop / target</th>
-                <th></th>
+                {showSessions ? <th>Triggers</th> : null}
+                <th>Stop / target</th>                <th></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((p) => (
                 <tr key={p.id || p.symbol} className={actionRowClass(p.position_action)}>
                   <td>
-                    <Link to={`/stock/${encodeURIComponent(p.symbol)}`}>{p.symbol}</Link>
-                    {sourceBadge(p.source) ? (
-                      <span className="swing-source-badge">{sourceBadge(p.source)}</span>
-                    ) : null}
-                    {p.in_high_conviction ? <span className="swing-hc-star" title="High conviction"> ★</span> : null}
+                    <Link to={`/swing?mode=symbol&symbol=${encodeURIComponent(p.symbol)}&autorun=1`}>
+                      {p.symbol}
+                    </Link>
+                    {sourceBadgeLabel(p.source) ? (
+                      <span className={`swing-source-badge ${sourceBadgeClass(p.source)}`}>
+                        {sourceBadgeLabel(p.source)}
+                      </span>
+                    ) : null}                    {p.in_high_conviction ? <span className="swing-hc-star" title="High conviction"> ★</span> : null}
                     {p.notes ? <div className="muted swing-pos-notes">{p.notes}</div> : null}
                   </td>
                   <td>
@@ -307,29 +317,45 @@ export function OpenPositionsPanel({
                     {p.shares != null && p.shares > 0 ? (
                       <div className="muted swing-pos-date">{p.shares} sh</div>
                     ) : null}
+                    {mode === 'ledger' && p.id ? (
+                      <PositionInlineEdit
+                        position={p}
+                        busy={editBusy === p.id}
+                        onStart={() => setEditBusy(p.id)}
+                        onSaved={handleSaved}
+                        onError={setCloseError}
+                      />
+                    ) : null}
                   </td>
+                  <PositionPriceCell
+                    price={p.current_price}
+                    ok={p.ok}
+                    error={p.error}
+                    live={p.live}
+                    stale={p.stale}
+                    asOfDate={p.as_of_date}
+                    quoteTime={p.quote_time}
+                    dataSource={p.data_source}
+                    staleReason={p.stale_reason}
+                    sessionLive={sessionLive}
+                  />
                   <td>
-                    {p.ok && p.current_price != null ? (
-                      fmtRs(p.current_price)
-                    ) : (
-                      <span className="swing-pnl-neg">{p.error || 'No data'}</span>
-                    )}
-                  </td>
-                  <td>
-                    {p.gain_pct != null ? (
-                      <>
-                        <span className={pnlClass(p.gain_pct)}>{fmtPct(p.gain_pct)}</span>
-                        {p.net_pnl != null ? (
-                          <div className={`swing-net-pnl ${pnlClass(p.net_pnl)}`}>
-                            Net ₹{Math.round(p.net_pnl).toLocaleString('en-IN')}
-                          </div>
-                        ) : null}
-                      </>
+                    {p.gain_pct != null && p.current_price != null && (p.shares ?? 0) > 0 ? (
+                      <PnlBreakdown
+                        entryPrice={p.entry_price}
+                        currentPrice={p.current_price}
+                        shares={p.shares ?? 0}
+                        gainPct={p.gain_pct}
+                        grossPnl={p.gross_pnl}
+                        netPnl={p.net_pnl}
+                        charges={p.pnl_detail}
+                      />
+                    ) : p.gain_pct != null ? (
+                      <span className={pnlClass(p.gain_pct)}>{fmtPct(p.gain_pct)}</span>
                     ) : (
                       '—'
                     )}
-                  </td>
-                  {showSessions ? (
+                  </td>                  {showSessions ? (
                     <td>{p.sessions_held != null && p.sessions_held > 0 ? p.sessions_held : '—'}</td>
                   ) : null}
                   <td>{p.r_unrealized != null ? `${p.r_unrealized}R` : '—'}</td>
@@ -345,26 +371,81 @@ export function OpenPositionsPanel({
                     <span className={`swing-verdict ${verdictClass(p.exit_verdict)}`}>
                       {p.exit_verdict}
                     </span>
-                    {p.exit_triggers.length > 0 ? (
+                    {!showSessions && p.exit_triggers.length > 0 ? (
                       <div className="muted swing-pos-triggers">{p.exit_triggers.join(', ')}</div>
                     ) : null}
                   </td>
-                  <td className="swing-stop-cell">
+                  {showSessions ? (
+                    <td className="swing-pos-triggers-col">
+                      {p.exit_triggers.length > 0 ? (
+                        <span className="swing-triggers">{p.exit_triggers.join(', ')}</span>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                  ) : null}                  <td className="swing-stop-cell">
                     <StopTargetCell p={p} />
                   </td>
                   <td>
                     {p.id && p.current_price != null ? (
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        disabled={closeBusy === p.id}
-                        onClick={() => void closePosition(p)}
-                      >
-                        {closeBusy === p.id ? '…' : 'Close'}
-                      </button>
+                      <div className="swing-pos-actions">
+                        {mode === 'ledger' ? (
+                          <>
+                            <PositionInlineClose
+                              position={p}
+                              busy={closeBusy === p.id}
+                              onStart={() => setCloseBusy(p.id)}
+                              onClosed={async () => {
+                                setCloseBusy(null);
+                                if (onClosed) await onClosed();
+                                else await onRefresh?.();
+                              }}
+                              onError={(msg) => {
+                                setCloseError(msg);
+                                setCloseBusy(null);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm swing-pos-del"
+                              disabled={editBusy === p.id || closeBusy === p.id}
+                              onClick={() => void removePosition(p)}
+                            >
+                              Del
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            disabled={closeBusy === p.id}
+                            onClick={async () => {
+                              if (!window.confirm(`Close ${p.symbol} at ${fmtRs(p.current_price)}?`)) return;
+                              setCloseBusy(p.id);
+                              setCloseError('');
+                              try {
+                                await api(`/api/v1/swing/positions/${p.id}/close`, {
+                                  method: 'POST',
+                                  body: JSON.stringify({
+                                    closed_price: p.current_price,
+                                    closed_reason: 'auto_radar',
+                                  }),
+                                });
+                                if (onClosed) await onClosed();
+                                else await onRefresh?.();
+                              } catch (err) {
+                                setCloseError(err instanceof Error ? err.message : 'Close failed');
+                              } finally {
+                                setCloseBusy(null);
+                              }
+                            }}
+                          >
+                            {closeBusy === p.id ? '…' : 'Close'}
+                          </button>
+                        )}
+                      </div>
                     ) : null}
-                  </td>
-                </tr>
+                  </td>                </tr>
               ))}
             </tbody>
           </table>

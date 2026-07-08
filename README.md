@@ -35,6 +35,7 @@ Open http://localhost:5173 — login: `admin@example.com` / `admin123`
 | [API Reference](docs/API.md) | All REST endpoints |
 | [Web UI](docs/WEB-UI.md) | Pages and navigation |
 | [Swing Auto Radar](docs/SWING-AUTO.md) | Auto-radar architecture, PHP parity, speed plan |
+| [Swing Improvements](docs/SWING-IMPROVEMENTS.md) | CFA verification, gaps, Phase 1–3 roadmap |
 | [Swing Positions](docs/SWING-POSITIONS.md) | Position ledger, exit rules, P&L plan |
 | [CFA Screener](docs/SCREENER.md) | Fundamental screener, presets, jobs |
 | [Nifty Intraday](docs/INTRADAY.md) | 5m/15m direction, presets, intraday app |

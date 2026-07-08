@@ -1,4 +1,9 @@
-import { fetchChartsForInstrument, fetchNiftyIntradayCharts } from '@sv/data-adapters';
+import {
+  buildIntradayChartPayload,
+  fetchChartsForInstrument,
+  fetchInstrumentIntradayChart,
+  fetchNiftyIntradayCharts,
+} from '@sv/data-adapters';
 import {
   analyzeNiftyDirection,
   buildFnoTradePlans,
@@ -64,6 +69,50 @@ export async function getNiftyIntradayState(
     fno,
     fno_supported: hasFnoSupport(instrumentKey),
     server_time: new Date().toISOString(),
+  };
+}
+
+export async function getIntradayChart(
+  instrumentId = 'nifty50',
+  interval = '15m',
+  refresh = false,
+) {
+  const instrumentKey = normalizeInstrumentId(instrumentId);
+  const meta = resolveInstrument(instrumentKey);
+  const activeIv: '5m' | '15m' = interval === '5m' ? '5m' : '15m';
+  if (!meta) {
+    return { ok: false as const, instrument: instrumentKey, interval: activeIv, error: 'Unknown instrument', chart: null };
+  }
+
+  const chart = await fetchInstrumentIntradayChart(
+    meta.cache_key,
+    meta.yahoo_symbols,
+    meta.label,
+    activeIv,
+    refresh,
+  );
+  if (!chart) {
+    return {
+      ok: false as const,
+      instrument: meta.id,
+      instrument_label: meta.label,
+      interval: activeIv,
+      error: `No intraday chart data for ${meta.label} (${activeIv}).`,
+      chart: null,
+    };
+  }
+
+  const payload = buildIntradayChartPayload(chart);
+  return {
+    ok: true as const,
+    instrument: meta.id,
+    instrument_label: meta.label,
+    interval: activeIv,
+    range: chart.range,
+    yahoo: chart.yahoo,
+    bar_count: chart.bars.length,
+    fetched_at: chart.fetched_at,
+    chart: payload,
   };
 }
 

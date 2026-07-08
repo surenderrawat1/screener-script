@@ -19,11 +19,30 @@ export interface SwingRule {
 
 export interface SwingScanOptions {
   min_verdict?: 'ENTER' | 'SETUP_PLUS' | 'WATCH' | 'ALL';
-  sort_by?: string;
+  sort_by?:
+    | 'swing_rank'
+    | 'rules_passed'
+    | 'r_multiple'
+    | 'pct_52w'
+    | 'volume_ratio'
+    | 'entry_score'
+    | 'rsi'
+    | 'symbol';
   zone_52w?: string;
   breakout_volume?: boolean;
   gc9_only?: boolean;
+  min_rules_passed?: number;
+  require_rules?: string[];
   regime?: Record<string, unknown> | null;
+  include_hourly?: boolean;
+}
+
+export interface SymbolContext {
+  symbol: string;
+  bars: OhlcBar[];
+  hourlyBars?: OhlcBar[];
+  ta: TaMetrics;
+  stale?: boolean;
 }
 
 export interface SwingScanHit {

@@ -76,6 +76,7 @@ export default function ScreenerPage() {
   const [maxScan, setMaxScan] = useState(200);
   const [background, setBackground] = useState(false);
   const [excludeRestricted, setExcludeRestricted] = useState(true);
+  const [showTa, setShowTa] = useState(false);
   const [refresh, setRefresh] = useState(false);
   const [exchangeMeta, setExchangeMeta] = useState<{ as_of: string; total: number } | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -183,7 +184,9 @@ export default function ScreenerPage() {
     setJobId(null);
     setProgress(null);
 
-    const filters = buildApiFilters(customFilters);
+    const filters: Record<string, unknown> = { ...(buildApiFilters(customFilters) ?? {}) };
+    if (showTa) filters.show_ta = true;
+    const filtersPayload = Object.keys(filters).length ? filters : undefined;
 
     try {
       const res = await api<{
@@ -199,7 +202,7 @@ export default function ScreenerPage() {
           background: background || undefined,
           exclude_restricted: excludeRestricted,
           refresh: refresh || undefined,
-          filters,
+          filters: filtersPayload,
         }),
       });
 
@@ -299,6 +302,10 @@ export default function ScreenerPage() {
           <label className="morning-live-toggle">
             <input type="checkbox" checked={refresh} onChange={(e) => setRefresh(e.target.checked)} />
             Bypass cache
+          </label>
+          <label className="morning-live-toggle" title="Attach daily TA metrics to each row">
+            <input type="checkbox" checked={showTa} onChange={(e) => setShowTa(e.target.checked)} />
+            Show TA columns
           </label>
           <button
             type="button"

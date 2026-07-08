@@ -63,7 +63,7 @@ Script Screener has ported the **analysis engine** to `@sv/intraday` with Redis-
 |--------|-----|-----------------|
 | **Analysis engine** | `Nifty15mDirection.php` + 12 includes | `@sv/intraday` package |
 | **Instruments** | Nifty50, BankNifty, Sensex, FinNifty, stocks | **Indices + 12 liquid stocks**; F&O for indices + 7 stocks |
-| **Charts** | Lightweight Charts in browser (full OHLC) | API returns **metadata only** (bar count) |
+| **Charts** | Lightweight Charts in browser (full OHLC) | ✓ Lightweight Charts via `GET /api/v1/intraday/chart/:instrument` + `IntradayPriceChart` (candles + SMA-9/20/50/200) |
 | **Chart cache** | SQLite 90s/120s | Redis `sv:ta:intraday:nifty50:{5m\|15m}` |
 | **Dual fetch** | Often sequential in page | `Promise.all` 5m + 15m |
 | **Scalp setup** | `NiftyIntradayScalpSetup.php` | **Not ported** |
@@ -305,7 +305,7 @@ GET /api/v1/intraday/nifty/state?interval=15m&refresh=0
 | Live playbook | ✓ | ✓ | — |
 | Yahoo + cache TTL | ✓ | ✓ | — |
 | Parallel 5m+15m fetch | partial | ✓ | v2 faster cold fetch |
-| Chart UI | ✓ | ✗ | Phase I-C |
+| Chart UI | ✓ | ✓ | `IntradayPriceChart` (candles + SMA overlays, 5m/15m) |
 | Preset table UI | ✓ | ✗ | Phase I-C |
 | Scalp setup | ✓ | ✗ | Phase I-B |
 | Multi-instrument | ✓ | ✓ partial | Sensex/FinNifty not yet |

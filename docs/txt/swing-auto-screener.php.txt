@@ -1,0 +1,667 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Swing Auto Screener — Nifty 250</title><link rel="stylesheet" href="assets/style.css"><style>
+    .sas-status { display:flex; gap:0.45rem; flex-wrap:wrap; align-items:center; margin-bottom:0.65rem; font-size:0.75rem; }
+    .sas-pill { background:var(--surface2); border:1px solid var(--border); border-radius:999px; padding:0.22rem 0.55rem; }
+    .sas-pill strong { color:var(--text); }
+    .sas-live { border-color:rgba(34,197,94,0.45); color:#86efac; }
+    .sas-scanning { border-color:rgba(251,191,36,0.5); color:#fcd34d; animation:sas-pulse 1.4s ease-in-out infinite; }
+    @keyframes sas-pulse { 0%,100%{opacity:1} 50%{opacity:0.65} }
+    .sas-kpi { display:flex; gap:0.45rem; flex-wrap:wrap; margin:0.5rem 0 0.75rem; font-size:0.72rem; }
+    .sas-kpi span { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:0.3rem 0.5rem; }
+    .sas-tier-tabs { display:flex; gap:0.35rem; flex-wrap:wrap; margin-bottom:0.5rem; }
+    .sas-tier-tabs button { font-size:0.72rem; padding:0.25rem 0.55rem; border-radius:999px; border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; }
+    .sas-tier-tabs button.active { border-color:var(--accent); background:rgba(59,130,246,0.15); color:var(--accent); }
+    .sas-table { width:100%; border-collapse:collapse; font-size:0.74rem; }
+    .sas-table th, .sas-table td { padding:0.38rem 0.42rem; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+    .sas-table th { font-size:0.6rem; text-transform:uppercase; color:var(--muted); position:sticky; top:0; background:var(--surface); z-index:1; }
+    .sas-wrap { overflow:auto; max-height:28rem; border:1px solid var(--border); border-radius:8px; }
+    .sas-verdict { display:inline-block; padding:0.12rem 0.45rem; border-radius:999px; font-size:0.65rem; font-weight:700; }
+    .sas-enter { background:#14532d; color:#bbf7d0; }
+    .sas-setup { background:#1e3a8a; color:#bfdbfe; }
+    .sas-watch { background:#78350f; color:#fde68a; }
+    .sas-hold { background:#1e3a5f; color:#bfdbfe; }
+    .sas-exit { background:#7f1d1d; color:#fecaca; }
+    .sas-avoid { background:var(--surface3); color:var(--muted); }
+    .sas-zone-green { color:#86efac; }
+    .sas-zone-red { color:#fca5a5; }
+    .sas-pos { color:var(--success); font-weight:600; }
+    .sas-neg { color:var(--danger); font-weight:600; }
+    .sas-muted { color:var(--muted); font-size:0.72rem; }
+    .sas-pos-alert { border-left:3px solid var(--danger); padding:0.45rem 0.65rem; margin-bottom:0.5rem; font-size:0.78rem; background:rgba(127,29,29,0.2); border-radius:4px; }
+    .sas-method { font-size:0.72rem; color:var(--muted); margin:0 0 0.65rem; line-height:1.45; }
+    .sas-countdown { font-variant-numeric:tabular-nums; }
+    .sas-link { color:var(--accent); text-decoration:none; }
+    .sas-link:hover { text-decoration:underline; }
+    .sas-guidance { padding:0.5rem 0.65rem; margin-bottom:0.55rem; border-radius:6px; font-size:0.78rem; line-height:1.4; border-left:3px solid var(--border); }
+    .sas-guidance.success { border-color:var(--success); background:rgba(34,197,94,0.08); }
+    .sas-guidance.warning { border-color:var(--warning); background:rgba(251,191,36,0.08); }
+    .sas-guidance.danger { border-color:var(--danger); background:rgba(239,68,68,0.1); }
+    .sas-guidance.neutral { border-color:var(--border); background:var(--surface2); }
+    .sas-decision { font-size:0.65rem; font-weight:700; padding:0.12rem 0.4rem; border-radius:999px; display:inline-block; }
+    .sas-dec-strong { background:#14532d; color:#bbf7d0; }
+    .sas-dec-buy { background:#1e3a8a; color:#bfdbfe; }
+    .sas-dec-watch { background:#78350f; color:#fde68a; }
+    .sas-dec-skip { background:var(--surface3); color:var(--muted); }
+    .sas-dec-exit { background:#7f1d1d; color:#fecaca; }
+    .sas-dec-cut { background:#991b1b; color:#fecaca; }
+    .sas-dec-tighten { background:#713f12; color:#fde68a; }
+    .sas-dec-trim { background:#365314; color:#d9f99d; }
+    .sas-dec-hold { background:#1e3a5f; color:#bfdbfe; }
+    .sas-dec-trail { background:#134e4a; color:#99f6e4; }
+    .sas-flag { font-size:0.58rem; color:var(--warning); display:block; }
+    .sas-trail-bar { font-size:0.62rem; color:var(--muted); margin-top:0.15rem; }
+    .sas-trail-armed { color:#5eead4; }
+    .sas-add-btn { font-size:0.62rem; padding:0.18rem 0.45rem; border-radius:4px; border:1px solid rgba(34,197,94,0.45); background:rgba(34,197,94,0.12); color:#86efac; cursor:pointer; }
+    .sas-add-btn:disabled { opacity:0.45; cursor:not-allowed; }
+    .sas-add-btn:hover:not(:disabled) { background:rgba(34,197,94,0.22); }
+    .sas-held { font-size:0.58rem; color:var(--warning); display:block; margin-top:0.12rem; }
+    .sas-bt { font-size:0.62rem; font-weight:700; display:block; }
+    .sas-bt-strong { color:#86efac; }
+    .sas-bt-ok { color:#93c5fd; }
+    .sas-bt-weak { color:#fca5a5; }
+    .sas-bt-fail { color:#f87171; }
+    .sas-bt-unproven { color:var(--muted); }
+        .pf-badge { display:inline-block; font-size:0.58rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; border-radius:999px; padding:0.08rem 0.38rem; border:1px solid var(--border); }
+    .pf-live { border-color:rgba(34,197,94,0.45); color:#86efac; background:rgba(34,197,94,0.08); }
+    .pf-close { border-color:rgba(148,163,184,0.35); color:#cbd5e1; background:rgba(148,163,184,0.08); }
+    .pf-last_bar { border-color:rgba(251,191,36,0.4); color:#fcd34d; background:rgba(251,191,36,0.08); }
+    .pf-stale { border-color:rgba(239,68,68,0.45); color:#fca5a5; background:rgba(239,68,68,0.1); }
+    .pf-detail { color:var(--muted); font-size:0.62rem; line-height:1.35; }
+    .pf-session { display:flex; gap:0.45rem; flex-wrap:wrap; align-items:center; margin:0 0 0.65rem; padding:0.45rem 0.6rem; border-radius:8px; font-size:0.72rem; border:1px solid var(--border); background:var(--surface2); }
+    .pf-session-open { border-color:rgba(34,197,94,0.35); }
+    .pf-session-pre, .pf-session-post, .pf-session-weekend { border-color:rgba(251,191,36,0.35); }
+    .pf-session-label strong { color:var(--text); }
+    .pf-session-time { color:var(--muted); }
+    .pf-session-eod strong { color:var(--text); }
+    .pf-session-msg { color:var(--muted); flex:1 1 12rem; min-width:10rem; }
+</style></head><body><div class="container"><nav class="app-nav"><div class="app-nav-group"><span class="app-nav-group-label">Start</span><a href="help.php" class="app-nav-help">How to Use</a></div><div class="app-nav-group"><span class="app-nav-group-label">Research</span><a href="verify.php">CFA Verify</a><a href="index.php">Full Verify</a><a href="stock-details.php">Stock Details</a><a href="screener.php">Screener</a><a href="fundamental-auto-screener.php">LTG Auto</a><a href="watchlist.php">Watchlist</a></div><div class="app-nav-group"><span class="app-nav-group-label">Trading</span><a href="morning-dashboard.php">Morning</a><a href="trading-presets.php">Trading Presets</a><a href="strategies.php">Strategies</a><a href="swing-trading.php">Swing Trading</a><a href="swing-auto-screener.php" class="active">Swing Auto</a><a href="swing-positions.php">Swing Positions</a><a href="intraday-app.php">Intraday App</a><a href="nifty-15m.php">Nifty 5/15m</a><a href="nifty-positions.php">Nifty Positions</a></div><div class="app-nav-group"><span class="app-nav-group-label">System</span><a href="cache.php">Cache</a><a href="users.php">Users</a></div><span class="app-nav-meta"><a href="/swing-auto-screener.php?lang=hi" class="lang-switch">हिंदी</a> · <span title="admin">surenderrawat</span> · <a href="logout.php">Logout</a> · 1480 cached · <code>file</code></span></nav><header><h1>Swing Auto Screener</h1><p>Hands-free Nifty LargeMidcap 250 radar · positions every 60s · incremental scan every 300s · full N250 every 1800s</p></header><div class="disclaimer"><strong>Automated research only — not investment advice.</strong> Scans run in the background on Nifty LargeMidcap 250 using SETUP+ discovery sorted by CFA swing rank. Strict ENTER rows are order-ready candidates; confirm on NSE before trading. Positions use Yahoo live quotes + daily exit rules.</div>
+        <div class="pf-session pf-session-open" id="pf-session-banner" title="NSE cash session open — intraday quotes refresh during market hours.">
+            <span class="pf-session-label">NSE <strong>Open</strong></span>
+            <span class="pf-session-time">11:06 IST</span>
+                        <span class="pf-session-msg">NSE cash session open — intraday quotes refresh during market hours.</span>
+        </div>
+        
+<section class="card">
+    <div class="sas-status" id="sas-status">
+        <span class="sas-pill sas-scanning" id="sas-status-pill">Initializing…</span>
+        <span class="sas-pill">Universe <strong>Nifty LargeMidcap 250</strong></span>
+        <span class="sas-pill">Positions <strong>60s</strong></span>
+        <span class="sas-pill">Next scan <strong class="sas-countdown" id="sas-countdown">—</strong></span>
+        <span class="sas-pill">Full N250 <strong class="sas-countdown" id="sas-full-countdown">—</strong></span>
+        <span class="sas-pill">Updated <strong id="sas-updated">—</strong></span>
+    </div>
+    <p class="sas-method" id="sas-method">Decision-ranked SETUP+ · 2y BT overlay · positions 60s · incremental scan 5m · full N250 30m</p>
+    <div id="sas-guidance" class="sas-guidance neutral" hidden></div>
+    <div class="sas-kpi" id="sas-kpi"></div>
+</section>
+
+<section class="card" style="margin-top:0.75rem;">
+    <h2 style="font-size:0.92rem;margin:0 0 0.45rem;">Open positions <span class="sas-muted">— decision actions · loss control</span></h2>
+    <div id="sas-pos-alert" hidden></div>
+    <div id="sas-pos-summary" class="sas-kpi"></div>
+    <div class="sas-wrap">
+        <table class="sas-table" id="sas-pos-table">
+            <thead>
+                <tr>
+                    <th>Symbol</th><th>Entry</th><th>Now</th><th>P&amp;L</th><th>R</th><th>Action</th><th>Exit</th><th>Trail / Stop</th>
+                </tr>
+            </thead>
+            <tbody id="sas-pos-body">
+                <tr><td colspan="9" class="sas-muted">Loading positions…</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="sas-muted" style="margin:0.45rem 0 0;">Add from radar below (heat-gated) · full ledger on <a class="sas-link" href="swing-positions.php">Swing Positions</a>.</p>
+</section>
+
+<section class="card" style="margin-top:0.75rem;">
+    <h2 style="font-size:0.92rem;margin:0 0 0.45rem;">Nifty 250 swing radar <span class="sas-muted">— new entries only (open positions managed above)</span></h2>
+    <div class="sas-tier-tabs" id="sas-tier-tabs">
+        <button type="button" class="active" data-tier="high_conviction">High conviction <span id="sas-n-hi">0</span></button>
+        <button type="button" data-tier="strict_enter">Strict ENTER <span id="sas-n-strict">0</span></button>
+        <button type="button" data-tier="setup_radar">SETUP+ radar <span id="sas-n-setup">0</span></button>
+        <button type="button" data-tier="breakout_surge">Breakout + volume <span id="sas-n-breakout">0</span></button>
+    </div>
+    <div class="sas-wrap">
+        <table class="sas-table">
+            <thead>
+                <tr>
+                    <th>Symbol</th><th>Decision</th><th>D-Score</th><th>BT 2y</th><th>Rank</th><th>Score</th><th>Strict</th><th>R</th>
+                    <th>Price</th><th>Stop</th><th>Target</th><th>RSI</th><th>52w</th><th>Risk</th><th>Add</th>
+                </tr>
+            </thead>
+            <tbody id="sas-hits-body">
+                <tr><td colspan="14" class="sas-muted">Waiting for first scan…</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<script>window.PriceFreshness = {
+    esc(s) {
+        const d = document.createElement('div');
+        d.textContent = String(s ?? '');
+        return d.innerHTML;
+    },
+    renderBadge(r) {
+        const live = !!r.live;
+        const stale = !!r.stale;
+        const quoteTime = r.quote_time || '';
+        const asOfDate = r.as_of_date || r.as_of || '';
+        const staleReason = r.stale_reason || '';
+        const ds = String(r.data_source || '');
+        const isIntraday = ds.indexOf('yahoo_intraday_') === 0;
+        let mode = 'close';
+        let label = 'EOD';
+        let detail = asOfDate ? ('close ' + asOfDate) : quoteTime;
+        let title = 'Yahoo daily close';
+        if (stale) {
+            mode = 'stale';
+            label = 'Stale';
+            title = staleReason || 'Stale chart — refresh daily closes.';
+        } else if (isIntraday) {
+            if (live) {
+                mode = 'live';
+                label = 'Live';
+                detail = asOfDate || quoteTime || 'now';
+                title = 'Yahoo intraday bar · ' + detail;
+            } else {
+                mode = 'last_bar';
+                label = 'Last bar';
+                detail = asOfDate || quoteTime || 'session';
+                title = 'Last intraday bar · ' + detail;
+            }
+        } else if (live) {
+            mode = 'live';
+            label = 'Live';
+            detail = quoteTime || 'now';
+            title = 'Yahoo live quote · ' + detail + (asOfDate ? (' · EOD ' + asOfDate) : '');
+        } else if (quoteTime) {
+            detail = quoteTime;
+        }
+        let html = '<span class="pf-badge pf-' + mode + '" title="' + this.esc(title) + '">' + this.esc(label) + '</span>';
+        if (detail) {
+            html += '<br><span class="pf-detail" title="' + this.esc(title) + '">' + this.esc(detail) + '</span>';
+        }
+        return html;
+    }
+};</script><script>
+(function() {
+    const POS_REFRESH_MS = 60000;
+    const SCAN_MS = 300000;
+    const FULL_SCAN_MS = 1800000;
+    const POLL_MS = 2500;
+    const API = 'swing-auto-api.php';
+    const CSRF = "495389.b8b5884505e4c0f5b2dc7c9e6d0db626a2a4fe2d32234a0a5b10d1f17a20c4db";
+    let activeTier = 'high_conviction';
+    let tierData = { high_conviction: [], strict_enter: [], setup_radar: [], breakout_surge: [] };
+    let pollTimer = null;
+    let countdownTimer = null;
+    let nextScanAt = 0;
+    let nextFullScanAt = 0;
+    let canAddPortfolio = true;
+    let addingSymbol = '';
+
+    const el = id => document.getElementById(id);
+
+    function verdictClass(v) {
+        const map = { ENTER: 'sas-enter', SETUP: 'sas-setup', WATCH: 'sas-watch', HOLD: 'sas-hold', EXIT: 'sas-exit' };
+        return map[v] || 'sas-avoid';
+    }
+
+    function fmtRs(n) {
+        if (n === null || n === undefined || n === '') return '—';
+        return '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function fmtPct(n) {
+        if (n === null || n === undefined) return '—';
+        return Number(n).toFixed(1) + '%';
+    }
+
+    function esc(s) {
+        const d = document.createElement('div');
+        d.textContent = String(s ?? '');
+        return d.innerHTML;
+    }
+
+    function setStatus(scan) {
+        const pill = el('sas-status-pill');
+        if (!pill) return;
+        const st = scan?.status || 'idle';
+        pill.classList.remove('sas-live', 'sas-scanning');
+        if (st === 'pending' || st === 'running') {
+            const mode = scan?.scan_mode || scan?.summary?.scan_mode;
+            pill.textContent = mode === 'incremental' ? 'Incremental refresh…' : 'Full Nifty 250 scan…';
+            pill.classList.add('sas-scanning');
+        } else if (st === 'failed') {
+            pill.textContent = 'Scan failed';
+            pill.classList.add('sas-scanning');
+        } else {
+            pill.textContent = 'Live · auto';
+            pill.classList.add('sas-live');
+        }
+    }
+
+    function decisionClass(action) {
+        const map = {
+            STRONG_BUY: 'sas-dec-strong', BUY: 'sas-dec-buy', WATCH: 'sas-dec-watch', SKIP: 'sas-dec-skip',
+            EXIT_NOW: 'sas-dec-exit', CUT_LOSS: 'sas-dec-cut', TIGHTEN_STOP: 'sas-dec-tighten',
+            TRIM_PROFIT: 'sas-dec-trim', HOLD: 'sas-dec-hold', TRAIL_ACTIVE: 'sas-dec-trail', REVIEW: 'sas-dec-watch'
+        };
+        return map[action] || 'sas-dec-skip';
+    }
+
+    function renderGuidance(data) {
+        const box = el('sas-guidance');
+        const g = data.guidance;
+        if (!box || !g) return;
+        box.hidden = false;
+        box.className = 'sas-guidance ' + (g.tone || 'neutral');
+        const risk = data.portfolio_risk;
+        const heat = risk?.heat_pct != null ? ' · Heat ' + risk.heat_pct + '%' : '';
+        const deploy = g.deploy_pct != null ? ' · Deploy cap ' + g.deploy_pct + '%' : '';
+        box.innerHTML = '<strong>' + esc(g.title) + '</strong> — ' + esc(g.message)
+            + (risk?.message ? ' <span class="sas-muted">' + esc(risk.message) + '</span>' : '')
+            + '<span class="sas-muted">' + esc(heat + deploy) + '</span>';
+    }
+
+    function renderKpi(data) {
+        const kpi = el('sas-kpi');
+        if (!kpi) return;
+        const s = data.scan?.summary;
+        const regime = data.regime;
+        const risk = data.portfolio_risk;
+        const parts = [];
+        if (regime?.label) {
+            parts.push('<span>Regime <strong>' + esc(regime.label) + '</strong></span>');
+        }
+        if (risk) {
+            canAddPortfolio = !!risk.can_add;
+            parts.push('<span>Portfolio heat <strong>' + (risk.heat_pct ?? 0) + '%</strong></span>');
+            parts.push('<span>New entries <strong>' + (risk.can_add ? 'OK' : 'Blocked') + '</strong></span>');
+        }
+        if (s) {
+            const mode = s.scan_mode || data.scan?.scan_mode;
+            if (mode === 'incremental') {
+                parts.push('<span>Last scan <strong>incremental</strong> · ' + (s.incremental_refreshed ?? 0) + ' symbols</span>');
+            } else if (mode === 'full') {
+                parts.push('<span>Last scan <strong>full N250</strong></span>');
+            }
+            parts.push('<span>High conviction <strong class="sas-pos">' + (s.high_conviction ?? 0) + '</strong></span>');
+            parts.push('<span>Strict ENTER <strong>' + (s.strict_enter ?? 0) + '</strong></span>');
+            parts.push('<span>SETUP+ <strong>' + (s.hit_count ?? 0) + '</strong></span>');
+            if (s.elapsed_sec) parts.push('<span>' + Number(s.elapsed_sec).toFixed(1) + 's</span>');
+        } else if (data.scan?.status === 'pending' || data.scan?.status === 'running') {
+            parts.push('<span class="sas-muted">Background scan in progress…</span>');
+        }
+        kpi.innerHTML = parts.join('') || '<span class="sas-muted">No scan data yet</span>';
+    }
+
+    function renderPositions(pos) {
+        const body = el('sas-pos-body');
+        const summary = el('sas-pos-summary');
+        const alert = el('sas-pos-alert');
+        if (!body) return;
+
+        const rows = pos?.rows || [];
+        const pf = pos?.portfolio || {};
+        if (summary) {
+            if ((pos?.summary?.open ?? 0) > 0) {
+                summary.innerHTML = [
+                    '<span>Open <strong>' + (pos.summary.open ?? 0) + '</strong></span>',
+                    '<span class="' + ((pos.exit_count ?? 0) > 0 ? 'sas-neg' : '') + '">EXIT signals <strong>' + (pos.exit_count ?? 0) + '</strong></span>',
+                    pf.count > 0 ? '<span>Net P&amp;L <strong class="' + (pf.net_pnl >= 0 ? 'sas-pos' : 'sas-neg') + '">₹' + Math.round(pf.net_pnl).toLocaleString('en-IN') + '</strong></span>' : ''
+                ].filter(Boolean).join('');
+            } else {
+                summary.innerHTML = '<span class="sas-muted">No open positions</span>';
+            }
+        }
+        if (alert) {
+            const urgent = rows.filter(r => ['EXIT_NOW', 'CUT_LOSS', 'TIGHTEN_STOP'].includes(r.position_action));
+            if (urgent.length > 0) {
+                alert.hidden = false;
+                alert.className = 'sas-pos-alert';
+                alert.textContent = urgent.length + ' position(s) need action: '
+                    + urgent.map(r => r.symbol + ' → ' + (r.action_label || r.position_action)).join('; ');
+            } else if ((pos?.exit_count ?? 0) > 0) {
+                alert.hidden = false;
+                alert.className = 'sas-pos-alert';
+                alert.textContent = pos.exit_count + ' position(s) triggered EXIT rules — review immediately.';
+            } else {
+                alert.hidden = true;
+            }
+        }
+
+        if (!rows.length) {
+            body.innerHTML = '<tr><td colspan="9" class="sas-muted">No open positions. Add on <a class="sas-link" href="swing-positions.php">Swing Positions</a>.</td></tr>';
+            return;
+        }
+
+        body.innerHTML = rows.map(r => {
+            const gainCls = (r.gain_pct ?? 0) >= 0 ? 'sas-pos' : 'sas-neg';
+            const symLink = '<a class="sas-link" href="swing-trading.php?run=1&amp;mode=symbol&amp;symbol=' + encodeURIComponent(r.symbol) + '">' + esc(r.symbol) + '</a>'
+                + (r.in_high_conviction ? ' <span class="sas-pos" style="font-size:0.58rem;">★</span>' : '');
+            const stopTgt = (() => {
+                const eff = r.effective_stop ?? r.active_stop;
+                const parts = [];
+                if (r.trail_armed && r.trail_stop != null) {
+                    parts.push('<span class="sas-trail-armed">Trail ₹' + Number(r.trail_stop).toLocaleString('en-IN', {minimumFractionDigits:2}) + '</span>');
+                    if (r.high_water != null && r.trail_from_high_pct != null) {
+                        parts.push('<span class="sas-trail-bar">−' + r.trail_from_high_pct + '% from ₹' + Number(r.high_water).toLocaleString('en-IN', {minimumFractionDigits:2}) + '</span>');
+                    }
+                } else if (r.gain_to_arm_trail_pct != null && r.gain_to_arm_trail_pct > 0) {
+                    parts.push('<span class="sas-trail-bar">Trail arms at +' + (r.trail_arm_pct ?? '2') + '% (need +' + r.gain_to_arm_trail_pct + '%)</span>');
+                }
+                if (eff != null) parts.push('Floor ₹' + Number(eff).toLocaleString('en-IN', {minimumFractionDigits:2}));
+                if (r.stop_distance_pct != null) parts.push('<span class="sas-trail-bar">' + r.stop_distance_pct + '% above floor</span>');
+                if (r.profit_target != null) parts.push('Tgt ₹' + Number(r.profit_target).toLocaleString('en-IN', {minimumFractionDigits:2}));
+                if (r.breakeven_armed) parts.push('<span class="sas-trail-armed">BE+</span>');
+                return parts.join('<br>') || '—';
+            })();
+            const triggers = (r.exit_triggers || []).join(', ');
+            const now = r.ok
+                ? fmtRs(r.current_price) + (window.PriceFreshness ? window.PriceFreshness.renderBadge(r) : '')
+                : '<span class="sas-neg">' + esc(r.error || 'No data') + '</span>';
+            const pnl = r.gain_pct != null
+                ? '<span class="' + gainCls + '">' + fmtPct(r.gain_pct) + '</span>' + (r.net_pnl != null ? '<br><span class="' + gainCls + '" style="font-size:0.65rem;">Net ₹' + Math.round(r.net_pnl).toLocaleString('en-IN') + '</span>' : '')
+                : '—';
+            const act = r.position_action || 'REVIEW';
+            const reasons = (r.action_reasons || []).join(' · ');
+            return '<tr>'
+                + '<td>' + symLink + (r.notes ? '<div class="sas-muted">' + esc(r.notes) + '</div>' : '') + '</td>'
+                + '<td>' + fmtRs(r.entry_price) + '<br><span class="sas-muted">' + esc(r.entry_date) + '</span></td>'
+                + '<td>' + now + '</td>'
+                + '<td>' + pnl + '</td>'
+                + '<td>' + (r.r_unrealized != null ? r.r_unrealized + 'R' : '—') + '</td>'
+                + '<td><span class="sas-decision ' + decisionClass(act) + '">' + esc(r.action_label || act) + '</span>'
+                + (reasons ? '<div class="sas-muted" style="font-size:0.62rem;margin-top:0.2rem;">' + esc(reasons) + '</div>' : '') + '</td>'
+                + '<td><span class="sas-verdict ' + verdictClass(r.exit_verdict) + '">' + esc(r.exit_verdict) + '</span>'
+                + (triggers ? '<div class="sas-muted" style="font-size:0.62rem;">' + esc(triggers) + '</div>' : '') + '</td>'
+                + '<td style="font-size:0.68rem;">' + stopTgt + '</td>'
+                + '</tr>';
+        }).join('');
+    }
+
+    function btClass(grade) {
+        const g = String(grade || '').toLowerCase();
+        if (g === 'strong') return 'sas-bt-strong';
+        if (g === 'ok') return 'sas-bt-ok';
+        if (g === 'weak') return 'sas-bt-weak';
+        if (g === 'fail') return 'sas-bt-fail';
+        return 'sas-bt-unproven';
+    }
+
+    function renderBacktestCell(h) {
+        if (!h.backtest_grade) {
+            return '<span class="sas-muted">—</span>';
+        }
+        const pf = h.backtest_pf != null ? 'PF ' + h.backtest_pf : '';
+        const wr = h.backtest_win_rate_pct != null ? h.backtest_win_rate_pct + '%' : '';
+        const tr = h.backtest_trades ? h.backtest_trades + 't' : '';
+        const sub = [pf, wr, tr].filter(Boolean).join(' · ');
+        return '<span class="sas-bt ' + btClass(h.backtest_grade) + '">' + esc(h.backtest_label || h.backtest_grade) + '</span>'
+            + (sub ? '<span class="sas-muted" style="font-size:0.58rem;display:block;">' + esc(sub) + '</span>' : '');
+    }
+
+    function renderHits() {
+        const body = el('sas-hits-body');
+        if (!body) return;
+        const hits = tierData[activeTier] || [];
+        [
+            ['hi', 'high_conviction'], ['strict', 'strict_enter'], ['setup', 'setup_radar'], ['breakout', 'breakout_surge']
+        ].forEach(([id, key]) => {
+            const n = el('sas-n-' + id);
+            if (n) n.textContent = String((tierData[key] || []).length);
+        });
+        if (!hits.length) {
+            const labels = {
+                high_conviction: 'high conviction',
+                strict_enter: 'Strict ENTER',
+                setup_radar: 'SETUP+',
+                breakout_surge: 'breakout + volume surge'
+            };
+            body.innerHTML = '<tr><td colspan="15" class="sas-muted">No ' + esc(labels[activeTier] || 'hits') + ' in latest scan.</td></tr>';
+            return;
+        }
+        body.innerHTML = hits.map(h => {
+            const zone = h.ta_52w_chart_zone || '';
+            const zoneCls = zone === 'green' ? 'sas-zone-green' : (zone === 'red' ? 'sas-zone-red' : '');
+            const pct = h.ta_pct_52w != null ? h.ta_pct_52w + '%' + (zone ? ' · ' + zone.toUpperCase() : '') : '—';
+            const sym = '<a class="sas-link" href="swing-trading.php?run=1&amp;mode=symbol&amp;symbol=' + encodeURIComponent(h.symbol) + '">' + esc(h.symbol) + '</a>'
+                + (h.already_held ? '<span class="sas-held' + (h.held_near_stop ? ' sas-held-near' : '') + '">Held'
+                    + (h.held_action_label ? ' · ' + esc(h.held_action_label) : '')
+                    + (h.held_stop_distance_pct != null ? ' · ' + h.held_stop_distance_pct + '% above stop' : '')
+                    + '</span>' : '');
+            const flags = (h.risk_flags || []).map(f => '<span class="sas-flag">' + esc(f.replace(/_/g, ' ')) + '</span>').join('') || '—';
+            const dAct = h.decision_action || 'SKIP';
+            const shares = h.suggested_shares ?? 0;
+            const showAdd = h.add_allowed && canAddPortfolio && shares > 0 && !h.already_held;
+            const busy = addingSymbol === h.symbol;
+            const addCell = showAdd
+                ? '<button type="button" class="sas-add-btn" data-add="' + esc(h.symbol) + '"' + (busy ? ' disabled' : '') + '>+ Add</button>'
+                    + '<span class="sas-add-shares">' + shares + ' sh · ~₹' + Math.round(shares * (h.price || 0)).toLocaleString('en-IN') + '</span>'
+                : '<span class="sas-muted">—</span>';
+            return '<tr>'
+                + '<td>' + sym + '</td>'
+                + '<td><span class="sas-decision ' + decisionClass(dAct) + '">' + esc(h.decision_label || dAct) + '</span></td>'
+                + '<td><strong>' + (h.decision_score ?? 0) + '</strong></td>'
+                + '<td>' + renderBacktestCell(h) + '</td>'
+                + '<td>' + (h.swing_rank ?? 0) + '</td>'
+                + '<td>' + (h.entry_score ?? 0) + '</td>'
+                + '<td><span class="sas-verdict ' + verdictClass(h.strict) + '">' + esc(h.strict) + '</span></td>'
+                + '<td>' + (h.r_multiple ?? '—') + '</td>'
+                + '<td>' + fmtRs(h.price) + '</td>'
+                + '<td>' + fmtRs(h.stop_loss) + '</td>'
+                + '<td>' + fmtRs(h.profit_target) + '</td>'
+                + '<td>' + (h.ta_rsi14 ?? '—') + '</td>'
+                + '<td class="' + zoneCls + '">' + esc(pct) + '</td>'
+                + '<td>' + flags + '</td>'
+                + '<td>' + addCell + '</td>'
+                + '</tr>';
+        }).join('');
+        body.querySelectorAll('[data-add]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const sym = btn.getAttribute('data-add');
+                const hit = hits.find(x => x.symbol === sym);
+                if (hit) addFromHit(hit);
+            });
+        });
+    }
+
+    async function postJson(action, payload) {
+        const r = await fetch(API + '?action=' + encodeURIComponent(action), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...payload, _csrf: CSRF }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok && !data.error) throw new Error('HTTP ' + r.status);
+        return data;
+    }
+
+    async function addFromHit(hit) {
+        if (!hit || addingSymbol) return;
+        const shares = hit.suggested_shares ?? 0;
+        const msg = 'Add ' + hit.symbol + '?\n'
+            + 'Entry ₹' + Number(hit.price).toFixed(2)
+            + ' · Stop ₹' + Number(hit.stop_loss).toFixed(2)
+            + ' · ' + shares + ' shares'
+            + (hit.profit_target ? ' · Target ₹' + Number(hit.profit_target).toFixed(2) : '');
+        if (!window.confirm(msg)) return;
+
+        addingSymbol = hit.symbol;
+        renderHits();
+        try {
+            const check = await postJson('check_add', {
+                symbol: hit.symbol,
+                entry_price: hit.price,
+                stop_loss: hit.stop_loss,
+                shares: shares,
+            });
+            if (!check.ok) {
+                window.alert(check.error || 'Cannot add — heat or regime gate blocked.');
+                return;
+            }
+            const added = await postJson('add_position', {
+                symbol: hit.symbol,
+                entry_price: hit.price,
+                stop_loss: hit.stop_loss,
+                profit_target: hit.profit_target || null,
+                shares: check.shares ?? shares,
+                as_of_date: hit.as_of_date || null,
+                decision_action: hit.decision_action,
+                decision_label: hit.decision_label,
+                decision_score: hit.decision_score,
+            });
+            if (!added.ok) {
+                window.alert(added.error || 'Add failed.');
+                return;
+            }
+            if (added.positions) renderPositions(added.positions);
+            const pill = el('sas-status-pill');
+            if (pill) {
+                pill.textContent = added.message || ('Added ' + hit.symbol);
+                pill.classList.add('sas-live');
+            }
+        } catch (e) {
+            window.alert('Add failed: ' + e.message);
+        } finally {
+            addingSymbol = '';
+            renderHits();
+        }
+    }
+
+    function updateMeta(data) {
+        setStatus(data.scan);
+        renderGuidance(data);
+        renderKpi(data);
+        if (data.tiers) {
+            tierData = data.tiers;
+            renderHits();
+        }
+        if (data.positions) renderPositions(data.positions);
+        const updated = el('sas-updated');
+        if (updated) {
+            const t = data.positions?.refreshed_at || data.scan?.saved_at;
+            updated.textContent = t ? new Date(t).toLocaleTimeString() : '—';
+        }
+        nextScanAt = Date.now() + (data.next_scan_in_sec ?? SCAN_MS / 1000) * 1000;
+        nextFullScanAt = Date.now() + (data.next_full_scan_in_sec ?? FULL_SCAN_MS / 1000) * 1000;
+    }
+
+    function tickCountdown() {
+        const cd = el('sas-countdown');
+        if (!cd || !nextScanAt) return;
+        const sec = Math.max(0, Math.ceil((nextScanAt - Date.now()) / 1000));
+        cd.textContent = sec + 's';
+    }
+
+    function tickFullCountdown() {
+        const cd = el('sas-full-countdown');
+        if (!cd || !nextFullScanAt) return;
+        const sec = Math.max(0, Math.ceil((nextFullScanAt - Date.now()) / 1000));
+        const m = Math.floor(sec / 60);
+        const s = sec % 60;
+        cd.textContent = m > 0 ? m + 'm ' + s + 's' : sec + 's';
+    }
+
+    async function fetchJson(url) {
+        const r = await fetch(url, { credentials: 'same-origin' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+    }
+
+    async function loadState(opts = {}) {
+        const positions = opts.positions !== false ? '1' : '0';
+        return fetchJson(API + '?action=state&positions=' + positions);
+    }
+
+    async function refreshPositionsOnly() {
+        try {
+            const data = await fetchJson(API + '?action=positions');
+            if (data.positions) {
+                renderPositions(data.positions);
+                const updated = el('sas-updated');
+                if (updated && data.positions.refreshed_at) {
+                    updated.textContent = new Date(data.positions.refreshed_at).toLocaleTimeString();
+                }
+            }
+        } catch (e) { /* silent — full cycle will retry */ }
+    }
+
+    async function startScan() {
+        return postJson('start', {});
+    }
+
+    function isScanning(data) {
+        const st = data?.scan?.status;
+        return st === 'pending' || st === 'running';
+    }
+
+    function schedulePoll() {
+        if (pollTimer) clearTimeout(pollTimer);
+        pollTimer = setTimeout(async () => {
+            try {
+                const data = await loadState({ positions: false });
+                updateMeta(data);
+                if (isScanning(data)) {
+                    schedulePoll();
+                } else {
+                    const full = await loadState({ positions: true });
+                    updateMeta(full);
+                }
+            } catch (e) {
+                const pill = el('sas-status-pill');
+                if (pill) { pill.textContent = 'Connection error'; pill.classList.add('sas-scanning'); }
+                schedulePoll();
+            }
+        }, POLL_MS);
+    }
+
+    async function scanCycle() {
+        try {
+            let data = await loadState({ positions: false });
+            updateMeta(data);
+            if (data.should_start_scan) {
+                data = await startScan();
+                updateMeta(data);
+            }
+            if (isScanning(data)) {
+                schedulePoll();
+            } else {
+                const full = await loadState({ positions: true });
+                updateMeta(full);
+            }
+        } catch (e) {
+            const pill = el('sas-status-pill');
+            if (pill) pill.textContent = 'Error: ' + e.message;
+        }
+    }
+
+    document.querySelectorAll('#sas-tier-tabs button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#sas-tier-tabs button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            activeTier = btn.dataset.tier || 'strict_enter';
+            renderHits();
+        });
+    });
+
+    scanCycle();
+    const urlTier = new URLSearchParams(window.location.search).get('tier');
+    const validTiers = ['high_conviction', 'strict_enter', 'setup_radar', 'breakout_surge'];
+    if (urlTier && validTiers.includes(urlTier)) {
+        activeTier = urlTier;
+        document.querySelectorAll('#sas-tier-tabs button').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-tier') === urlTier);
+        });
+    }
+    setInterval(refreshPositionsOnly, POS_REFRESH_MS);
+    setInterval(scanCycle, SCAN_MS);
+    countdownTimer = setInterval(function() { tickCountdown(); tickFullCountdown(); }, 1000);
+    tickCountdown();
+})();
+</script>
+
+<footer><a href="help.php">How to Use</a> · <a href="../../99-complete-stock-verification-guide.md">Ch.99 Guide</a> · <a href="verify.php">CFA Verify</a> · <a href="index.php">Full Verification</a> · <a href="stock-details.php">Stock Details</a> · <a href="screener.php">Screener</a> · <a href="strategies.php">Strategies</a> · <a href="swing-trading.php">Swing Trading</a> · <a href="swing-auto-screener.php">Swing Auto</a> · <a href="watchlist.php">Watchlist</a> · <a href="cache.php">Cache</a> · <a href="users.php">Users</a></footer></div></body></html>

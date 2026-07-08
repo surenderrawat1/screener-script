@@ -53,14 +53,5 @@ export {
   type FnoUnderlyingSpec,
   type FnoExpiryInfo,
 } from './fno-specs.js';
-export {
-  evaluateIntradayPosition,
-  sortTrackedPositions,
-  countIntradayExitSignals,
-  isUrgentIntradayAction,
-  serializeTrackedIntradayPosition,
-  summarizeOpenIntradayPortfolio,
-  summarizeClosedIntradayPositions,
-  closedTradeMetrics,
-  type IntradayBar as IntradayPositionBar,
-} from './position-tracker.js';
+export * from './position-tracker.js';
+export { backtestIntradayCombo, type IntradayBacktestResult, type IntradayPresetBacktestRow } from './intraday-backtest.js';

@@ -48,6 +48,18 @@ export interface TradingPreset {
   scan_params?: TradingPresetScanParams;
 }
 
+export interface TradingPresetEnriched extends TradingPreset {
+  ready: boolean;
+  blocked_reason?: string;
+}
+
+/** Hub guide banner — parity with PHP trading-presets.php accuracy tips. */
+export const PRESET_GUIDE_TIPS = [
+  'Conservative swing: confirm NIFTYBEES regime before sizing Tier-A ENTER names.',
+  'ETF rotation: prefer high-liquidity BeES; sector ETFs may diverge from Nifty regime.',
+  'Intraday: backtest 60d preset matrix before live size; flatten by 14:45–15:15 IST.',
+] as const;
+
 const PRESET_ALIASES: Record<string, string> = {
   conservative: PRESET_CONSERVATIVE_SWING,
   swing: PRESET_CONSERVATIVE_SWING,
@@ -115,7 +127,7 @@ function conservativeSwing(): TradingPreset {
     primary_href: conservativeSwingScanHref(true),
     links: [
       { href: conservativeSwingScanHref(true), label: 'Run Tier-A ENTER scan', primary: true },
-      { href: '/swing/auto', label: 'Swing Auto · strict ENTER' },
+      { href: '/swing/auto?tier=strict_enter', label: 'Swing Auto · strict ENTER' },
       { href: '/positions', label: 'Manage positions' },
       { href: '/stock/NIFTYBEES', label: 'Regime (NIFTYBEES)' },
     ],
@@ -179,6 +191,7 @@ function intradaySession(): TradingPreset {
       { href: intradayRadarHref('5m'), label: '5m trend scalp radar', primary: true },
       { href: intradayRadarHref('15m'), label: '15m CFA precision' },
       { href: '/intraday/positions', label: 'Intraday ledger' },
+      { href: '/intraday/backtest', label: '60d backtest matrix' },
       { href: '/morning', label: 'Morning cockpit' },
     ],
   };
@@ -191,6 +204,36 @@ export function allTradingPresets(): TradingPreset[] {
 export function getTradingPreset(id: string): TradingPreset | null {
   const normalized = normalizeTradingPresetId(id);
   return allTradingPresets().find((p) => p.id === normalized) ?? null;
+}
+
+export function tradingPresetReadiness(preset: TradingPreset): { ready: boolean; blocked_reason?: string } {
+  if (preset.id === PRESET_CONSERVATIVE_SWING) {
+    if ((TIER_A_SYMBOLS as readonly string[]).length === 0) {
+      return { ready: false, blocked_reason: 'Tier-A swing book has no symbols configured' };
+    }
+    return { ready: true };
+  }
+  if (preset.id === PRESET_ETF_ROTATION) {
+    const count = filterEtfCatalog(ETF_CATEGORY.ROTATION).length;
+    if (count === 0) {
+      return { ready: false, blocked_reason: 'ETF rotation catalog is empty' };
+    }
+    return { ready: true };
+  }
+  if (preset.id === PRESET_INTRADAY_SESSION) {
+    return { ready: true };
+  }
+  return { ready: false, blocked_reason: 'Unknown preset' };
+}
+
+export function enrichTradingPreset(preset: TradingPreset): TradingPresetEnriched {
+  const gate = tradingPresetReadiness(preset);
+  return { ...preset, ready: gate.ready, blocked_reason: gate.blocked_reason };
+}
+
+/** Intraday entry-filter id to highlight when launched from intraday_session preset. */
+export function intradaySessionFilterId(interval: '5m' | '15m'): string {
+  return interval === '5m' ? 'trend_scalp_5m' : 'cfa_precision';
 }
 
 export function tradingPresetChips() {
