@@ -5,7 +5,7 @@ import {
   type ScreenerProfile,
 } from '@sv/data-adapters';
 import { cacheClearSymbol } from '@sv/cache';
-import { screenSymbol } from '@sv/core';
+import { screenSymbol, screeningScoreFromQuality } from '@sv/core';
 import {
   buildDailyChartPayload,
   chartPhaseAnalysis,
@@ -108,7 +108,7 @@ function dataQuality(metrics: Record<string, unknown>, sources: string[]) {
 }
 
 function valuationFromScreenerRow(row: ReturnType<typeof screenSymbol>) {
-  const verifyScore = Math.round(Math.max(0, Math.min(56, Number(row.composite_score ?? 0) * 56 / 100)));
+  const verifyScore = row.verify_score ?? screeningScoreFromQuality(Number(row.composite_score ?? 0));
   return {
     intrinsic: Number(row.intrinsic ?? 0),
     mos: row.mos ?? null,

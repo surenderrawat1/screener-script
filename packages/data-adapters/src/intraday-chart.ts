@@ -1,5 +1,5 @@
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
-import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
+import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import type { OhlcBar } from '@sv/swing';
 import { httpGet } from './http.js';
 
@@ -165,8 +165,7 @@ export async function fetchInstrumentIntradayChart(
         closes,
         fetched_at: new Date().toISOString(),
       };
-      const ttl = interval === '5m' ? 90 : CACHE_TTL.intraday;
-      await cacheSetJson(cacheKeyStr, chart, ttl);
+      await cacheSetJson(cacheKeyStr, chart, getCacheTtl().intraday);
       return chart;
     } catch {
       continue;

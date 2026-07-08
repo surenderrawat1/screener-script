@@ -1,5 +1,5 @@
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
-import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
+import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import { httpGet, normalizeDebtToEquity } from './http.js';
 
 export interface ScreenerRatios {
@@ -63,6 +63,6 @@ export async function fetchScreenerRatios(symbol: string, refresh = false): Prom
   const metrics = ratiosToMetrics(parseRatios(html));
   if (metrics.roce <= 0 && metrics.roe <= 0) return null;
 
-  await cacheSetJson(cacheKeyStr, metrics, CACHE_TTL.screener_table);
+  await cacheSetJson(cacheKeyStr, metrics, getCacheTtl().screener_table);
   return metrics;
 }

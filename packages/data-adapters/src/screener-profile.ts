@@ -1,5 +1,5 @@
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
-import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
+import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import { httpGet } from './http.js';
 import { parseSectionTable } from './screener-financials.js';
 
@@ -273,6 +273,6 @@ export async function fetchScreenerProfile(
   if (!html) return null;
 
   const profile = parseScreenerProfileHtml(html);
-  await cacheSetJson(cacheKeyStr, profile, CACHE_TTL.screener_table);
+  await cacheSetJson(cacheKeyStr, profile, getCacheTtl().screener_table);
   return profile;
 }

@@ -243,6 +243,9 @@ export interface ScreenerRow extends MosEstimate {
   roe: number;
   roce: number;
   composite_score: number;
+  verify_score?: number;
+  score_basis?: 'quality_proxy' | 'full_scorecard';
+  recommendation_basis?: 'screening_matrix' | 'full_verify_matrix';
   recommendation: string;
   passed: boolean;
   promoter_holding?: number;

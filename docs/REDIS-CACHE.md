@@ -26,6 +26,7 @@ All keys use the `sv:` prefix. Definitions: `packages/shared/src/constants.ts`.
 | `sv:worker:heartbeat` | `sv:worker:heartbeat` | Worker liveness timestamp | short |
 | `sv:swing:auto` | `sv:swing:auto` | Latest auto-radar snapshot | 7200 (2h) |
 | `sv:regime` | `sv:regime:nifty` | Live market regime | 900 (15m) |
+| `sv:morning` | `sv:morning:bundle:system`, `sv:morning:etf` | Morning briefing and ETF panel | 60 / 600 |
 
 Helper functions in `@sv/cache`:
 

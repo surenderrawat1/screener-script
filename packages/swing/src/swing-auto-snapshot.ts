@@ -1,5 +1,5 @@
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
-import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
+import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import { summarizeScan } from './auto-screener.js';
 import { categorizeHits } from './auto-decision.js';
 
@@ -40,6 +40,6 @@ export async function saveSwingAutoSnapshot(scanResult: Record<string, unknown>)
   };
 
   const key = cacheKey(CACHE_PREFIX.SWING_AUTO, SNAPSHOT_KEY);
-  await cacheSetJson(key, snapshot, CACHE_TTL.swing_auto_snapshot);
+  await cacheSetJson(key, snapshot, getCacheTtl().swing_auto_snapshot);
   return snapshot;
 }

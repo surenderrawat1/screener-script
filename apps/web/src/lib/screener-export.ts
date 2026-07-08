@@ -9,6 +9,9 @@ export interface ScreenerRow {
   zone: string;
   recommendation: string;
   composite_score: number;
+  verify_score?: number;
+  score_basis?: 'quality_proxy' | 'full_scorecard';
+  recommendation_basis?: 'screening_matrix' | 'full_verify_matrix';
   fair_pe: number;
   method: string;
   intrinsic: number;

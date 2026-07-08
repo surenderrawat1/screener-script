@@ -1,5 +1,5 @@
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
-import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
+import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import { getMorningEtfPanel } from './morning-etf.js';
 
 export const MORNING_ETF_REVALIDATE_AGE_SEC = 480;
@@ -18,7 +18,7 @@ export async function setCachedMorningBundle(userId: string | undefined, briefin
   await cacheSetJson(
     morningBundleCacheKey(userId),
     { briefing, cached_at: new Date().toISOString() },
-    CACHE_TTL.morning_bundle,
+    getCacheTtl().morning_bundle,
   );
 }
 

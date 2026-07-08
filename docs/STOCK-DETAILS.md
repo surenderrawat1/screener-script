@@ -248,14 +248,13 @@ Scrapes Screener.in consolidated page HTML:
 | `expenditures` | Cash-flow table rows (Rs Cr) |
 | `business_plans` | Keyword-extracted outlook highlights |
 
-Cache: `screener/profile:consolidated:{slug}` — 7d TTL.
+Cache: profile/annual data is treated as Screener table data — default 24h via `cache_ttl.screener_table`.
 
 ### v2
 
-`screener-in.ts` fetches **ratio tiles only** — no HTML profile parse.
+`screener-profile.ts` parses profile, expenditures, concalls, and business-plan highlights.
 
-**Planned:** `packages/data-adapters/src/screener-profile.ts`  
-Redis: `sv:screener:profile:{slug}` TTL 7d (new prefix).
+Redis: `sv:screener:table:profile:{mode}:{slug}` with runtime TTL from `data-policy.yaml`.
 
 ---
 
@@ -279,7 +278,7 @@ Redis: `sv:screener:profile:{slug}` TTL 7d (new prefix).
 
 ### v2 adapter
 
-`fetchDailyBars(symbol)` in `swing-chart.ts` — same 2y Yahoo data, cached `sv:ta:bars:{SYM}` 24h.
+`fetchDailyBars(symbol)` in `swing-chart.ts` — same 2y Yahoo data, cached `sv:ta:bars:{SYM}` with runtime `ta` TTL.
 
 **Not exposed** to any web page.
 
@@ -320,10 +319,10 @@ v2 `metricsFromBars()` computes similar fields — usable once wired to Stock De
 
 ### v2
 
-- `verifyStock()` → `fetchStockData` + `estimate()` from `@sv/core`
+- `getStockSummary()` → `resolveStockMetrics()` + `screenSymbol()` from the same enriched metrics shown on the page
 - Persists every run to `verification_runs`
-- **No IV drift UI**
-- **No** `sv:verify` cache wired (Phase 9 roadmap)
+- IV drift warning compares fast-path IV and Full Verify IV when both are available
+- `sv:verify` is used by CFA Verify; Stock Details quick valuation stays metric-local to avoid cross-cache drift
 
 Stock Details should reuse verify engine output without forcing `refresh: true` on every page load.
 
@@ -352,9 +351,10 @@ Requires permission `refresh_data` + CSRF.
 |-----|-----|-------------------|
 | `sv:stock:{SYM}` | 7d | Fundamentals |
 | `sv:yahoo:*` | 7d | Raw Yahoo |
-| `sv:screener:row:*` | 1h–24h | Ratios |
-| `sv:ta:bars:{SYM}` | 24h | Chart (when wired) |
-| `sv:verify:{SYM}` | 7d | **Not wired** |
+| `sv:screener:table:*` | 24h | Ratios/profile/annual inputs |
+| `sv:screener:row:*` | 1h | Analyzed rows |
+| `sv:ta:bars:{SYM}` | 24h | Chart / TA |
+| `sv:verify:{SYM}` | 7d | CFA Verify memo cache |
 
 ### Planned admin refresh API
 

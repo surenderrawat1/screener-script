@@ -168,7 +168,7 @@ export const CFA_TERM_DEFAULTS: CfaTermSeed[] = [
     category: 'quality',
     title: 'Quality Score (0–100)',
     definition:
-      'Composite fundamental quality before MOS blending. Feeds screening verify score and recommendation matrix.',
+      'Composite fundamental quality before MOS blending. Screener uses this as a quick quality proxy; it is not the Full Verify phase scorecard.',
     formula:
       'ROE (20) + ROCE (20) + D/E discipline (3–15) + Piotroski (15) + Moat (3–15) + Management (10) + Cash flow (5) + Altman distress penalty (5)',
     relatedKeys: ['verify_score', 'piotroski', 'moat', 'altman_z'],
@@ -179,8 +179,8 @@ export const CFA_TERM_DEFAULTS: CfaTermSeed[] = [
     category: 'quality',
     title: 'Verify Score',
     definition:
-      'Screening mode: quality_score × 56/100. Full Verify: sum of phase scorecard (max 56, Phase 8 thesis excluded from total). Investment-ready typically requires score ≥ 35.',
-    formula: 'Screening: round(quality_score × 56 / 100) · Full: Σ phase points (0–56)',
+      'Full Verify: sum of phase scorecard (max 56, Phase 8 thesis excluded from total). Quick screening may expose a derived quality proxy, but investment-ready gates use the Full Verify scorecard.',
+    formula: 'Full Verify: Σ phase points (0–56)',
     relatedKeys: ['quality_score', 'investment_ready'],
     sortOrder: 210,
   },
@@ -221,8 +221,8 @@ export const CFA_TERM_DEFAULTS: CfaTermSeed[] = [
     category: 'verdict',
     title: 'Recommendation Matrix',
     definition:
-      'Final rating from quality/verify score bands crossed with MOS bands. Produces Strong Buy, Buy, Hold, Accumulate, Expensive, Reject.',
-    formula: 'Score bands: ≥45 / ≥35 / ≥25 · MOS bands: ≥20% / ≥10% / ≥0%',
+      'Verdict from score bands crossed with MOS bands. Screener verdicts are quick screening signals; Full Verify verdicts use the manual phase scorecard and red-flag gates.',
+    formula: 'Full Verify score bands: ≥45 / ≥35 / ≥25 · MOS bands: ≥20% / ≥10% / ≥0%',
     relatedKeys: ['mos', 'quality_score', 'verify_score'],
     sortOrder: 400,
   },

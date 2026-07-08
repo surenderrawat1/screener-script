@@ -49,7 +49,7 @@ export async function verifySymbol(symbol: string, refresh = false, userId?: str
       stock_name: String(company_name ?? metrics.name ?? metrics.symbol),
       sector: String(metrics.sector ?? ''),
       last_score: a.verify_score ?? Math.round(((a.quality_score ?? 0) * 56) / 100),
-      last_mos: a.mos ?? 0,
+      last_mos: a.mos ?? null,
       last_verdict: a.recommendation ?? '',
     }).catch(() => undefined);
   }

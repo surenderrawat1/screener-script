@@ -87,6 +87,8 @@ export interface CacheTtlMap {
   intraday: number;
   swing_auto_snapshot: number;
   regime: number;
+  morning_etf: number;
+  morning_bundle: number;
 }
 
 const DEFAULT_DATA_POLICY: DataPolicyConfig = {
@@ -103,6 +105,8 @@ const DEFAULT_DATA_POLICY: DataPolicyConfig = {
     regime: CACHE_TTL.regime,
     swing_auto: CACHE_TTL.swing_auto_snapshot,
     intraday_chart: CACHE_TTL.intraday,
+    morning_etf: CACHE_TTL.morning_etf,
+    morning_bundle: CACHE_TTL.morning_bundle,
   },
   staleness: {
     index_max_age_days: 90,
@@ -154,12 +158,14 @@ function mapYamlTtlToRuntime(yamlTtl: Record<string, number>): CacheTtlMap {
     screener_row: yamlTtl.screener_row ?? CACHE_TTL.screener_row,
     ta: yamlTtl.ta ?? CACHE_TTL.ta,
     stock: yamlTtl.stock ?? CACHE_TTL.stock,
-    verify: yamlTtl.stock ?? CACHE_TTL.verify,
+    verify: yamlTtl.verify ?? CACHE_TTL.verify,
     yahoo: yamlTtl.yahoo_raw ?? CACHE_TTL.yahoo,
     job_progress: CACHE_TTL.job_progress,
     intraday: yamlTtl.intraday_chart ?? CACHE_TTL.intraday,
     swing_auto_snapshot: yamlTtl.swing_auto ?? CACHE_TTL.swing_auto_snapshot,
     regime: yamlTtl.regime ?? CACHE_TTL.regime,
+    morning_etf: yamlTtl.morning_etf ?? CACHE_TTL.morning_etf,
+    morning_bundle: yamlTtl.morning_bundle ?? CACHE_TTL.morning_bundle,
   };
 }
 

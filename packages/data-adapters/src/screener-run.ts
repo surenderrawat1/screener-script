@@ -1,6 +1,6 @@
 import { passesFilters, passesTableGates, PRESET_FILTERS, screenSymbol, buildStockMetrics, type ScreenerFilters } from '@sv/core';
 import type { ScreenerRow, StockMetrics } from '@sv/shared';
-import { CACHE_PREFIX, CACHE_TTL, getCacheTtl } from '@sv/shared';
+import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
 import { prisma } from '@sv/db';
 import {
@@ -264,7 +264,7 @@ async function screenSymbolFiltered(
   row = enriched;
 
   if (!refresh) {
-    await cacheSetJson(rowCacheKey, row, CACHE_TTL.screener_row);
+    await cacheSetJson(rowCacheKey, row, getCacheTtl().screener_row);
   }
   return row;
 }

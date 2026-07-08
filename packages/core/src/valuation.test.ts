@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateFairPe, grahamNumber, mosFromIntrinsic, mosZone } from '../src/valuation.js';
+import { analyzeSymbol, calculateFairPe, grahamNumber, mosFromIntrinsic, mosZone } from '../src/valuation.js';
 import { screenSymbol } from '../src/screener.js';
 
 describe('valuation', () => {
@@ -28,6 +28,16 @@ describe('screener', () => {
     const row = screenSymbol('TCS');
     expect(row.symbol).toBe('TCS');
     expect(row.mos).not.toBeNull();
+    expect(row.score_basis).toBe('quality_proxy');
+    expect(row.recommendation_basis).toBe('screening_matrix');
+    expect(row.verify_score).toBeGreaterThanOrEqual(0);
     expect(row.recommendation).toBeTruthy();
+  });
+
+  it('keeps legacy quick recommendation as Need Data when MOS is unknown', () => {
+    const row = analyzeSymbol({ symbol: 'NODATA', price: 100, eps: 0, pe: 0 });
+    expect(row.mos).toBeNull();
+    expect(row.recommendation).toBe('Need Data');
+    expect(row.passed).toBe(false);
   });
 });

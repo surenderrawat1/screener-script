@@ -113,6 +113,17 @@ describe('cross-page parity — stock / screener / verify surfaces', () => {
     expect(hint!.iv_drift_warn).toBe(hint!.drift_pct > IV_DRIFT_WARN_PCT);
   });
 
+  it('does not estimate ROCE from ROE when Screener ROCE is missing', () => {
+    const metrics = mergeMetrics(
+      'QUALITY',
+      { ...TCS_YAHOO, roe: 45 },
+      { ...TCS_SCREENER, roce: 0, roe: 45 },
+    );
+
+    expect(metrics.roe).toBe(45);
+    expect(metrics.roce).toBe(0);
+  });
+
   it('TCS fixture MOS near PHP validate-logic (~17%)', () => {
     const est = estimate({
       symbol: 'TCS',

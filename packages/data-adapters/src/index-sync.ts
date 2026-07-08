@@ -4,8 +4,8 @@ import { prisma } from '@sv/db';
 import { cacheKey, cacheSetJson } from '@sv/cache';
 import {
   CACHE_PREFIX,
-  CACHE_TTL,
   INDEX_DEFINITIONS,
+  getCacheTtl,
   guessUniverseFromFilename,
   indexAgeDays,
   parseIndexCsvContent,
@@ -82,8 +82,9 @@ export async function syncIndexUniverse(
     removed: removed.length,
   };
 
-  await cacheSetJson(cacheKey(CACHE_PREFIX.INDEX, indexKey), meta, CACHE_TTL.index_symbols);
-  await cacheSetJson(cacheKey(CACHE_PREFIX.UNIVERSE, indexKey), unique, CACHE_TTL.universe);
+  const ttl = getCacheTtl();
+  await cacheSetJson(cacheKey(CACHE_PREFIX.INDEX, indexKey), meta, ttl.index_symbols);
+  await cacheSetJson(cacheKey(CACHE_PREFIX.UNIVERSE, indexKey), unique, ttl.universe);
 
   return {
     ok: true,

@@ -114,16 +114,16 @@ PHP `MorningDashboard::build()` runs synchronously on every page load:
 
 **Cold load:** 3–8s when ETF cache miss.
 
-v2 planned: **one aggregated endpoint** with parallel panel fetches and per-panel cache TTLs.
+v2 uses **one aggregated endpoint** with parallel panel fetches and per-panel cache TTLs.
 
 ### 2. Panel-level caching
 
-| Panel | PHP cache | v2 planned |
+| Panel | PHP cache | v2 |
 |-------|-----------|--------------|
-| ETF scan | `morning_dashboard/etf_scan` 10m | `sv:morning:etf` 10m |
+| ETF scan | `morning_dashboard/etf_scan` 10m | `sv:morning:etf` 10m via `cache_ttl.morning_etf` |
 | Regime | Via TA cache | `sv:regime:nifty` 15m ✅ |
 | Auto radar | Swing auto snapshot | Redis + PostgreSQL ✅ |
-| Nifty 15m | Yahoo intraday 90s | `sv:ta:intraday:*` ✅ |
+| Nifty 15m | Yahoo intraday ~90s | `sv:ta:intraday:*` 5m via `cache_ttl.intraday_chart` ✅ |
 | Positions | Live per request | Optional `?live=0` summary |
 
 User gets **stale-while-revalidate**: show cached panels instantly, refresh heavy panels in background.
@@ -356,18 +356,18 @@ Derive from `refreshOpenPositions()` where `exit_verdict === 'EXIT'`.
 |--------|-----|-----|
 | `morning_dashboard` | `etf_scan` | 600s (10m) |
 | Swing auto snapshot | file/Redis | 5m refresh cycle |
-| Yahoo intraday | `ta/intraday:*` | ~90s |
+| Yahoo intraday | `ta/intraday:*` | runtime `intraday_chart` TTL (default 300s) |
 | Stock/regime | `ta/closes:NIFTYBEES` | 24h |
 
-### v2 planned
+### v2
 
 | Key | TTL | Panel |
 |-----|-----|-------|
-| `sv:morning:bundle` | 60s | Full aggregated response (optional) |
+| `sv:morning:bundle:{user}` | 60s | Full aggregated response |
 | `sv:morning:etf` | 600s | ETF panel |
 | `sv:regime:nifty` | 900s | Regime ✅ |
-| Swing auto snapshot | Redis + DB | Auto panel ✅ |
-| `sv:ta:intraday:nifty50:15m` | ~90s | Nifty card ✅ |
+| `sv:swing:auto:snapshot` | 7200s + DB archive | Auto panel ✅ |
+| `sv:ta:intraday:nifty50:{interval}:5d` | 300s | Nifty card ✅ |
 
 **Refresh ETF:** `POST /api/v1/morning/refresh-etf` or `?refresh_etf=1` — bypasses ETF cache only.
 

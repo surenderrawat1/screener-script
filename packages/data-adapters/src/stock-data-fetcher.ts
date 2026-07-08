@@ -50,7 +50,6 @@ export function mergeMetrics(
   if (roe <= 0 && screener?.roe) roe = screener.roe;
 
   let roce = screener?.roce ?? 0;
-  if (roce <= 0 && roe > 0) roce = Math.round(roe * 0.85 * 10) / 10;
 
   let de = normalizeDebtToEquity(yahoo?.debt_to_equity ?? 0);
   if (de <= 0 && screener?.debt_to_equity) de = screener.debt_to_equity;

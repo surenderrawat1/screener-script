@@ -1,6 +1,6 @@
 import type { StockMetrics } from '@sv/shared';
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
-import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
+import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import { httpGet } from './http.js';
 import { parseSectionTable } from './screener-financials.js';
 
@@ -277,6 +277,6 @@ export async function fetchScreenerAnnualFinancials(
   if (!html) return null;
 
   const parsed = parseScreenerAnnualFinancials(html);
-  await cacheSetJson(cacheKeyStr, parsed, CACHE_TTL.screener_table);
+  await cacheSetJson(cacheKeyStr, parsed, getCacheTtl().screener_table);
   return parsed;
 }

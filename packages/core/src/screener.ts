@@ -153,11 +153,15 @@ export function buildStockMetrics(symbol: string, overrides: Partial<StockMetric
   };
 }
 
+export function screeningScoreFromQuality(qualityScore: number): number {
+  return Math.round(Math.max(0, Math.min(56, qualityScore * 56 / 100)));
+}
+
 export function screenSymbol(symbol: string, metrics?: Partial<StockMetrics>): ScreenerRow {
   const stock = buildStockMetrics(symbol, metrics);
   const analysis = estimate(stock);
   const composite = analysis.quality_score ?? 0;
-  const verifyScore = Math.round(Math.max(0, Math.min(56, composite * 56 / 100)));
+  const verifyScore = screeningScoreFromQuality(composite);
   const mos = analysis.mos;
   const recommendation = mos === null ? 'Need Data' : matrixVerdict(verifyScore, mos);
   const cfa = analysis.cfa_report as { moat_tier?: string; moat_count?: number } | undefined;
@@ -178,6 +182,9 @@ export function screenSymbol(symbol: string, metrics?: Partial<StockMetrics>): S
     method: analysis.method,
     graham: analysis.graham,
     composite_score: composite,
+    verify_score: verifyScore,
+    score_basis: 'quality_proxy',
+    recommendation_basis: 'screening_matrix',
     recommendation,
     passed: mos !== null && verifyScore >= 25 && mos >= -5,
     moat_tier: cfa?.moat_tier ?? '',

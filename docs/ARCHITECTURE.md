@@ -165,9 +165,10 @@ Worker heartbeat: Redis key `sv:worker:heartbeat` — checked by `/health/ready`
 
 | Source | Used for | Cache TTL |
 |--------|----------|-----------|
-| Yahoo Finance | OHLC, intraday Nifty | 7d stock, 2m intraday |
+| Yahoo Finance | OHLC, intraday Nifty | 7d stock/raw, 5m intraday chart |
 | Screener.in | Ratios, annual financials, profile/expenditures | 24h table/profile, 1h analyzed row |
 | NSE index CSVs | Universe constituents | 30d index metadata, 24h universe list |
+| Morning routine | Assembled briefing, ETF panel | 1m bundle, 10m ETF panel |
 | Uploaded CSVs | total_nse, promoter holdings | Until re-upload |
 
 ---

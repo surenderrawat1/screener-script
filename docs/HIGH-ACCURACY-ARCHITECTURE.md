@@ -96,6 +96,8 @@ If these are missing, the API should return `data_quality.level = limited` or `e
 | `sv:screener:row` | Per-preset analyzed screener row | 1h | Clear after screener scoring/filter changes |
 | `sv:ta` | Daily/intraday chart and TA cache | 24h / session | Clear after chart/TA rule changes |
 | `sv:universe`, `sv:index` | Redis mirrors of PostgreSQL/index data | 24h / 30d | Prefer index sync before manual clear |
+| `sv:regime`, `sv:swing:auto` | Market regime and auto-radar snapshot | 15m / 2h | Clear only when timing state is stale |
+| `sv:morning` | Morning bundle and ETF panel | 1m / 10m | Refresh from Morning routine actions |
 | `sv:job:progress`, `sv:worker:heartbeat`, `sv:ratelimit` | Operational state | short/varies | Protected; do not clear from UI |
 
 Single-symbol refresh must clear exact symbol keys plus scoped variants such as
@@ -110,9 +112,18 @@ and `sv:ta:intraday:{SYMBOL}:*`.
 |--------|------|
 | EPS | Use reported EPS; derive from `price / PE` only if EPS is missing and PE/price are valid. |
 | Book value | Use reported book value; derive from equity and market cap when possible; otherwise derive from EPS/ROE as a last resort. |
+| ROCE | Use Screener ratios or annual statement calculation. Do **not** estimate ROCE from ROE; missing ROCE must remain missing/limited. |
 | Revenue growth | Prefer 3-year CAGR when available; otherwise latest sales YoY; otherwise EPS growth. |
 | Debt/equity | Normalize percentage-like values above 5 by dividing by 100. |
 | Sector | Normalize source sector/industry into stable model keys (`it`, `banking`, `nbfc`, `fmcg`, etc.). |
+
+### Score Contract
+
+| Surface | Score meaning |
+|---------|---------------|
+| Screener / Stock Details quick valuation | `quality_score` is a 0–100 CFA quality proxy. Any displayed `/56` quick score is derived metadata only, not the Full Verify scorecard. |
+| CFA Verify | Screening memo; recommendation is provisional and must disclose screening mode. |
+| Full Verify | Authoritative 0–56 phase scorecard with red-flag gates, personal-finance gates, thesis, and investment-ready decision. |
 
 ### Intrinsic Value Models
 

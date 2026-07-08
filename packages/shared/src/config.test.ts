@@ -40,7 +40,11 @@ describe('config loader', () => {
     const policy = buildAppConfig(REPO_CONFIG).dataPolicy;
     expect(policy.timezone).toBe('Asia/Kolkata');
     expect(policy.cache_ttl.stock).toBe(604800);
-    expect(policy.cache_ttl.screener_row).toBe(86400);
+    expect(policy.cache_ttl.yahoo_raw).toBe(604800);
+    expect(policy.cache_ttl.screener_table).toBe(86400);
+    expect(policy.cache_ttl.screener_row).toBe(3600);
+    expect(policy.cache_ttl.morning_etf).toBe(600);
+    expect(policy.cache_ttl.morning_bundle).toBe(60);
   });
 
   it('loads schedules.yaml daily sync at 6 AM IST', () => {
@@ -53,8 +57,12 @@ describe('config loader', () => {
   it('maps yaml TTL keys to runtime CACHE_TTL shape', () => {
     const ttl = getCacheTtl();
     expect(ttl.stock).toBe(604800);
-    expect(ttl.screener_row).toBe(86400);
+    expect(ttl.yahoo).toBe(604800);
+    expect(ttl.screener_table).toBe(86400);
+    expect(ttl.screener_row).toBe(3600);
     expect(ttl.index_symbols).toBe(2592000);
+    expect(ttl.morning_etf).toBe(600);
+    expect(ttl.morning_bundle).toBe(60);
     expect(ttl.job_progress).toBe(CACHE_TTL.job_progress);
   });
 

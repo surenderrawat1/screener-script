@@ -1,5 +1,5 @@
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
-import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
+import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import {
   buildSwingChartPayload,
   normalizeSwingChartTimeframe,
@@ -107,7 +107,7 @@ export async function fetchSwingChartBarsWithMeta(
       bars = await downloadYahooBars(yahooSymbol, interval, range);
     }
     if (bars.length >= 30) {
-      await cacheSetJson(cacheKeyStr, { bars }, CACHE_TTL.ta);
+      await cacheSetJson(cacheKeyStr, { bars }, getCacheTtl().ta);
       return { bars, fromCache: false, source };
     }
   }

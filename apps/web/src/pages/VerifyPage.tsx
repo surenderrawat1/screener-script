@@ -110,8 +110,7 @@ export default function VerifyPage() {
     }
   }, [location.search]);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function runVerify(refresh = false) {
     const normalized = normalizeSymbolInput(symbol);
     if (!normalized) {
       setError('Enter a valid NSE/BSE symbol.');
@@ -124,7 +123,7 @@ export default function VerifyPage() {
     try {
       const res = await api<VerifyResult>('/api/v1/verify/auto', {
         method: 'POST',
-        body: JSON.stringify({ symbol: normalized, refresh: true }),
+        body: JSON.stringify({ symbol: normalized, refresh }),
       });
       setResult(res);
       await loadHistory();
@@ -133,6 +132,11 @@ export default function VerifyPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    void runVerify(false);
   }
 
   const memo = result?.memo;
@@ -168,6 +172,14 @@ export default function VerifyPage() {
           <div className="verify-command-actions">
             <button type="submit" className="btn" disabled={loading}>
               {loading ? 'Analyzing…' : 'Auto verify'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={loading}
+              onClick={() => void runVerify(true)}
+            >
+              Refresh live data
             </button>
             <Link className="btn btn-secondary" to={`/verify/full?symbol=${encodeURIComponent(currentSymbol)}&from=verify`}>
               Full Verify

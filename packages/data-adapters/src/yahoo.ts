@@ -1,5 +1,5 @@
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
-import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
+import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import { httpGet, pct, raw, toCrores } from './http.js';
 
 type YahooModule = Record<string, unknown>;
@@ -66,7 +66,7 @@ async function fetchQuoteSummary(
     };
     const result = json.quoteSummary?.result?.[0];
     if (!result) return null;
-    await cacheSetJson(cacheKeyStr, result, CACHE_TTL.yahoo);
+    await cacheSetJson(cacheKeyStr, result, getCacheTtl().yahoo);
     return result;
   } catch {
     return null;

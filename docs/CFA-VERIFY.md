@@ -279,15 +279,15 @@ Intrinsic blends DCF + fair P/E (+ DDM if dividend yield ≥ 0.5%).
 
 **Not tested in v2:** full `VerificationEngine` scorecard, phase gates, investment-ready badge.
 
-### Verify score mapping (v2)
+### Score contract (v2)
 
 ```typescript
-composite = quality_score ?? 0          // 0–100
-verify_score = round(composite * 56 / 100)   // 0–56
-recommendation = matrixVerdict(verify_score, mos)
+quality_score = cfa_quality_proxy       // 0–100, screening quality only
+quick_score = round(quality_score * 56 / 100) // display metadata only
+recommendation = screening matrix + MOS // provisional
 ```
 
-PHP uses `scorecard.total` from 8 phases (max 56) — different input path, same matrix.
+Full Verify uses `scorecard.total` from the 8-phase analyst workflow (max 56) plus manual gates and red-flag checks. Do not treat the quick score as the allocation scorecard.
 
 ---
 

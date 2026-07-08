@@ -112,7 +112,7 @@ export async function syncWatchlistFromVerify(
     stock_name?: string;
     sector?: string;
     last_score?: number;
-    last_mos?: number;
+    last_mos?: number | null;
     last_verdict?: string;
   },
 ) {
@@ -133,7 +133,7 @@ export async function syncWatchlistFromVerify(
         sector: snapshot.sector ?? '',
         last_verified_at: new Date().toISOString().slice(0, 10),
         last_score: snapshot.last_score ?? 0,
-        last_mos: snapshot.last_mos ?? 0,
+        last_mos: snapshot.last_mos ?? null,
         last_verdict: snapshot.last_verdict ?? '',
       } as Prisma.InputJsonValue,
     },
@@ -144,7 +144,7 @@ export async function syncWatchlistFromVerify(
         sector: snapshot.sector ?? prevMeta.sector ?? '',
         last_verified_at: new Date().toISOString().slice(0, 10),
         last_score: snapshot.last_score ?? prevMeta.last_score ?? 0,
-        last_mos: snapshot.last_mos ?? prevMeta.last_mos ?? 0,
+        last_mos: snapshot.last_mos ?? prevMeta.last_mos ?? null,
         last_verdict: snapshot.last_verdict ?? prevMeta.last_verdict ?? '',
       } as Prisma.InputJsonValue,
     },

@@ -111,8 +111,10 @@ Cache only. Populated by daily sync, scans, or on-demand refresh with TTL from `
 | Universe symbol list | `sv:universe:{key}` | 24h | After index sync / daily job |
 | Index sync metadata | `sv:index:{key}` | 30d | After `sync:indices` |
 | Market regime | `sv:regime:nifty` | 15m (intraday) | Pre-market warm + auto-radar |
-| Intraday Nifty chart | `sv:ta:intraday:...` | Session-bound | Market hours only |
+| Intraday Nifty chart | `sv:ta:intraday:...` | 5m (configurable) | Market hours only |
 | Swing auto snapshot | `sv:swing:auto` | 2h | Auto-radar worker |
+| Morning ETF panel | `sv:morning:etf` | 10m | Morning routine refresh / prewarm |
+| Morning bundle | `sv:morning:bundle:{user}` | 1m | Morning routine page load |
 | Job progress | `sv:job:progress:{id}` | 1h | Ephemeral |
 
 **Rule:** Redis values must be **derivable** from PostgreSQL + external APIs. Never store the only copy of user or reference data in Redis.

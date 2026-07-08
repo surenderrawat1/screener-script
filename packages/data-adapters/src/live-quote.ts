@@ -1,5 +1,5 @@
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
-import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
+import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import { httpGet } from './http.js';
 
 function yahooSymbol(symbol: string): string {
@@ -12,6 +12,7 @@ function yahooSymbol(symbol: string): string {
 export async function liveQuoteForSymbol(symbol: string, refresh = false): Promise<number | null> {
   const yahoo = yahooSymbol(symbol);
   const key = cacheKey(CACHE_PREFIX.YAHOO, `quote:${yahoo}`);
+  const ttl = getCacheTtl().intraday;
   if (!refresh) {
     const cached = await cacheGetJson<{ price: number }>(key);
     if (cached?.price) return cached.price;
@@ -28,14 +29,14 @@ export async function liveQuoteForSymbol(symbol: string, refresh = false): Promi
     const result = json.chart?.result?.[0];
     const metaPrice = result?.meta?.regularMarketPrice;
     if (metaPrice && metaPrice > 0) {
-      await cacheSetJson(key, { price: metaPrice }, CACHE_TTL.intraday);
+      await cacheSetJson(key, { price: metaPrice }, ttl);
       return metaPrice;
     }
     const closes = result?.indicators?.quote?.[0]?.close ?? [];
     for (let i = closes.length - 1; i >= 0; i--) {
       const c = closes[i];
       if (c != null && c > 0) {
-        await cacheSetJson(key, { price: c }, CACHE_TTL.intraday);
+        await cacheSetJson(key, { price: c }, ttl);
         return c;
       }
     }

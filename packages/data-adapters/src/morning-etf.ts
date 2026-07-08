@@ -1,5 +1,5 @@
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
-import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
+import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import { emptyEtfPanel, etfSymbols, formatEtfPanel } from '@sv/swing';
 import { currentMarketRegime } from './market-regime.js';
 import { runSwingScan } from './swing-scan.js';
@@ -29,7 +29,7 @@ export async function getMorningEtfPanel(refresh = false) {
       elapsed_sec: Math.round((Date.now() - started) / 1000),
     };
     const cachedAt = new Date().toISOString();
-    await cacheSetJson(key, { cached_at: cachedAt, scan: scanWithMeta }, CACHE_TTL.morning_etf);
+    await cacheSetJson(key, { cached_at: cachedAt, scan: scanWithMeta }, getCacheTtl().morning_etf);
     return formatEtfPanel(scanWithMeta, cachedAt, false);
   } catch (err) {
     return emptyEtfPanel(err instanceof Error ? err.message : 'ETF scan failed');

@@ -1,5 +1,5 @@
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
-import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
+import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import { defaultRegime, regimeFromBars } from '@sv/swing';
 import { fetchDailyBars } from './swing-chart.js';
 
@@ -11,13 +11,14 @@ export async function currentMarketRegime(refresh = false): Promise<Record<strin
   }
 
   const bars = await fetchDailyBars('NIFTYBEES', refresh);
+  const ttl = getCacheTtl().regime;
   if (bars.length < 50) {
     const fallback = defaultRegime('proxy_unavailable');
-    await cacheSetJson(cacheK, fallback, CACHE_TTL.regime);
+    await cacheSetJson(cacheK, fallback, ttl);
     return fallback;
   }
 
   const regime = regimeFromBars(bars);
-  await cacheSetJson(cacheK, regime, CACHE_TTL.regime);
+  await cacheSetJson(cacheK, regime, ttl);
   return regime;
 }

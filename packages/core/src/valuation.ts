@@ -287,7 +287,9 @@ export function analyzeValuation(stock: Partial<StockMetrics>) {
   };
 }
 
-export function matrixVerdict(score: number, mos: number): string {
+export function matrixVerdict(score: number, mos: number | null): string {
+  if (mos === null) return 'Need Data';
+
   const scoreBand =
     score >= 45 ? 'high' : score >= 35 ? 'mid' : score >= 25 ? 'low' : 'reject';
   const mosBand = mos >= 20 ? 'deep' : mos >= 10 ? 'buy' : mos >= 0 ? 'fair' : 'expensive';
@@ -304,14 +306,16 @@ export function analyzeSymbol(stock: Partial<StockMetrics>) {
   const valuation = analyzeValuation(stock);
   const composite = valuation.quality_score;
   const verifyScore = Math.round(Math.max(0, Math.min(56, composite * 56 / 100)));
-  const mos = valuation.mos ?? 0;
+  const mos = valuation.mos;
   const recommendation = matrixVerdict(verifyScore, mos);
 
   return {
     ...valuation,
     composite_score: composite,
     verify_score: verifyScore,
+    score_basis: 'quality_proxy',
+    recommendation_basis: 'screening_matrix',
     recommendation,
-    passed: verifyScore >= 25 && mos >= -5,
+    passed: mos !== null && verifyScore >= 25 && mos >= -5,
   };
 }

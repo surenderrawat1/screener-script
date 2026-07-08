@@ -120,11 +120,11 @@ export function ScreenerResults({
               <th>Fair P/E</th>
               <th>
                 <button type="button" className="th-sort" onClick={() => toggleSort('composite_score')}>
-                  Score{sortIndicator('composite_score')}
+                  Quality /100{sortIndicator('composite_score')}
                 </button>
               </th>
               <th>Zone</th>
-              <th>Verdict</th>
+              <th>Quick verdict</th>
               {showTa ? (
                 <>
                   <th>RSI</th>
@@ -155,11 +155,18 @@ export function ScreenerResults({
                   {fmtPct(r.mos)}
                 </td>
                 <td>{r.fair_pe > 0 ? fmtNum(r.fair_pe, 1) : '—'}</td>
-                <td>{r.composite_score}</td>
+                <td title={r.score_basis === 'quality_proxy' ? 'CFA quality proxy, not the Full Verify 56-point scorecard.' : undefined}>
+                  {r.composite_score}
+                </td>
                 <td>
                   <span className={badgeClass(r.zone)}>{r.zone}</span>
                 </td>
-                <td className="screener-verdict">{r.recommendation}</td>
+                <td
+                  className="screener-verdict"
+                  title={r.recommendation_basis === 'screening_matrix' ? 'Screening matrix from quality proxy and MOS. Confirm with Full Verify before sizing.' : undefined}
+                >
+                  {r.recommendation}
+                </td>
                 {showTa ? (
                   <>
                     <td>{r.ta_rsi14 != null ? fmtNum(r.ta_rsi14, 1) : '—'}</td>

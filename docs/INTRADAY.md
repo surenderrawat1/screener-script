@@ -64,7 +64,7 @@ Script Screener has ported the **analysis engine** to `@sv/intraday` with Redis-
 | **Analysis engine** | `Nifty15mDirection.php` + 12 includes | `@sv/intraday` package |
 | **Instruments** | Nifty50, BankNifty, Sensex, FinNifty, stocks | **Indices + 12 liquid stocks**; F&O for indices + 7 stocks |
 | **Charts** | Lightweight Charts in browser (full OHLC) | ✓ Lightweight Charts via `GET /api/v1/intraday/chart/:instrument` + `IntradayPriceChart` (candles + SMA-9/20/50/200) |
-| **Chart cache** | SQLite 90s/120s | Redis `sv:ta:intraday:nifty50:{5m\|15m}` |
+| **Chart cache** | SQLite 90s/120s | Redis `sv:ta:intraday:nifty50:{5m\|15m}` with runtime `intraday_chart` TTL |
 | **Dual fetch** | Often sequential in page | `Promise.all` 5m + 15m |
 | **Scalp setup** | `NiftyIntradayScalpSetup.php` | **Not ported** |
 | **Preset table UI** | 13-row pass/fail per TF | `preset_eval` in API; **UI not shown** |
@@ -126,7 +126,7 @@ Per interval:
 2. Try Yahoo `^NSEI` then `NIFTYBEES.NS`
 3. Range: **5d**, interval: **5m** or **15m**
 4. Parse timestamps → IST `time_label`
-5. Cache with TTL: **90s** (5m), **120s** (15m) — matches PHP
+5. Cache with TTL from `data-policy.yaml` (`intraday_chart`, default **300s**)
 
 ### Response metadata (v2 API)
 
