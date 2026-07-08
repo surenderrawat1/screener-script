@@ -9,7 +9,8 @@ import { resolveBookValue, resolveGrowthContext } from '../valuation.js';
 import type { DerivedMetrics, VerifyInput } from './types.js';
 import { resolveEffectiveSectorKey } from './sector-routing.js';
 
-function mosZoneFallback(mos: number): string {
+function mosZoneFallback(mos: number | null): string {
+  if (mos === null) return 'Unknown';
   if (mos >= 25) return 'Deep value';
   if (mos >= 15) return 'Buy zone';
   if (mos >= 0) return 'Fair';
@@ -165,7 +166,7 @@ export function computeDerivedMetrics(
   const cfa = mosCalc.cfa_report as Record<string, unknown>;
   const intrinsic = Number(mosCalc.intrinsic);
   const graham = Number(mosCalc.graham);
-  const mos = Number(mosCalc.mos ?? 0);
+  const mos = mosCalc.mos === null ? null : Number(mosCalc.mos);
 
   const fcfYield =
     Number(i.market_cap_cr ?? 0) > 0 && fcf > 0
@@ -205,7 +206,7 @@ export function computeDerivedMetrics(
     fair_pe: Math.round(Number(mosCalc.fair_pe) * 10) / 10,
     fair_pe_detail: mosCalc.fair_pe_detail,
     mos_method: String(mosCalc.method ?? ''),
-    margin_of_safety: Math.round(mos * 10) / 10,
+    margin_of_safety: mos === null ? null : Math.round(mos * 10) / 10,
     fcf: Math.round(fcf * 100) / 100,
     fcf_yield: Math.round(fcfYield * 100) / 100,
     moat_count: moatCount,

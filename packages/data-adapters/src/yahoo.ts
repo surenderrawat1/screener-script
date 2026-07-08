@@ -39,10 +39,15 @@ function yahooSymbols(base: string): string[] {
   return [`${sym}.NS`, `${sym}.BO`];
 }
 
-async function fetchQuoteSummary(yahooSymbol: string): Promise<Record<string, YahooModule> | null> {
+async function fetchQuoteSummary(
+  yahooSymbol: string,
+  refresh = false,
+): Promise<Record<string, YahooModule> | null> {
   const cacheKeyStr = cacheKey(CACHE_PREFIX.YAHOO, yahooSymbol);
-  const cached = await cacheGetJson<Record<string, YahooModule>>(cacheKeyStr);
-  if (cached) return cached;
+  if (!refresh) {
+    const cached = await cacheGetJson<Record<string, YahooModule>>(cacheKeyStr);
+    if (cached) return cached;
+  }
 
   const modules = [
     'summaryProfile',
@@ -172,11 +177,14 @@ function mergeChartMeta(parsed: YahooFundamentals, chart: NonNullable<Awaited<Re
   };
 }
 
-export async function fetchYahooFundamentals(baseSymbol: string): Promise<YahooFundamentals | null> {
+export async function fetchYahooFundamentals(
+  baseSymbol: string,
+  refresh = false,
+): Promise<YahooFundamentals | null> {
   let chartFallback: Awaited<ReturnType<typeof fetchYahooChartPrice>> = null;
 
   for (const yahooSymbol of yahooSymbols(baseSymbol)) {
-    const data = await fetchQuoteSummary(yahooSymbol);
+    const data = await fetchQuoteSummary(yahooSymbol, refresh);
     if (data) {
       let parsed = parseYahooQuote(yahooSymbol, data);
       if (parsed.price > 0) {

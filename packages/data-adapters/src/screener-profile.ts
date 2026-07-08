@@ -3,17 +3,26 @@ import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
 import { httpGet } from './http.js';
 import { parseSectionTable } from './screener-financials.js';
 
-const EXPENDITURE_ROWS = [
-  'Expenses',
-  'Cash from Operating Activity',
-  'Cash from Investing Activity',
-  'Cash from Financing Activity',
-  'Net Cash Flow',
-  'Fixed Assets',
-  'CWIP',
-  'Depreciation',
-  'Interest',
-  'Other Expenses',
+const EXPENDITURE_ROWS: Array<{ label: string; aliases: string[] }> = [
+  { label: 'Expenses', aliases: ['Expenses', 'Total Expenses'] },
+  {
+    label: 'Cash from Operating Activity',
+    aliases: ['Cash from Operating Activity', 'Cash from Operations', 'Operating Cash Flow'],
+  },
+  {
+    label: 'Cash from Investing Activity',
+    aliases: ['Cash from Investing Activity', 'Cash from Investing', 'Investing Cash Flow'],
+  },
+  {
+    label: 'Cash from Financing Activity',
+    aliases: ['Cash from Financing Activity', 'Cash from Financing', 'Financing Cash Flow'],
+  },
+  { label: 'Net Cash Flow', aliases: ['Net Cash Flow', 'Net Cashflow', 'Net Change in Cash'] },
+  { label: 'Fixed Assets', aliases: ['Fixed Assets', 'Net Block', 'Gross Block'] },
+  { label: 'CWIP', aliases: ['CWIP', 'Capital Work in Progress', 'Capital WIP'] },
+  { label: 'Depreciation', aliases: ['Depreciation', 'Depreciation & Amortization'] },
+  { label: 'Interest', aliases: ['Interest', 'Finance Costs', 'Interest Expense'] },
+  { label: 'Other Expenses', aliases: ['Other Expenses', 'Other expense'] },
 ];
 
 const PLAN_KEYWORDS = [
@@ -149,13 +158,15 @@ function extractConcalls(html: string): ConcallLink[] {
 
 function findMergedRow(
   merged: Record<string, Record<string, number | null>>,
-  label: string,
+  labels: string[],
 ): Record<string, number | null> | null {
-  if (merged[label]) return merged[label];
-  const norm = label.toLowerCase();
-  for (const [key, series] of Object.entries(merged)) {
-    const k = key.replace(/\s*\+$/, '').toLowerCase();
-    if (k === norm || k.startsWith(norm) || norm.startsWith(k)) return series;
+  for (const label of labels) {
+    if (merged[label]) return merged[label];
+    const norm = label.toLowerCase();
+    for (const [key, series] of Object.entries(merged)) {
+      const k = key.replace(/\s*\+$/, '').toLowerCase();
+      if (k === norm || k.startsWith(norm) || norm.startsWith(k)) return series;
+    }
   }
   return null;
 }
@@ -168,8 +179,8 @@ function buildExpenditureSnapshot(html: string) {
   const merged = { ...quarters.rows, ...cashFlow.rows, ...balance.rows, ...profitLoss.rows };
 
   const items: ExpenditureItem[] = [];
-  for (const label of EXPENDITURE_ROWS) {
-    const series = findMergedRow(merged, label);
+  for (const row of EXPENDITURE_ROWS) {
+    const series = findMergedRow(merged, row.aliases);
     if (!series) continue;
     const periodKeys = Object.keys(series);
     const latestPeriod = periodKeys.length ? periodKeys[periodKeys.length - 1] : '';
@@ -177,7 +188,7 @@ function buildExpenditureSnapshot(html: string) {
     const historyEntries = periodKeys.slice(-5);
     const history: Record<string, number | null> = {};
     for (const p of historyEntries) history[p] = series[p];
-    items.push({ label, latest_period: latestPeriod, latest_cr: latestVal ?? null, history });
+    items.push({ label: row.label, latest_period: latestPeriod, latest_cr: latestVal ?? null, history });
   }
 
   return {

@@ -4,6 +4,7 @@ import {
   ColorType,
   createChart,
   LineSeries,
+  LineStyle,
   type IChartApi,
   type Time,
 } from 'lightweight-charts';
@@ -30,16 +31,31 @@ export interface ChartPayload {
   interval?: string;
   range?: string;
   intraday?: boolean;
+  ma_labels?: {
+    sma9?: string;
+    sma20?: string;
+    sma50?: string;
+    sma200?: string;
+  };
+}
+
+export interface ChartPriceLevel {
+  price: number;
+  title: string;
+  color: string;
+  lineStyle?: 'solid' | 'dashed' | 'dotted';
 }
 
 interface Props {
   chart: ChartPayload | null;
   height?: number;
+  priceLevels?: ChartPriceLevel[];
 }
 
 type ChartTime = Time;
+const EMPTY_PRICE_LEVELS: ChartPriceLevel[] = [];
 
-export function StockDailyChart({ chart, height = 420 }: Props) {
+export function StockDailyChart({ chart, height = 420, priceLevels = EMPTY_PRICE_LEVELS }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -81,6 +97,23 @@ export function StockDailyChart({ chart, height = 420 }: Props) {
       })),
     );
 
+    const styleMap = {
+      solid: LineStyle.Solid,
+      dashed: LineStyle.LargeDashed,
+      dotted: LineStyle.Dotted,
+    } as const;
+    for (const level of priceLevels) {
+      if (!Number.isFinite(level.price) || level.price <= 0) continue;
+      candles.createPriceLine({
+        price: level.price,
+        color: level.color,
+        lineWidth: 1,
+        lineStyle: styleMap[level.lineStyle ?? 'solid'],
+        axisLabelVisible: true,
+        title: level.title,
+      });
+    }
+
     const addLine = (data: SmaPoint[], color: string) => {
       if (!chartApi || !data.length) return;
       const line = chartApi.addSeries(LineSeries, { color, lineWidth: 1, priceLineVisible: false });
@@ -111,20 +144,26 @@ export function StockDailyChart({ chart, height = 420 }: Props) {
       window.removeEventListener('resize', onResize);
       chartApi?.remove();
     };
-  }, [chart, height]);
+  }, [chart, height, priceLevels]);
 
   if (!chart?.bars?.length) {
-    return <p className="muted">Daily chart unavailable — insufficient Yahoo history.</p>;
+    return <p className="muted">Chart unavailable — insufficient Yahoo history.</p>;
   }
+  const maLabels = chart.ma_labels ?? {};
 
   return (
     <div>
       <div ref={containerRef} className="stock-chart" />
       <div className="chart-legend">
-        <span><i className="legend-swatch" style={{ background: '#60a5fa' }} /> SMA-9</span>
-        <span><i className="legend-swatch" style={{ background: '#a78bfa' }} /> SMA-20</span>
-        <span><i className="legend-swatch" style={{ background: '#f59e0b' }} /> SMA-50</span>
-        <span><i className="legend-swatch" style={{ background: '#ef4444' }} /> SMA-200</span>
+        {chart.sma9.length > 0 ? <span><i className="legend-swatch" style={{ background: '#60a5fa' }} /> {maLabels.sma9 ?? 'SMA-9'}</span> : null}
+        {chart.sma20.length > 0 ? <span><i className="legend-swatch" style={{ background: '#a78bfa' }} /> {maLabels.sma20 ?? 'SMA-20'}</span> : null}
+        {chart.sma50.length > 0 ? <span><i className="legend-swatch" style={{ background: '#f59e0b' }} /> {maLabels.sma50 ?? 'SMA-50'}</span> : null}
+        {chart.sma200.length > 0 ? <span><i className="legend-swatch" style={{ background: '#ef4444' }} /> {maLabels.sma200 ?? 'SMA-200'}</span> : null}
+        {priceLevels.map((level) => (
+          <span key={`${level.title}-${level.price}`}>
+            <i className="legend-swatch" style={{ background: level.color }} /> {level.title}
+          </span>
+        ))}
       </div>
     </div>
   );

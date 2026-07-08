@@ -106,7 +106,7 @@ Cache only. Populated by daily sync, scans, or on-demand refresh with TTL from `
 |------|-----------|-------------|-----------------|
 | Yahoo OHLC + stock blob | `sv:stock:{symbol}` | 7d (override in config) | Daily 6 AM batch; verify/scan on miss |
 | Raw Yahoo response | `sv:yahoo:...` | 7d | Same as stock |
-| Screener.in row | `sv:screener:row:{symbol}` | 24h | Daily batch; screener on miss |
+| Screener analyzed row | `sv:screener:row:{preset}:{symbol}` | 1h | Screener run on miss; clear after scoring/filter changes |
 | Computed TA | `sv:ta:{symbol}` | 24h | Rebuilt when OHLC refreshes |
 | Universe symbol list | `sv:universe:{key}` | 24h | After index sync / daily job |
 | Index sync metadata | `sv:index:{key}` | 30d | After `sync:indices` |

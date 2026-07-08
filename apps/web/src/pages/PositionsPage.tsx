@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, getToken } from '../api';
+import {
+  LedgerDateRangeFilter,
+  rangeForPreset,
+  type LedgerDatePreset,
+} from '../components/LedgerDateRangeFilter';
 import { NseSessionBanner, type NseSessionInfo } from '../components/NseSessionBanner';
 import { Page, PageHeader } from '../components/PageLayout';
 import { fetchSymbolPrice } from '../components/swing/fetchSymbolPrice';
@@ -31,11 +36,15 @@ interface PositionsResponse {
 }
 
 const REFRESH_MS = 60_000;
+const DEFAULT_RANGE = rangeForPreset('today');
 
 export default function PositionsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<PositionsResponse | null>(null);
   const [filter, setFilter] = useState<'all' | 'open' | 'closed'>('open');
+  const [datePreset, setDatePreset] = useState<LedgerDatePreset>('today');
+  const [customFrom, setCustomFrom] = useState(DEFAULT_RANGE.from);
+  const [customTo, setCustomTo] = useState(DEFAULT_RANGE.to);
   const [live, setLive] = useState(searchParams.get('live') !== '0');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -50,6 +59,8 @@ export default function PositionsPage() {
     notes: '',
   });
 
+  const dateRange = useMemo(() => rangeForPreset(datePreset, customFrom, customTo), [datePreset, customFrom, customTo]);
+
   const load = useCallback(async (statusOverride?: 'all' | 'open' | 'closed') => {
     setError('');
     setLoading(true);
@@ -58,6 +69,8 @@ export default function PositionsPage() {
       const params = new URLSearchParams();
       if (status !== 'all') params.set('status', status);
       if (live) params.set('live', '1');
+      params.set('date_from', dateRange.from);
+      params.set('date_to', dateRange.to);
       const qs = params.toString() ? `?${params.toString()}` : '';
       const res = await api<PositionsResponse>(`/api/v1/swing/positions${qs}`);
       setData(res);
@@ -66,14 +79,14 @@ export default function PositionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [filter, live]);
+  }, [dateRange.from, dateRange.to, filter, live]);
 
   useEffect(() => {
     setSearchParams(
       (prev) => {
         const params = new URLSearchParams(prev);
         if (live) params.set('live', '1');
-        else params.delete('live');
+        else params.set('live', '0');
         return params;
       },
       { replace: true },
@@ -134,7 +147,7 @@ export default function PositionsPage() {
         notes: '',
       });
       setFilter('open');
-      await load();
+      await load('open');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed');
     } finally {
@@ -226,6 +239,20 @@ export default function PositionsPage() {
             {data.live?.heat_pct != null ? ` · heat ${data.live.heat_pct.toFixed(1)}%` : ''}
           </span>
         )}
+      </div>
+
+      <div className="card">
+        <LedgerDateRangeFilter
+          preset={datePreset}
+          customFrom={customFrom}
+          customTo={customTo}
+          onPresetChange={setDatePreset}
+          onCustomFromChange={setCustomFrom}
+          onCustomToChange={setCustomTo}
+        />
+        <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>
+          Open positions always show the current open book; date range applies to closed trades.
+        </p>
       </div>
 
       {error && <p className="error">{error}</p>}

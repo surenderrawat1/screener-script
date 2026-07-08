@@ -30,6 +30,29 @@ interface CacheStats {
   prefixes: CachePrefixStat[];
 }
 
+interface CacheScope {
+  prefix: string;
+  label: string;
+  ttl: string;
+  policy: string;
+  clearable: boolean;
+}
+
+interface CacheKeyPreview {
+  key: string;
+  ttl: number;
+}
+
+interface CacheValuePreview {
+  key: string;
+  exists: boolean;
+  ttl: number;
+  type: string;
+  bytes: number;
+  truncated: boolean;
+  value: unknown;
+}
+
 interface EffectiveSettings {
   effective: {
     dataPolicy: { timezone: string; cache_ttl: Record<string, number> };
@@ -55,9 +78,14 @@ export default function AdminPage() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [indices, setIndices] = useState<IndexStatus[]>([]);
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
+  const [cacheScopes, setCacheScopes] = useState<CacheScope[]>([]);
+  const [cacheKeys, setCacheKeys] = useState<CacheKeyPreview[]>([]);
+  const [cacheValue, setCacheValue] = useState<CacheValuePreview | null>(null);
   const [settings, setSettings] = useState<EffectiveSettings | null>(null);
   const [syncStatus, setSyncStatus] = useState<DailySyncStatus | null>(null);
-  const [cachePrefix, setCachePrefix] = useState('sv:ta');
+  const [cachePrefix, setCachePrefix] = useState('sv:stock');
+  const [cacheConfirm, setCacheConfirm] = useState('');
+  const [cachePreviewError, setCachePreviewError] = useState('');
   const [syncCron, setSyncCron] = useState('0 6 * * *');
   const [nseFile, setNseFile] = useState<File | null>(null);
   const [holdingFile, setHoldingFile] = useState<File | null>(null);
@@ -86,10 +114,39 @@ export default function AdminPage() {
 
   async function loadCacheStats() {
     try {
-      const data = await api<{ stats: CacheStats }>('/api/v1/admin/cache/stats');
+      const data = await api<{ stats: CacheStats; scopes?: CacheScope[] }>('/api/v1/admin/cache/stats');
       setCacheStats(data.stats);
+      setCacheScopes(data.scopes ?? []);
     } catch {
       setCacheStats(null);
+      setCacheScopes([]);
+    }
+  }
+
+  async function loadCacheKeys(prefix = cachePrefix) {
+    setCachePreviewError('');
+    setCacheValue(null);
+    try {
+      const data = await api<{ keys: CacheKeyPreview[] }>(
+        `/api/v1/admin/cache/keys?prefix=${encodeURIComponent(prefix)}&limit=25`,
+      );
+      setCacheKeys(data.keys);
+    } catch (err) {
+      setCacheKeys([]);
+      setCachePreviewError(err instanceof Error ? err.message : 'Cache preview failed');
+    }
+  }
+
+  async function loadCacheValue(key: string) {
+    setCachePreviewError('');
+    setCacheValue(null);
+    try {
+      const data = await api<{ preview: CacheValuePreview }>(
+        `/api/v1/admin/cache/value?prefix=${encodeURIComponent(cachePrefix)}&key=${encodeURIComponent(key)}`,
+      );
+      setCacheValue(data.preview);
+    } catch (err) {
+      setCachePreviewError(err instanceof Error ? err.message : 'Cache data preview failed');
     }
   }
 
@@ -119,6 +176,11 @@ export default function AdminPage() {
     void loadSettings();
     void loadSyncStatus();
   }, []);
+
+  useEffect(() => {
+    setCacheConfirm('');
+    if (cachePrefix) void loadCacheKeys(cachePrefix);
+  }, [cachePrefix]);
 
   async function upload(endpoint: string, file: File | null, successLabel = 'Imported') {
     if (!file) {
@@ -190,11 +252,13 @@ export default function AdminPage() {
     setLoading(true);
     try {
       const data = await api<{ deleted: number; prefix: string }>(
-        `/api/v1/admin/cache?prefix=${encodeURIComponent(cachePrefix)}`,
+        `/api/v1/admin/cache?prefix=${encodeURIComponent(cachePrefix)}&confirm=${encodeURIComponent(cacheConfirm)}`,
         { method: 'DELETE' },
       );
       setMessage(`Cleared ${data.deleted} key(s) under ${data.prefix}`);
+      setCacheConfirm('');
       await loadCacheStats();
+      await loadCacheKeys(data.prefix);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Cache clear failed');
     } finally {
@@ -248,6 +312,18 @@ export default function AdminPage() {
       setLoading(false);
     }
   }
+
+  const selectedCacheScope = cacheScopes.find((scope) => scope.prefix === cachePrefix);
+  const selectedCacheCount =
+    cacheStats?.prefixes.find((row) => row.prefix === cachePrefix)?.count ?? cacheKeys.length;
+  const canClearCache =
+    Boolean(selectedCacheScope?.clearable) && cacheConfirm === cachePrefix && !loading;
+  const cacheValueText =
+    cacheValue?.value == null
+      ? ''
+      : typeof cacheValue.value === 'string'
+        ? cacheValue.value
+        : JSON.stringify(cacheValue.value, null, 2);
 
   return (
     <Page>
@@ -323,58 +399,146 @@ export default function AdminPage() {
       )}
 
       <div className="card">
-        <h2>Redis cache</h2>
+        <h2>Redis cache/info</h2>
+        <p className="muted">
+          Redis is a hot cache only. Clear one approved scope at a time; use daily sync for reference
+          data and avoid operational namespaces such as job progress, rate limits, and worker heartbeat.
+        </p>
         {cacheStats && (
           <>
             <p className="muted">
               DB {cacheStats.db} · ~{cacheStats.keysEstimate} keys ·{' '}
               {cacheStats.connected ? 'connected' : 'disconnected'}
             </p>
-            {cacheStats.prefixes.length > 0 && (
+            {cacheScopes.length > 0 && (
               <table className="data-table" style={{ marginBottom: '1rem' }}>
                 <thead>
                   <tr>
-                    <th>Prefix</th>
+                    <th>Scope</th>
+                    <th>TTL</th>
                     <th>Keys</th>
+                    <th>Rule</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {cacheStats.prefixes.map((row) => (
-                    <tr key={row.prefix}>
-                      <td>
-                        <button
-                          type="button"
-                          className="btn-link"
-                          onClick={() => setCachePrefix(row.prefix)}
-                        >
-                          {row.prefix}
-                        </button>
-                      </td>
-                      <td>{row.count}</td>
-                    </tr>
-                  ))}
+                  {cacheScopes.map((scope) => {
+                    const count = cacheStats.prefixes.find((row) => row.prefix === scope.prefix)?.count ?? 0;
+                    return (
+                      <tr key={scope.prefix}>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn-link"
+                            onClick={() => setCachePrefix(scope.prefix)}
+                          >
+                            {scope.label}
+                          </button>
+                          <br />
+                          <code>{scope.prefix}</code>
+                        </td>
+                        <td>{scope.ttl}</td>
+                        <td>{count}</td>
+                        <td>{scope.clearable ? 'Clearable with confirmation' : 'Protected'}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
           </>
         )}
+        <div className="admin-cache-grid">
+          <label>
+            Cache scope
+            <select
+              value={cachePrefix}
+              onChange={(e) => setCachePrefix(e.target.value)}
+              style={{ display: 'block', width: '100%', marginTop: '0.35rem' }}
+            >
+              {cacheScopes.map((scope) => (
+                <option key={scope.prefix} value={scope.prefix}>
+                  {scope.label} ({scope.prefix})
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="admin-cache-policy">
+            <strong>{selectedCacheScope?.label ?? cachePrefix}</strong>
+            <p>{selectedCacheScope?.policy ?? 'Select an approved cache scope.'}</p>
+            <small>
+              TTL: {selectedCacheScope?.ttl ?? 'unknown'} · Current keys: {selectedCacheCount} ·{' '}
+              {selectedCacheScope?.clearable ? 'Manual clear allowed' : 'Protected scope'}
+            </small>
+          </div>
+        </div>
+        <div className="admin-cache-preview">
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <strong>Key preview</strong>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={loading || !cachePrefix}
+              onClick={() => void loadCacheKeys(cachePrefix)}
+            >
+              Refresh preview
+            </button>
+          </div>
+          {cachePreviewError && <p className="error">{cachePreviewError}</p>}
+          {cacheKeys.length > 0 ? (
+            <ul>
+              {cacheKeys.slice(0, 10).map((row) => (
+                <li key={row.key}>
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => void loadCacheValue(row.key)}
+                  >
+                    <code>{row.key}</code>
+                  </button>
+                  <span className="muted"> · TTL {row.ttl < 0 ? 'none' : `${row.ttl}s`}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">No keys found for this scope.</p>
+          )}
+          {cacheValue && (
+            <div className="admin-cache-value">
+              <div className="admin-cache-value-meta">
+                <strong>Data preview</strong>
+                <span>
+                  {cacheValue.type} · {cacheValue.bytes.toLocaleString()} bytes · TTL{' '}
+                  {cacheValue.ttl < 0 ? 'none' : `${cacheValue.ttl}s`}
+                  {cacheValue.truncated ? ' · truncated' : ''}
+                </span>
+              </div>
+              <code>{cacheValue.key}</code>
+              {cacheValue.exists ? (
+                <pre>{cacheValueText}</pre>
+              ) : (
+                <p className="muted">This key no longer exists.</p>
+              )}
+            </div>
+          )}
+        </div>
         <label>
-          Clear prefix
+          Type <code>{cachePrefix}</code> to confirm clearing this scope
           <input
             type="text"
-            value={cachePrefix}
-            onChange={(e) => setCachePrefix(e.target.value)}
+            value={cacheConfirm}
+            onChange={(e) => setCacheConfirm(e.target.value)}
+            placeholder={cachePrefix}
             style={{ display: 'block', width: '100%', marginTop: '0.35rem' }}
           />
         </label>
         <button
           type="button"
           className="btn btn-danger"
-          disabled={loading || !cachePrefix.startsWith('sv:')}
+          disabled={!canClearCache}
           style={{ marginTop: '0.75rem' }}
           onClick={() => void clearCachePrefix()}
         >
-          Clear keys
+          Clear selected scope
         </button>
       </div>
 

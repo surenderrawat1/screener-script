@@ -31,12 +31,10 @@ export function parseSectionTable(
   let tr: RegExpExecArray | null;
   while ((tr = trRe.exec(table[2])) !== null) {
     const rowHtml = tr[1];
-    const labelCell = rowHtml.match(/<td[^>]*class="text[^"]*"[^>]*>(.*?)<\/td>/si);
-    if (!labelCell) continue;
-    const label = cleanHtmlText(labelCell[1]).replace(/\s*\+$/, '');
+    const cells = [...rowHtml.matchAll(/<td[^>]*>(.*?)<\/td>/gis)].map((c) => cleanHtmlText(c[1]));
+    const label = cells[0]?.replace(/\s*\+$/, '').trim() ?? '';
     if (!label) continue;
 
-    const cells = [...rowHtml.matchAll(/<td[^>]*>\s*([^<]*?)\s*<\/td>/gi)].map((c) => c[1]);
     const values = cells.slice(1);
     const row: Record<string, number | null> = {};
     for (let i = 0; i < periods.length; i++) {

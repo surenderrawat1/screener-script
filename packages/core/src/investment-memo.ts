@@ -4,7 +4,7 @@ import type { PhaseResult, VerificationResult, VerifyInput } from './verificatio
 export interface InvestmentMemoValuation {
   current: number;
   intrinsic: number;
-  mos_pct: number;
+  mos_pct: number | null;
   zone: string;
   pe: number;
   fair_pe: number;
@@ -87,8 +87,9 @@ function gatePassRate(phases: PhaseResult[]): { passed: number; total: number } 
   return { passed, total };
 }
 
-function cfaGrade(score: number, max: number, mos: number, rating: string): string {
+function cfaGrade(score: number, max: number, mos: number | null, rating: string): string {
   const pct = max > 0 ? (score / max) * 100 : 0;
+  if (mos === null) return pct >= 60 ? 'C' : 'D';
   if (rating.includes('Expensive') || rating.includes('REJECT') || rating.includes('EXIT')) {
     return mos < 0 ? 'D' : 'C';
   }
@@ -129,7 +130,7 @@ function investmentCase(
   roce: number,
 ): string {
   const name = result.stock_name || 'This company';
-  const mos = result.metrics.margin_of_safety ?? 0;
+  const mos = result.metrics.margin_of_safety;
   const pe = result.metrics.pe ?? 0;
 
   let p1 = name;
@@ -144,11 +145,13 @@ function investmentCase(
   }
 
   const p2 =
-    mos >= 15
-      ? `Valuation offers a margin of safety of ${mos}% versus intrinsic estimate — attractive for patient capital.`
-      : mos >= 0
-        ? `Trading near fair value (MOS ${mos}%) — stagger entries or wait for pullback.`
-        : 'Price appears ahead of intrinsic value — patience or pass recommended.';
+    mos === null
+      ? 'Valuation is incomplete because intrinsic value or price inputs are unavailable — refresh fundamentals before acting.'
+      : mos >= 15
+        ? `Valuation offers a margin of safety of ${mos}% versus intrinsic estimate — attractive for patient capital.`
+        : mos >= 0
+          ? `Trading near fair value (MOS ${mos}%) — stagger entries or wait for pullback.`
+          : 'Price appears ahead of intrinsic value — patience or pass recommended.';
 
   let p3 = pe > 0 ? ` At P/E ${pe}, ` : ' ';
   p3 +=
@@ -192,7 +195,7 @@ export function buildInvestmentMemo(
 
   const price = Number(fetchData.current_price ?? input.current_price ?? 0);
   const intrinsic = Number(m.intrinsic_value ?? 0);
-  const mos = Number(m.margin_of_safety ?? 0);
+  const mos = m.margin_of_safety;
   const qualityScore = Number(m.quality_score ?? 0);
   const score = qualityScore > 0 ? qualityScore : sc.total;
   const max = qualityScore > 0 ? 100 : sc.max;

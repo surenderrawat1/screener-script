@@ -53,6 +53,9 @@ Script Screener is an **API-first monorepo** that replaces PHP page scripts with
 
 ## Data flows
 
+For the current high-accuracy source, cache, data-quality, and CFA calculation contract, see
+[High Accuracy Architecture & CFA Calculation Rules](HIGH-ACCURACY-ARCHITECTURE.md).
+
 ### Screener run
 
 ```
@@ -163,7 +166,7 @@ Worker heartbeat: Redis key `sv:worker:heartbeat` — checked by `/health/ready`
 | Source | Used for | Cache TTL |
 |--------|----------|-----------|
 | Yahoo Finance | OHLC, intraday Nifty | 7d stock, 2m intraday |
-| Screener.in | Fundamental ratios | 24h row, 1h row refresh |
+| Screener.in | Ratios, annual financials, profile/expenditures | 24h table/profile, 1h analyzed row |
 | NSE index CSVs | Universe constituents | 30d index metadata, 24h universe list |
 | Uploaded CSVs | total_nse, promoter holdings | Until re-upload |
 

@@ -10,7 +10,8 @@ import type {
   VerifyInput,
 } from './types.js';
 
-export function mosZone(mos: number): string {
+export function mosZone(mos: number | null): string {
+  if (mos === null) return 'Unknown';
   if (mos >= 25) return 'Deep value (≥25%)';
   if (mos >= 15) return 'Buy zone (15–25%)';
   if (mos >= 0) return 'Fair (0–15%)';
@@ -73,7 +74,9 @@ export function runRedFlagScan(
     ['CFO << PAT for 2+ years', input.p2_cfo_pat === false],
     [
       'Stock up 100%+ in 12 months with MOS < 0%',
-      Boolean(input.rf_stock_up_100) && metrics.margin_of_safety < 0,
+      Boolean(input.rf_stock_up_100) &&
+        metrics.margin_of_safety !== null &&
+        metrics.margin_of_safety < 0,
     ],
     [
       'Cannot explain business model',
@@ -108,9 +111,13 @@ export function runRedFlagScan(
 
 export function verdictFromMatrix(
   score: number,
-  mos: number,
+  mos: number | null,
   holding: boolean,
 ): [string, string, string] {
+  if (mos === null) {
+    return ['NEED DATA', 'neutral', 'Valuation is incomplete — refresh fundamentals or run Full Verify.'];
+  }
+
   if (score >= 45) {
     if (mos >= 20) {
       return ['STRONG BUY', 'success', 'Score 45+ with MOS ≥ 20% — excellent quality at deep value.'];
@@ -213,6 +220,7 @@ export function suggestPositionSize(
   if (!buyActions.includes(verdict.action)) return null;
 
   const mos = metrics.margin_of_safety;
+  if (mos === null) return null;
   if (mos >= 25) {
     return { conviction: 'High', mos: '≥25%', size: 'Up to 8–10% of portfolio' };
   }

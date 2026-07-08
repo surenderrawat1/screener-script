@@ -1,8 +1,8 @@
 # Stock Details — Architecture & Speed Plan
 
-**Stock Details** is the single-symbol research hub: live fundamentals, CFA valuation, company profile (Screener.in), daily price chart, chart phase analysis, and a full technical metrics grid — with cross-links to Verify, Screener, and Watchlist.
+**Stock Details** is the single-symbol research hub: live fundamentals, CFA valuation, company profile (Screener.in), daily price chart, chart phase analysis, and a full technical metrics grid — with cross-links to Verify, Screener, Swing, Strategies, and Watchlist.
 
-In **Script Screener v2 this page does not exist yet.** The closest surface is `/verify` (valuation memo only). Building blocks (`fetchStockData`, `fetchDailyBars`, `metricsFromBars`) exist but are not composed into a detail API or UI.
+In **Script Screener v2 this page is implemented** as `/stock/:symbol`, backed by `GET /api/v1/stock/:symbol`, `/chart`, `/profile`, and `/refresh`. Current accuracy rules are maintained in [High Accuracy Architecture & CFA Calculation Rules](HIGH-ACCURACY-ARCHITECTURE.md).
 
 > Educational research only — chart phases are timing context and are **not** blended into CFA scores (same rule as PHP).
 
@@ -52,17 +52,17 @@ In **Script Screener v2 this page does not exist yet.** The closest surface is `
 
 | Aspect | PHP (`stock-verifier`) | Script Screener (`stock-verifier-v2`) |
 |--------|------------------------|--------------------------------------|
-| **Page** | `stock-details.php?symbol=TCS` | **No route** |
-| **API** | Server-rendered HTML only (no JSON API) | **No** `GET /api/v1/stock/:symbol` |
-| **Nav** | App nav item "Details" | **Missing** |
-| **Data fetch** | `StockDataFetcher::fetch()` — 30+ fields | `fetchStockData()` — ~15 core metrics |
-| **Company profile** | `ScreenerCompanyProfile.php` | **Not ported** |
-| **Daily chart** | Lightweight Charts inline | `fetchDailyBars` exists; **no UI** |
-| **Phase analysis** | `chartPhaseAnalysis()` | **Not ported** |
-| **TA display grid** | 15+ metrics on page | `metricsFromBars` (swing only) |
-| **Valuation** | `CfaAutoVerifier::runFromFetch()` + MOS drift | `/verify` → `verifyStock()` only |
-| **Refresh** | Admin POST clears 6 cache prefixes | Verify uses `refresh: true` per click |
-| **Inbound links** | Screener, Verify, Watchlist rows | **No Details links** |
+| **Page** | `stock-details.php?symbol=TCS` | `/stock/:symbol` |
+| **API** | Server-rendered HTML only (no JSON API) | `GET /api/v1/stock/:symbol` plus chart/profile/refresh endpoints |
+| **Nav** | App nav item "Details" | Details route available from Verify and symbol workflows |
+| **Data fetch** | `StockDataFetcher::fetch()` — 30+ fields | `resolveStockMetrics()` + Screener annual enrichment |
+| **Company profile** | `ScreenerCompanyProfile.php` | `fetchScreenerProfile()` profile/expenditures |
+| **Daily chart** | Lightweight Charts inline | `StockDailyChart` via `/chart` endpoint |
+| **Phase analysis** | `chartPhaseAnalysis()` | `chartPhaseAnalysis()` in API response |
+| **TA display grid** | 15+ metrics on page | Details TA grid from `@sv/swing` metrics |
+| **Valuation** | `CfaAutoVerifier::runFromFetch()` + MOS drift | `getStockSummary()` quick valuation from same enriched metrics shown on page |
+| **Refresh** | Admin POST clears 6 cache prefixes | Details `Clear cache & reload` clears symbol cache and reloads enriched summary |
+| **Inbound links** | Screener, Verify, Watchlist rows | Details links from Verify/Full Verify/Swing flows |
 | **Closest v2 page** | — | `/verify` (~30% of content) |
 
 **Note:** PHP has no `stock-details-api.php`. Chart JSON is embedded in the HTML page, not fetched via XHR.

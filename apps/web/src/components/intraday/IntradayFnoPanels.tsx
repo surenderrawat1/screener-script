@@ -12,6 +12,134 @@ function fmtInr(n: number | null | undefined): string {
   return `₹${Math.round(n).toLocaleString('en-IN')}`;
 }
 
+function fmtPct(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—';
+  return `${Math.round(n)}%`;
+}
+
+function activePreset(presets: Array<Record<string, unknown>>, recommended: string) {
+  return presets.find((p) => p.id === recommended) ?? null;
+}
+
+function activeReasons(preset: Record<string, unknown> | null, interval: '5m' | '15m'): string[] {
+  if (!preset) return ['Recommended preset not evaluated yet.'];
+  const key = interval === '5m' ? 'reasons_5m' : 'reasons_15m';
+  const reasons = preset[key];
+  return Array.isArray(reasons) && reasons.length > 0 ? reasons.map(String) : ['All preset gates passed.'];
+}
+
+export function IntradayDecisionCockpit({
+  playbook,
+  analysis,
+  mtf,
+  plan,
+  presets,
+  recommended,
+  interval,
+  productMode,
+  onProductModeChange,
+  kind,
+  fnoSupported,
+}: {
+  playbook: Record<string, unknown>;
+  analysis?: Record<string, unknown>;
+  mtf?: Record<string, unknown>;
+  plan?: Record<string, unknown> | null;
+  presets: Array<Record<string, unknown>>;
+  recommended: string;
+  interval: '5m' | '15m';
+  productMode: ProductMode;
+  onProductModeChange: (m: ProductMode) => void;
+  kind: 'index' | 'stock';
+  fnoSupported: boolean;
+}) {
+  const setupQuality = (analysis?.setup_quality as Record<string, unknown> | undefined) ?? {};
+  const preset = activePreset(presets, recommended);
+  const passKey = interval === '5m' ? 'pass_5m' : 'pass_15m';
+  const presetPass = Boolean(preset?.[passKey]);
+  const entry = (plan?.entry as Record<string, unknown> | undefined) ?? {};
+  const stop = (plan?.stop_loss as Record<string, unknown> | undefined) ?? {};
+  const exits = (plan?.exits as Array<Record<string, unknown>> | undefined) ?? [];
+  const trigger = (plan?.trigger as Record<string, unknown> | undefined) ?? {};
+  const reasons = activeReasons(preset, interval);
+  const direction = String(analysis?.direction ?? playbook.bias_label ?? '—');
+  const actionable = Boolean(playbook.actionable);
+
+  return (
+    <section className={`card intraday-decision-cockpit ${actionable ? 'is-actionable' : 'is-wait'}`}>
+      <div className="intraday-decision-main">
+        <div>
+          <span className={`intraday-decision-state ${actionable ? 'ready' : 'wait'}`}>
+            {actionable ? 'ACTIONABLE' : 'WAIT'}
+          </span>
+          <h2>{String(playbook.headline ?? 'No active intraday decision')}</h2>
+          <p className="muted">
+            Direction {direction} · confidence {fmtPct(Number(analysis?.confidence ?? 0))} · MTF{' '}
+            {String(mtf?.title ?? mtf?.key ?? '—')}
+          </p>
+        </div>
+        <div className="intraday-decision-actions">
+          <IntradayProductTabs mode={productMode} onChange={onProductModeChange} kind={kind} fnoSupported={fnoSupported} />
+          <span className={`intraday-trigger ${trigger.actionable ? 'ready' : 'wait'}`}>
+            {String(trigger.label ?? trigger.status ?? '')}
+          </span>
+        </div>
+      </div>
+
+      <div className="intraday-decision-grid">
+        <DecisionTile label="Setup grade" value={String(setupQuality.grade ?? '—')} detail={`Score ${setupQuality.score ?? '—'}`} />
+        <DecisionTile
+          label="Preset gate"
+          value={presetPass ? 'PASS' : 'BLOCKED'}
+          detail={`${String(preset?.label ?? recommended).replace(/_/g, ' ')} · ${interval}`}
+          tone={presetPass ? 'good' : 'warn'}
+        />
+        <DecisionTile label="Entry" value={fmtRs(Number(entry.price ?? NaN))} detail={String(entry.condition ?? entry.type ?? '')} />
+        <DecisionTile
+          label="Stop"
+          value={fmtRs(Number(stop.price ?? NaN))}
+          detail={`${Number(stop.pts ?? 0)} pts · ${Number(stop.pct ?? 0)}%`}
+          tone="bad"
+        />
+        <DecisionTile
+          label="T1 / T2 / T3"
+          value={exits.map((e) => fmtRs(Number(e.price ?? NaN))).join(' · ') || '—'}
+          detail="Targets plotted on chart"
+          tone="good"
+        />
+        <DecisionTile label="Deploy" value={fmtPct(Number(mtf?.deploy_pct ?? 0))} detail="Advisory, not position size" />
+        <DecisionTile label="LTP" value={fmtRs(Number(playbook.current_price ?? NaN))} detail={`Active TF ${interval}`} />
+        <DecisionTile label="Time exit" value={String(plan?.time_stop_ist ?? '15:15')} detail="No overnight hold" />
+      </div>
+
+      <div className={presetPass ? 'intraday-gate intraday-gate-ok' : 'intraday-gate intraday-gate-warn'}>
+        <strong>{presetPass ? 'Gate clear:' : 'Gate blocked:'}</strong> {reasons.slice(0, 3).join(' · ')}
+        {reasons.length > 3 ? '…' : ''}
+      </div>
+    </section>
+  );
+}
+
+function DecisionTile({
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+  tone?: 'good' | 'warn' | 'bad';
+}) {
+  return (
+    <div className={`intraday-decision-tile ${tone ? `tone-${tone}` : ''}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      {detail ? <small>{detail}</small> : null}
+    </div>
+  );
+}
+
 export function IntradayTradePlanCard({ plan }: { plan: Record<string, unknown> | null | undefined }) {
   if (!plan?.ok) {
     return (
@@ -239,7 +367,9 @@ export function IntradayPresetTable({
         <thead>
           <tr>
             <th>Preset</th>
-            <th>{activeInterval} pass</th>
+            <th>5m</th>
+            <th>15m</th>
+            <th>Active reasons</th>
             <th>Description</th>
           </tr>
         </thead>
@@ -247,6 +377,7 @@ export function IntradayPresetTable({
           {presets.map((p) => {
             const pass = Boolean(p[passKey]);
             const isRec = p.id === recommended;
+            const reasons = activeReasons(p, activeInterval);
             return (
               <tr key={String(p.id)} className={isRec ? 'intraday-preset-rec' : ''}>
                 <td>
@@ -254,7 +385,14 @@ export function IntradayPresetTable({
                   {isRec ? <span className="intraday-rec-tag"> recommended</span> : null}
                 </td>
                 <td>
-                  <span className={pass ? 'intraday-pass' : 'intraday-fail'}>{pass ? 'PASS' : '—'}</span>
+                  <span className={p.pass_5m ? 'intraday-pass' : 'intraday-fail'}>{p.pass_5m ? 'PASS' : '—'}</span>
+                </td>
+                <td>
+                  <span className={p.pass_15m ? 'intraday-pass' : 'intraday-fail'}>{p.pass_15m ? 'PASS' : '—'}</span>
+                </td>
+                <td className={pass ? 'muted' : 'intraday-fail'}>
+                  {reasons.slice(0, 2).join(' · ')}
+                  {reasons.length > 2 ? '…' : ''}
                 </td>
                 <td className="muted">{String(p.description ?? '')}</td>
               </tr>

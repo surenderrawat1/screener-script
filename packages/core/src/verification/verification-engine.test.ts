@@ -195,5 +195,36 @@ describe('runVerificationEngine', () => {
     expect(result.verdict.action).toBeTruthy();
     expect(result.executive_summary.headline).toBeTruthy();
     expect(result.metrics.margin_of_safety).toBeDefined();
+    expect((result.metrics.fair_pe_detail as { fair_pe?: number }).fair_pe).toBe(result.metrics.fair_pe);
+    expect((result.metrics.fair_pe_detail as { rationale?: string }).rationale).toContain('production CFA engine');
+  });
+
+  it('keeps MOS unknown when valuation inputs are missing', () => {
+    const result = runVerificationEngine({
+      stock_name: 'Unknown Inputs Ltd',
+      fetch_symbol: 'UNKNOWN',
+      sector: 'general',
+      current_price: 0,
+      eps: 0,
+      pe_ratio: 0,
+      book_value: 0,
+      roe: 0,
+      roce: 0,
+      p0_emergency_fund: true,
+      p0_debt_cleared: true,
+      p0_sip_habit: true,
+      p0_asset_allocation: true,
+      p0_emotional_discipline: true,
+      p1_business_model: true,
+      p1_revenue_model: true,
+      p1_circle_competence: true,
+    });
+
+    expect(result.metrics.margin_of_safety).toBeNull();
+    expect(result.metrics.mos_zone).toBe('Unknown');
+    expect(result.verdict.action).toBe('NEED DATA');
+    expect(result.verdict.mos_zone).toBe('Unknown');
+    expect(result.position_size).toBeNull();
+    expect(result.executive_summary.headline).toContain('MOS is unavailable');
   });
 });

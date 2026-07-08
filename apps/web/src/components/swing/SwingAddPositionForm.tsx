@@ -22,6 +22,17 @@ export function SwingAddPositionForm({ symbol, price, asOfDate, entry, onAdded }
     profit_target: '',
     notes: '',
   });
+  const strictReady =
+    String(entry.strict_verdict ?? '') === 'ENTER' &&
+    entry.strict_enter_ready !== false &&
+    entry.net_edge_ok !== false &&
+    entry.r_multiple_ok !== false;
+  const blockers = [
+    String(entry.strict_verdict ?? '') !== 'ENTER' ? 'strict verdict is not ENTER' : '',
+    entry.strict_enter_ready === false ? 'strict gate is not ready' : '',
+    entry.net_edge_ok === false ? 'net edge is below floor' : '',
+    entry.r_multiple_ok === false ? 'R multiple is below minimum' : '',
+  ].filter(Boolean);
 
   useEffect(() => {
     setForm({
@@ -38,6 +49,10 @@ export function SwingAddPositionForm({ symbol, price, asOfDate, entry, onAdded }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!strictReady) {
+      setFormErr(`Cannot add from symbol analysis: ${blockers.join(' · ') || 'strict entry gate not met'}.`);
+      return;
+    }
     setSaving(true);
     setFormErr('');
     setFormMsg('');
@@ -70,6 +85,12 @@ export function SwingAddPositionForm({ symbol, price, asOfDate, entry, onAdded }
       <p className="swing-subsection-hint muted">
         Pre-filled from engine trade plan. Adjust entry date if filling after the signal session.
       </p>
+      {!strictReady ? (
+        <p className="swing-scan-eligibility-warn">
+          Add disabled: {blockers.join(' · ') || 'strict entry gate not met'}. Use the positions ledger only for a manual
+          override with separate rationale.
+        </p>
+      ) : null}
       <form className="swing-add-grid" onSubmit={handleSubmit}>
         <label>
           <span className="field-name">Entry price (₹)</span>
@@ -132,7 +153,7 @@ export function SwingAddPositionForm({ symbol, price, asOfDate, entry, onAdded }
           />
         </label>
         <div className="swing-add-actions">
-          <button type="submit" className="btn" disabled={saving}>
+          <button type="submit" className="btn" disabled={saving || !strictReady}>
             {saving ? 'Saving…' : 'Add position'}
           </button>
         </div>

@@ -176,23 +176,41 @@ export async function cacheClearSymbol(symbol: string): Promise<number> {
   const sym = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
   if (!sym) return 0;
   const slug = sym.toLowerCase();
+  const intradayKey = sym.replace(/[^A-Z0-9]/g, '_');
 
   const keys = [
     cacheKey(CACHE_PREFIX.STOCK, sym),
     cacheKey(CACHE_PREFIX.VERIFY, sym),
-    cacheKey(CACHE_PREFIX.TA, `bars:${sym}`),
-    cacheKey(CACHE_PREFIX.SCREENER_ROW, sym),
     cacheKey(CACHE_PREFIX.SCREENER_TABLE, slug),
+    cacheKey(CACHE_PREFIX.SCREENER_TABLE, `annual:${slug}`),
     cacheKey(CACHE_PREFIX.SCREENER_TABLE, `profile:consolidated:${slug}`),
     cacheKey(CACHE_PREFIX.SCREENER_TABLE, `profile:standalone:${slug}`),
     cacheKey(CACHE_PREFIX.YAHOO, `${sym}.NS`),
     cacheKey(CACHE_PREFIX.YAHOO, `${sym}.BO`),
+    cacheKey(CACHE_PREFIX.YAHOO, `quote:${sym}.NS`),
+    cacheKey(CACHE_PREFIX.YAHOO, `quote:${sym}.BO`),
+    cacheKey(CACHE_PREFIX.TA, `bars:1h:${sym}`),
+    cacheKey(CACHE_PREFIX.TA, `bars:${sym}:1y`),
+    cacheKey(CACHE_PREFIX.TA, `bars:${sym}:2y`),
+  ];
+  const patterns = [
+    cacheKey(CACHE_PREFIX.SCREENER_ROW, `*:${sym}`),
+    cacheKey(CACHE_PREFIX.TA, `bars:${sym}*`),
+    cacheKey(CACHE_PREFIX.TA, `bars:1h:${sym}*`),
+    cacheKey(CACHE_PREFIX.TA, `intraday:${intradayKey}:*`),
   ];
 
   let deleted = 0;
   for (const key of keys) {
     try {
       if (await cacheDeleteKey(key)) deleted += 1;
+    } catch {
+      // Redis unavailable — continue best-effort
+    }
+  }
+  for (const pattern of patterns) {
+    try {
+      deleted += await cacheDel(pattern);
     } catch {
       // Redis unavailable — continue best-effort
     }
@@ -347,6 +365,42 @@ export async function cacheListKeys(
   } catch {
     resetRedisClient();
     return [];
+  }
+}
+
+export async function cachePreviewKey(
+  key: string,
+  maxChars = 12000,
+): Promise<{
+  key: string;
+  exists: boolean;
+  ttl: number;
+  type: string;
+  bytes: number;
+  truncated: boolean;
+  value: unknown;
+}> {
+  try {
+    const redis = await ensureRedis();
+    const [type, ttl, raw] = await Promise.all([redis.type(key), redis.ttl(key), redis.get(key)]);
+    if (raw == null) {
+      return { key, exists: false, ttl, type, bytes: 0, truncated: false, value: null };
+    }
+
+    const bytes = Buffer.byteLength(raw, 'utf8');
+    const truncated = raw.length > maxChars;
+    const text = truncated ? raw.slice(0, maxChars) : raw;
+    let value: unknown = text;
+    try {
+      value = JSON.parse(text);
+    } catch {
+      value = text;
+    }
+
+    return { key, exists: true, ttl, type, bytes, truncated, value };
+  } catch {
+    resetRedisClient();
+    return { key, exists: false, ttl: -2, type: 'unknown', bytes: 0, truncated: false, value: null };
   }
 }
 

@@ -149,6 +149,161 @@ function niftyClass(tone: string): string {
   return 'nifty-neutral';
 }
 
+function fmtMoney(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—';
+  return `₹${Math.round(n).toLocaleString('en-IN')}`;
+}
+
+function fmtPct(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—';
+  return `${n > 0 ? '+' : ''}${n}%`;
+}
+
+function riskPosture(briefing: MorningBriefing): { label: string; tone: 'danger' | 'warn' | 'ok'; detail: string } {
+  if (briefing.swing.exit_count > 0 || briefing.intraday.exit_count > 0 || briefing.alerts.length > 0) {
+    return {
+      label: 'Risk first',
+      tone: 'danger',
+      detail: 'Resolve exit signals and alerts before adding new exposure.',
+    };
+  }
+  if (briefing.guidance.deploy_pct < 70 || briefing.swing.portfolio.heat_pct >= 3) {
+    return {
+      label: 'Selective',
+      tone: 'warn',
+      detail: 'Keep sizing conservative; prioritize only highest-quality setups.',
+    };
+  }
+  return {
+    label: 'Constructive',
+    tone: 'ok',
+    detail: 'No urgent book alerts; review new ideas after session and regime checks.',
+  };
+}
+
+function morningActions(briefing: MorningBriefing): Array<{ label: string; detail: string; href: string; tone: 'danger' | 'warn' | 'ok' | 'info' }> {
+  const actions: Array<{ label: string; detail: string; href: string; tone: 'danger' | 'warn' | 'ok' | 'info' }> = [];
+  if (briefing.swing.exit_count > 0) {
+    actions.push({
+      label: 'Manage swing exits',
+      detail: `${briefing.swing.exit_count} open swing position(s) have EXIT signals.`,
+      href: '/positions',
+      tone: 'danger',
+    });
+  }
+  if (briefing.intraday.exit_count > 0) {
+    actions.push({
+      label: 'Manage intraday exits',
+      detail: `${briefing.intraday.exit_count} intraday position(s) need action.`,
+      href: '/intraday/positions',
+      tone: 'danger',
+    });
+  }
+  if (briefing.nifty.ok) {
+    actions.push({
+      label: 'Check intraday cockpit',
+      detail: `${briefing.nifty.label} · grade ${briefing.nifty.setup_grade || '—'} · ${briefing.nifty.confidence}% confidence.`,
+      href: briefing.nifty.href,
+      tone: briefing.nifty.tone === 'neutral' ? 'info' : 'ok',
+    });
+  }
+  if (briefing.auto.available && briefing.auto.hit_count > 0) {
+    actions.push({
+      label: 'Review high-conviction swing ideas',
+      detail: `${briefing.auto.hit_count} radar names available from latest snapshot.`,
+      href: '/swing/auto',
+      tone: 'ok',
+    });
+  }
+  if (briefing.etf.hit_count > 0) {
+    actions.push({
+      label: 'Review ETF SETUP+ book',
+      detail: `${briefing.etf.hit_count} ETF candidates; ${briefing.etf.stale_count} stale.`,
+      href: '/swing?universe=swing_etf',
+      tone: briefing.etf.stale_count > 0 ? 'warn' : 'info',
+    });
+  }
+  if (actions.length === 0) {
+    actions.push({
+      label: 'Stand aside / maintain watchlist',
+      detail: 'No urgent risk alerts or high-priority new setup in the current briefing.',
+      href: '/dashboard',
+      tone: 'info',
+    });
+  }
+  return actions;
+}
+
+function MorningCfaCockpit({ briefing }: { briefing: MorningBriefing }) {
+  const posture = riskPosture(briefing);
+  const actions = morningActions(briefing);
+  const urgentCount = briefing.swing.exit_count + briefing.intraday.exit_count + briefing.alerts.length;
+  return (
+    <section className={`card morning-cfa-cockpit posture-${posture.tone}`}>
+      <div className="morning-cfa-head">
+        <div>
+          <span className={`morning-posture-pill posture-${posture.tone}`}>{posture.label}</span>
+          <h2>Senior CFA morning decision cockpit</h2>
+          <p className="muted">{posture.detail}</p>
+        </div>
+        <div className="morning-cfa-time">
+          <strong>{briefing.session.label}</strong>
+          <span>{briefing.session.ist_date} · {briefing.session.ist_time} IST</span>
+        </div>
+      </div>
+
+      <div className="morning-cfa-grid">
+        <div className="morning-cfa-tile">
+          <span>Priority alerts</span>
+          <strong className={urgentCount > 0 ? 'morning-danger' : 'morning-ok'}>{urgentCount}</strong>
+          <small>Swing exits + intraday exits + alerts</small>
+        </div>
+        <div className="morning-cfa-tile">
+          <span>Regime deploy</span>
+          <strong>{briefing.guidance.deploy_pct}%</strong>
+          <small>{String(briefing.regime.label ?? briefing.regime.key ?? '—')}</small>
+        </div>
+        <div className="morning-cfa-tile">
+          <span>Swing book</span>
+          <strong>{briefing.swing.open} open</strong>
+          <small>
+            Heat {briefing.swing.portfolio.heat_pct}% · avg {fmtPct(briefing.swing.portfolio.net_gain_pct)}
+          </small>
+        </div>
+        <div className="morning-cfa-tile">
+          <span>Intraday</span>
+          <strong>{briefing.nifty.ok ? briefing.nifty.label : 'Unavailable'}</strong>
+          <small>
+            Grade {briefing.nifty.setup_grade || '—'} · {briefing.nifty.confidence || 0}% confidence
+          </small>
+        </div>
+        <div className="morning-cfa-tile">
+          <span>New ideas</span>
+          <strong>{briefing.auto.available ? briefing.auto.hit_count : 0}</strong>
+          <small>Swing Auto high-conviction snapshot</small>
+        </div>
+        <div className="morning-cfa-tile">
+          <span>ETF book</span>
+          <strong>{briefing.etf.hit_count}</strong>
+          <small>{briefing.etf.cached_ago ? `Cached ${briefing.etf.cached_ago}` : 'Latest available'}</small>
+        </div>
+      </div>
+
+      <div className="morning-action-queue">
+        <h3>Action queue</h3>
+        <ol>
+          {actions.slice(0, 5).map((action) => (
+            <li key={action.label} className={`morning-action-${action.tone}`}>
+              <Link to={action.href}>{action.label}</Link>
+              <span>{action.detail}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  );
+}
+
 export default function MorningPage() {
   const [briefing, setBriefing] = useState<MorningBriefing | null>(null);
   const [loading, setLoading] = useState(true);
@@ -232,6 +387,8 @@ export default function MorningPage() {
             </p>
           </div>
 
+          <MorningCfaCockpit briefing={briefing} />
+
           {briefing.presets.length > 0 && (
             <div className="morning-presets" aria-label="Trading presets">
               <span className="muted">Trade today:</span>
@@ -264,7 +421,7 @@ export default function MorningPage() {
 
           {guidance && (
             <div className={`card regime-hero ${guidanceClass(guidance.tone)}`}>
-              <h2 style={{ marginTop: 0 }}>Swing regime · NIFTYBEES</h2>
+              <h2 style={{ marginTop: 0 }}>1. Market regime and capital deployment</h2>
               <p className="regime-key">
                 {String(regime.label ?? regime.key ?? '—')}
                 {regime.ret_20d != null ? (
@@ -288,7 +445,7 @@ export default function MorningPage() {
 
           <div className="morning-panels">
             <div className={`card morning-nifty ${niftyClass(briefing.nifty.tone)}`}>
-              <h2>Nifty 15m · {briefing.nifty.instrument_label}</h2>
+              <h2>2. Intraday index read · {briefing.nifty.instrument_label}</h2>
               {briefing.nifty.ok ? (
                 <>
                   <p className="nifty-direction">
@@ -312,7 +469,7 @@ export default function MorningPage() {
             </div>
 
             <div className="card">
-              <h2>Open swing positions</h2>
+              <h2>3. Swing book risk</h2>
               <p className="muted">
                 {briefing.swing.open} open
                 {briefing.swing.exit_count > 0 ? ` · ${briefing.swing.exit_count} EXIT` : ''}
@@ -375,12 +532,12 @@ export default function MorningPage() {
             </div>
 
             <div className="card">
-              <h2>Intraday ledger</h2>
+              <h2>4. Intraday ledger risk</h2>
               <p className="muted">
                 {briefing.intraday.open} open
                 {briefing.intraday.exit_count > 0 ? ` · ${briefing.intraday.exit_count} exit signal(s)` : ''}
                 {briefing.intraday.portfolio.net_pnl_inr != null
-                  ? ` · P&L ₹${briefing.intraday.portfolio.net_pnl_inr}`
+                  ? ` · P&L ${fmtMoney(briefing.intraday.portfolio.net_pnl_inr)}`
                   : ''}
                 {!briefing.live && ' · cached (fast mode)'}
               </p>
@@ -432,7 +589,7 @@ export default function MorningPage() {
           </div>
 
           <div className="card">
-            <h2>Morning checklist</h2>
+            <h2>5. Operating checklist</h2>
             <ul className="routine-list">
               {briefing.routine.map((step) => (
                 <li key={step.step} className="routine-item">
@@ -448,7 +605,7 @@ export default function MorningPage() {
 
           <div className="card">
             <div className="morning-card-header">
-              <h2>ETF SETUP+ book</h2>
+              <h2>6. ETF SETUP+ book</h2>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -526,7 +683,7 @@ export default function MorningPage() {
           </div>
 
           <div className="card">
-            <h2>Swing Auto · high conviction</h2>
+            <h2>7. Swing Auto · high conviction</h2>
             {!briefing.auto.available && (
               <p className="muted">
                 No snapshot yet —{' '}
@@ -560,7 +717,7 @@ export default function MorningPage() {
                           <td>{hit.strict_verdict || hit.verdict}</td>
                           <td>{hit.decision_label}</td>
                           <td>{hit.decision_score}</td>
-                          <td>{hit.price != null ? `₹${hit.price}` : '—'}</td>
+                          <td>{fmtMoney(hit.price)}</td>
                         </tr>
                       ))}
                     </tbody>

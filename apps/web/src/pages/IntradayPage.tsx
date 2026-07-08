@@ -3,10 +3,10 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { Page, PageHeader, PageLoading } from '../components/PageLayout';
 import {
+  IntradayDecisionCockpit,
   IntradayFnoPanel,
   IntradayLedgerLink,
   IntradayPresetTable,
-  IntradayProductTabs,
   IntradayTradePlanCard,
   type ProductMode,
 } from '../components/intraday/IntradayFnoPanels';
@@ -95,6 +95,13 @@ export default function IntradayPage() {
     setSearchParams(next);
   }
 
+  function selectInterval(tf: Interval) {
+    setInterval(tf);
+    const next = new URLSearchParams(searchParams);
+    next.set('interval', tf);
+    setSearchParams(next);
+  }
+
   if (loading && !state) return <PageLoading label="Loading intraday playbook…" />;
   if (error && !state) {
     return (
@@ -143,7 +150,7 @@ export default function IntradayPage() {
                   key={tf}
                   type="button"
                   className={interval === tf ? 'btn' : 'btn btn-secondary'}
-                  onClick={() => setInterval(tf)}
+                  onClick={() => selectInterval(tf)}
                 >
                   {tf}
                 </button>
@@ -215,39 +222,27 @@ export default function IntradayPage() {
       )}
       {error && <p className="error">{error}</p>}
 
-      <section className="card intraday-hero">
-        <div className="intraday-kpi-pills">
-          <span className={`intraday-pill ${playbook.actionable ? 'pill-live' : 'pill-wait'}`}>
-            {playbook.actionable ? '● Actionable' : '○ Wait'}
-          </span>
-          <span className="intraday-pill">Bias {String(playbook.bias_label ?? '—')}</span>
-          <span className="intraday-pill">
-            LTP {playbook.current_price != null ? `₹${Number(playbook.current_price).toFixed(2)}` : '—'}
-          </span>
-          <span className="intraday-pill">MTF {String(mtf?.title ?? mtf?.key ?? '—')}</span>
-          <span className="intraday-pill">Deploy {Number(mtf?.deploy_pct ?? 0)}%</span>
-          {expiry?.label ? (
-            <span className={`intraday-pill ${expiry.is_today ? 'pill-expiry' : ''}`}>
-              Expiry {String(expiry.label)}
-            </span>
-          ) : null}
-        </div>
-        <h2 style={{ margin: '0.75rem 0 0.35rem' }}>{String(playbook.headline ?? '—')}</h2>
-        <p className="muted">
-          Direction {String(analysis?.direction ?? '—')} · confidence {String(analysis?.confidence ?? '—')}% ·{' '}
-          {String(mtf?.message ?? '')}
-        </p>
-      </section>
+      <IntradayDecisionCockpit
+        playbook={playbook}
+        analysis={analysis}
+        mtf={mtf}
+        plan={plan}
+        presets={presetEval}
+        recommended={activePresetHighlight}
+        interval={interval}
+        productMode={productMode}
+        onProductModeChange={setProductMode}
+        kind={instrumentKind}
+        fnoSupported={fnoSupported}
+      />
+      {expiry?.label ? (
+        <p className={`intraday-expiry-note ${expiry.is_today ? 'is-today' : ''}`}>Expiry {String(expiry.label)}</p>
+      ) : null}
 
-      <IntradayPriceChart instrumentId={instrument} interval={interval} label={indexLabel} />
+      <IntradayPriceChart instrumentId={instrument} interval={interval} label={indexLabel} plan={plan} />
 
       <section className="card">
-        <IntradayProductTabs
-          mode={productMode}
-          onChange={setProductMode}
-          kind={instrumentKind}
-          fnoSupported={fnoSupported}
-        />
+        <h2 style={{ marginTop: 0 }}>{productMode === 'spot' ? 'Spot trade plan' : `${productMode} plan`}</h2>
         {productMode === 'spot' ? (
           <>
             <IntradayTradePlanCard plan={plan} />

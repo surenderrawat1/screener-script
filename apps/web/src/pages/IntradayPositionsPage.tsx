@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
+import {
+  LedgerDateRangeFilter,
+  rangeForPreset,
+  type LedgerDatePreset,
+} from '../components/LedgerDateRangeFilter';
 import { Page, PageHeader } from '../components/PageLayout';
 import {
   IntradayClosedPanel,
@@ -32,6 +37,7 @@ interface PositionsResponse {
 }
 
 const REFRESH_MS = 60_000;
+const DEFAULT_RANGE = rangeForPreset('today');
 
 export default function IntradayPositionsPage() {
   const [searchParams] = useSearchParams();
@@ -44,6 +50,9 @@ export default function IntradayPositionsPage() {
 
   const [data, setData] = useState<PositionsResponse | null>(null);
   const [filter, setFilter] = useState<'all' | 'open' | 'closed'>('open');
+  const [datePreset, setDatePreset] = useState<LedgerDatePreset>('today');
+  const [customFrom, setCustomFrom] = useState(DEFAULT_RANGE.from);
+  const [customTo, setCustomTo] = useState(DEFAULT_RANGE.to);
   const [live, setLive] = useState(true);
   const [error, setError] = useState('');
   const [form, setForm] = useState({
@@ -62,6 +71,8 @@ export default function IntradayPositionsPage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const dateRange = useMemo(() => rangeForPreset(datePreset, customFrom, customTo), [datePreset, customFrom, customTo]);
+
   const load = useCallback(async (statusOverride?: 'all' | 'open' | 'closed') => {
     setError('');
     setLoading(true);
@@ -70,6 +81,8 @@ export default function IntradayPositionsPage() {
       const params = new URLSearchParams();
       if (status !== 'all') params.set('status', status);
       if (live) params.set('live', '1');
+      params.set('date_from', dateRange.from);
+      params.set('date_to', dateRange.to);
       const qs = params.toString() ? `?${params.toString()}` : '';
       const res = await api<PositionsResponse>(`/api/v1/intraday/positions${qs}`);
       setData(res);
@@ -78,7 +91,7 @@ export default function IntradayPositionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [filter, live]);
+  }, [dateRange.from, dateRange.to, filter, live]);
 
   useEffect(() => {
     void load();
@@ -178,6 +191,17 @@ export default function IntradayPositionsPage() {
             {data.summary.open} open · {data.summary.closed} closed
           </span>
         )}
+      </div>
+
+      <div className="card">
+        <LedgerDateRangeFilter
+          preset={datePreset}
+          customFrom={customFrom}
+          customTo={customTo}
+          onPresetChange={setDatePreset}
+          onCustomFromChange={setCustomFrom}
+          onCustomToChange={setCustomTo}
+        />
       </div>
 
       {error && <p className="error">{error}</p>}

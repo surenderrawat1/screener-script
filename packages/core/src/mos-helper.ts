@@ -2,7 +2,6 @@ import type { StockMetrics } from '@sv/shared';
 import * as CfaValuationEngine from './cfa-valuation-engine.js';
 import { grahamLabel, resolveAltmanMeta } from './quant-screen-helper.js';
 import {
-  calculateFairPe,
   grahamNumber,
   isMosExtreme,
   mosFromIntrinsic,
@@ -72,6 +71,7 @@ export function estimate(stock: Partial<StockMetrics> & Record<string, unknown>)
     eps,
     book_value: bookValue,
     cfa_report: r,
+    fair_pe_detail: r.fair_pe_detail ?? {},
     quality_score: Number(r.quality_score ?? 0),
     dcf_value: Number(r.dcf_value ?? 0),
     final_rating: r.final_rating ?? '',
@@ -123,13 +123,6 @@ export function compute(
     ...context,
   };
   const r = CfaValuationEngine.analyze(stock);
-  const growth = resolveGrowthContext(stock);
-  const fairPeDetail = calculateFairPe(growth.eps_growth, {
-    sector: String(context.sector ?? 'general'),
-    roe: Number(context.roe ?? 0),
-    roce: Number(context.roce ?? 0),
-    revenue_growth: growth.revenue_growth,
-  });
 
   return {
     intrinsic: Number(r.intrinsic),
@@ -139,7 +132,7 @@ export function compute(
     graham_credible: Boolean(r.graham_credible),
     mos_pe: mosFromIntrinsic(Number(r.pe_intrinsic ?? 0), price),
     fair_pe: Number(r.fair_pe ?? 0),
-    fair_pe_detail: fairPeDetail,
+    fair_pe_detail: r.fair_pe_detail ?? {},
     mos: r.mos,
     method: r.method ?? '',
     zone: r.mos_zone ?? 'Unknown',

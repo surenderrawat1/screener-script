@@ -522,7 +522,12 @@ export default function SwingScanPage() {
       ) : null}
 
       {mode === 'symbol' && evaluatedSymbol ? (
-        <SwingPriceChart symbol={evaluatedSymbol} defaultTimeframe="1h" asOfDate={singleEval?.as_of_date} />
+        <SwingPriceChart
+          symbol={evaluatedSymbol}
+          defaultTimeframe="1h"
+          asOfDate={singleEval?.as_of_date}
+          entry={singleEval?.entry}
+        />
       ) : null}
 
       {singleEval?.entry ? (

@@ -31,27 +31,34 @@ export type IntradayChartPayload = {
   sma20: IntradayChartSmaPoint[];
   sma50: IntradayChartSmaPoint[];
   sma200: IntradayChartSmaPoint[];
+  ma_labels: {
+    sma9: 'EMA-9';
+    sma20: 'EMA-21';
+    sma50: 'EMA-50';
+  };
   fetched_at: string;
   intraday: true;
 };
 
-/** Simple moving average over intraday closes, keyed by each bar's unix time. */
-function intradaySma(bars: IntradayBar[], period: number): IntradayChartSmaPoint[] {
+/** Exponential moving average over intraday closes, keyed by each bar's unix time. */
+function intradayEma(bars: IntradayBar[], period: number): IntradayChartSmaPoint[] {
   if (period < 1 || bars.length < period) return [];
   const out: IntradayChartSmaPoint[] = [];
   let sum = 0;
   for (let i = 0; i < period; i++) sum += bars[i].close;
-  out.push({ time: bars[period - 1].time, value: Math.round((sum / period) * 100) / 100 });
+  let ema = sum / period;
+  out.push({ time: bars[period - 1].time, value: Math.round(ema * 100) / 100 });
+  const k = 2 / (period + 1);
   for (let i = period; i < bars.length; i++) {
-    sum += bars[i].close - bars[i - period].close;
-    out.push({ time: bars[i].time, value: Math.round((sum / period) * 100) / 100 });
+    ema = bars[i].close * k + ema * (1 - k);
+    out.push({ time: bars[i].time, value: Math.round(ema * 100) / 100 });
   }
   return out;
 }
 
 /**
- * Convert a fetched {@link IntradayChart} into a candlestick payload with SMA
- * overlays for the web chart (lightweight-charts, unix-second time axis).
+ * Convert a fetched {@link IntradayChart} into a candlestick payload with EMA
+ * overlays matching the intraday engine (lightweight-charts, unix-second axis).
  */
 export function buildIntradayChartPayload(chart: IntradayChart): IntradayChartPayload {
   const bars = chart.bars.map((b) => ({
@@ -67,10 +74,11 @@ export function buildIntradayChartPayload(chart: IntradayChart): IntradayChartPa
     interval: chart.interval,
     range: chart.range,
     bars,
-    sma9: intradaySma(chart.bars, 9),
-    sma20: intradaySma(chart.bars, 20),
-    sma50: intradaySma(chart.bars, 50),
-    sma200: intradaySma(chart.bars, 200),
+    sma9: intradayEma(chart.bars, 9),
+    sma20: intradayEma(chart.bars, 21),
+    sma50: intradayEma(chart.bars, 50),
+    sma200: [],
+    ma_labels: { sma9: 'EMA-9', sma20: 'EMA-21', sma50: 'EMA-50' },
     fetched_at: chart.fetched_at,
     intraday: true,
   };

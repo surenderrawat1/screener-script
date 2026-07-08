@@ -12,6 +12,7 @@ import {
   pingRedis,
   cacheStats,
   cacheListKeys,
+  cachePreviewKey,
   cacheClearPrefix,
   getJobProgress,
   getRedis,
@@ -41,6 +42,7 @@ import {
   strategyRunSchema,
   intradayBacktestSchema,
   PERMISSIONS,
+  CACHE_PREFIX,
   initAppConfig,
   type ScreenerRow,
 } from '@sv/shared';
@@ -105,6 +107,121 @@ import {
 
 const PORT = parseInt(process.env.API_PORT ?? '3100', 10);
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? 'http://localhost:5173';
+
+const ADMIN_CACHE_SCOPES = [
+  {
+    prefix: CACHE_PREFIX.STOCK,
+    label: 'Stock fundamentals',
+    ttl: '7 days',
+    policy: 'Derived market/fundamental summary. Clear for stale Stock Details, Verify, or screener valuation inputs.',
+    clearable: true,
+  },
+  {
+    prefix: CACHE_PREFIX.VERIFY,
+    label: 'CFA Verify results',
+    ttl: '7 days',
+    policy: 'Derived verification output. Clear after valuation-engine or data-quality rule changes.',
+    clearable: true,
+  },
+  {
+    prefix: CACHE_PREFIX.YAHOO,
+    label: 'Yahoo raw/quotes',
+    ttl: '7 days',
+    policy: 'External market-data cache. Clear when prices or quote-summary data look stale.',
+    clearable: true,
+  },
+  {
+    prefix: CACHE_PREFIX.SCREENER_TABLE,
+    label: 'Screener.in tables/profile',
+    ttl: '24 hours',
+    policy: 'External fundamentals/profile cache. Clear when annual financials or expenditure rows look stale.',
+    clearable: true,
+  },
+  {
+    prefix: CACHE_PREFIX.SCREENER_ROW,
+    label: 'Screener rows',
+    ttl: '1 hour',
+    policy: 'Derived per-symbol screener rows. Clear after filter, ranking, or scoring changes.',
+    clearable: true,
+  },
+  {
+    prefix: CACHE_PREFIX.TA,
+    label: 'Technical analysis/charts',
+    ttl: '24 hours',
+    policy: 'Derived chart/TA cache. Clear when daily bars, chart overlays, or entry rules changed.',
+    clearable: true,
+  },
+  {
+    prefix: CACHE_PREFIX.REGIME,
+    label: 'Market regime',
+    ttl: '15 minutes',
+    policy: 'Derived NIFTYBEES regime. Clear if the regime appears stale intraday.',
+    clearable: true,
+  },
+  {
+    prefix: CACHE_PREFIX.MORNING,
+    label: 'Morning briefing',
+    ttl: '1-10 minutes',
+    policy: 'Derived morning cockpit bundle/panels. Safe to clear after Morning UI or source changes.',
+    clearable: true,
+  },
+  {
+    prefix: CACHE_PREFIX.SWING_AUTO,
+    label: 'Swing Auto snapshot',
+    ttl: '2 hours',
+    policy: 'Latest radar snapshot. Clear only if visibly stale; PostgreSQL archive remains durable.',
+    clearable: true,
+  },
+  {
+    prefix: CACHE_PREFIX.UNIVERSE,
+    label: 'Universe symbols',
+    ttl: '24 hours',
+    policy: 'Redis mirror of PostgreSQL/index CSV data. Prefer daily/index sync before manual clear.',
+    clearable: true,
+  },
+  {
+    prefix: CACHE_PREFIX.INDEX,
+    label: 'Index metadata',
+    ttl: '30 days',
+    policy: 'Redis mirror of index sync metadata. Prefer index sync; clearing may temporarily slow universe resolution.',
+    clearable: true,
+  },
+  {
+    prefix: CACHE_PREFIX.RATELIMIT,
+    label: 'Rate limits',
+    ttl: 'varies',
+    policy: 'Operational guardrail. Not clearable from Admin UI.',
+    clearable: false,
+  },
+  {
+    prefix: CACHE_PREFIX.JOB_PROGRESS,
+    label: 'Job progress',
+    ttl: '1 hour',
+    policy: 'Operational progress channel for running jobs. Not clearable from Admin UI.',
+    clearable: false,
+  },
+  {
+    prefix: CACHE_PREFIX.WORKER_HEARTBEAT,
+    label: 'Worker heartbeat',
+    ttl: 'short',
+    policy: 'Operational liveness signal. Not clearable from Admin UI.',
+    clearable: false,
+  },
+] as const;
+
+function adminCacheScope(prefix: string) {
+  return ADMIN_CACHE_SCOPES.find((scope) => scope.prefix === prefix.trim());
+}
+
+function validateAdminCachePrefix(prefix?: string) {
+  const normalized = String(prefix ?? '').trim();
+  if (!normalized || normalized.includes('*') || normalized.includes('?')) {
+    return { error: 'Select a known cache scope. Wildcards are not allowed.' };
+  }
+  const scope = adminCacheScope(normalized);
+  if (!scope) return { error: 'Unknown cache scope. Use one of the approved Admin cache scopes.' };
+  return { prefix: normalized, scope };
+}
 
 export async function buildApp() {
   const app = Fastify({
@@ -632,10 +749,14 @@ export async function buildApp() {
 
   app.get('/api/v1/swing/positions', { preHandler: [authPreHandler] }, async (request) => {
     const user = requirePermission(request, PERMISSIONS.VIEW);
-    const query = request.query as { status?: string; live?: string };
+    const query = request.query as { status?: string; live?: string; date_from?: string; date_to?: string };
     const status = query.status === 'open' || query.status === 'closed' ? query.status : undefined;
     const live = query.live === '1' || query.live === 'true';
-    return listSwingPositions(user.sub !== 'system' ? user.sub : undefined, status, { live });
+    return listSwingPositions(user.sub !== 'system' ? user.sub : undefined, status, {
+      live,
+      date_from: query.date_from,
+      date_to: query.date_to,
+    });
   });
 
   app.get('/api/v1/swing/positions/live', { preHandler: [authPreHandler] }, async (request) => {
@@ -724,10 +845,14 @@ export async function buildApp() {
 
   app.get('/api/v1/intraday/positions', { preHandler: [authPreHandler] }, async (request) => {
     const user = requirePermission(request, PERMISSIONS.VIEW);
-    const query = request.query as { status?: string; live?: string };
+    const query = request.query as { status?: string; live?: string; date_from?: string; date_to?: string };
     const status = query.status === 'open' || query.status === 'closed' ? query.status : undefined;
     const live = query.live === '1' || query.live === 'true';
-    return listIntradayPositions(user.sub !== 'system' ? user.sub : undefined, status, { live });
+    return listIntradayPositions(user.sub !== 'system' ? user.sub : undefined, status, {
+      live,
+      date_from: query.date_from,
+      date_to: query.date_to,
+    });
   });
 
   app.post('/api/v1/intraday/positions', { preHandler: [authPreHandler] }, async (request, reply) => {
@@ -811,27 +936,47 @@ export async function buildApp() {
   app.get('/api/v1/admin/cache/stats', { preHandler: [authPreHandler] }, async (request) => {
     requirePermission(request, PERMISSIONS.MANAGE_CACHE);
     const stats = await cacheStats();
-    return { stats };
+    return { stats, scopes: ADMIN_CACHE_SCOPES };
   });
 
   app.get('/api/v1/admin/cache/keys', { preHandler: [authPreHandler] }, async (request, reply) => {
     requirePermission(request, PERMISSIONS.MANAGE_CACHE);
     const { prefix = 'sv:', limit = '50' } = request.query as { prefix?: string; limit?: string };
-    if (!prefix.startsWith('sv:')) {
-      return reply.status(400).send({ error: 'prefix must start with sv:' });
+    const validated = validateAdminCachePrefix(prefix);
+    if ('error' in validated) return reply.status(400).send({ error: validated.error });
+    const keys = await cacheListKeys(validated.prefix, Math.min(500, parseInt(limit, 10) || 50));
+    return { prefix: validated.prefix, scope: validated.scope, keys, count: keys.length };
+  });
+
+  app.get('/api/v1/admin/cache/value', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    const { prefix, key } = request.query as { prefix?: string; key?: string };
+    const validated = validateAdminCachePrefix(prefix);
+    if ('error' in validated) return reply.status(400).send({ error: validated.error });
+    const normalizedKey = String(key ?? '').trim();
+    if (!normalizedKey || normalizedKey.includes('*') || normalizedKey.includes('?')) {
+      return reply.status(400).send({ error: 'key query required. Wildcards are not allowed.' });
     }
-    const keys = await cacheListKeys(prefix, Math.min(500, parseInt(limit, 10) || 50));
-    return { prefix, keys, count: keys.length };
+    if (normalizedKey !== validated.prefix && !normalizedKey.startsWith(`${validated.prefix}:`)) {
+      return reply.status(400).send({ error: 'Key must belong to the selected cache scope.' });
+    }
+    const preview = await cachePreviewKey(normalizedKey);
+    return { prefix: validated.prefix, scope: validated.scope, preview };
   });
 
   app.delete('/api/v1/admin/cache', { preHandler: [authPreHandler] }, async (request, reply) => {
     requirePermission(request, PERMISSIONS.MANAGE_CACHE);
-    const { prefix } = request.query as { prefix?: string };
-    if (!prefix?.startsWith('sv:')) {
-      return reply.status(400).send({ error: 'prefix query required (must start with sv:)' });
+    const { prefix, confirm } = request.query as { prefix?: string; confirm?: string };
+    const validated = validateAdminCachePrefix(prefix);
+    if ('error' in validated) return reply.status(400).send({ error: validated.error });
+    if (!validated.scope.clearable) {
+      return reply.status(403).send({ error: `${validated.scope.label} is operational and cannot be cleared from Admin.` });
     }
-    const deleted = await cacheClearPrefix(prefix);
-    return { success: true, prefix, deleted };
+    if (confirm !== validated.prefix) {
+      return reply.status(400).send({ error: `Confirmation must exactly match ${validated.prefix}` });
+    }
+    const deleted = await cacheClearPrefix(validated.prefix);
+    return { success: true, prefix: validated.prefix, scope: validated.scope, deleted };
   });
 
   app.get('/api/v1/admin/settings', { preHandler: [authPreHandler] }, async (request) => {

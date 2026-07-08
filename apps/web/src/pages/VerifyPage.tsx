@@ -72,6 +72,10 @@ function verdictClass(color: string): string {
   return '';
 }
 
+function normalizeSymbolInput(value: string): string {
+  return value.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
+}
+
 export default function VerifyPage() {
   const location = useLocation();
   const initialSymbol =
@@ -99,18 +103,28 @@ export default function VerifyPage() {
 
   useEffect(() => {
     const fromUrl = new URLSearchParams(location.search).get('symbol');
-    if (fromUrl) setSymbol(fromUrl.toUpperCase());
+    if (fromUrl) {
+      setSymbol(normalizeSymbolInput(fromUrl));
+      setResult(null);
+      setError('');
+    }
   }, [location.search]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    const normalized = normalizeSymbolInput(symbol);
+    if (!normalized) {
+      setError('Enter a valid NSE/BSE symbol.');
+      return;
+    }
+    setSymbol(normalized);
     setError('');
     setLoading(true);
     setResult(null);
     try {
       const res = await api<VerifyResult>('/api/v1/verify/auto', {
         method: 'POST',
-        body: JSON.stringify({ symbol, refresh: true }),
+        body: JSON.stringify({ symbol: normalized, refresh: true }),
       });
       setResult(res);
       await loadHistory();
@@ -123,6 +137,7 @@ export default function VerifyPage() {
 
   const memo = result?.memo;
   const verdict = result?.analysis.verdict;
+  const currentSymbol = normalizeSymbolInput(symbol) || 'TCS';
 
   return (
     <Page>
@@ -135,21 +150,33 @@ export default function VerifyPage() {
         before investing.
       </p>
 
-      <form className="card" onSubmit={onSubmit}>
-        <div className="form-row">
+      <form className="card quick-verify-card" onSubmit={onSubmit}>
+        <div className="verify-command-row">
           <div className="form-group" style={{ maxWidth: 280 }}>
             <label>Symbol</label>
             <input
               value={symbol}
-              onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                setSymbol(e.target.value.toUpperCase());
+                setResult(null);
+                setError('');
+              }}
               placeholder="TCS"
               style={{ width: '100%' }}
             />
           </div>
+          <div className="verify-command-actions">
+            <button type="submit" className="btn" disabled={loading}>
+              {loading ? 'Analyzing…' : 'Auto verify'}
+            </button>
+            <Link className="btn btn-secondary" to={`/verify/full?symbol=${encodeURIComponent(currentSymbol)}&from=verify`}>
+              Full Verify
+            </Link>
+            <Link className="btn btn-secondary" to={`/stock/${encodeURIComponent(currentSymbol)}`}>
+              Details
+            </Link>
+          </div>
         </div>
-        <button type="submit" className="btn" disabled={loading}>
-          {loading ? 'Analyzing…' : 'Auto verify'}
-        </button>
       </form>
 
       {error && <p className="error">{error}</p>}
@@ -274,9 +301,12 @@ export default function VerifyPage() {
           )}
 
           <p className="disclaimer">{result.disclaimer}</p>
-          <p style={{ marginTop: '0.75rem' }}>
-            <Link to={`/verify/full?symbol=${encodeURIComponent(result.symbol)}&from=verify`}>
+          <p className="verify-result-actions">
+            <Link className="btn btn-secondary" to={`/verify/full?symbol=${encodeURIComponent(result.symbol)}&from=verify`}>
               Open Full Verify →
+            </Link>
+            <Link className="btn btn-secondary" to={`/stock/${encodeURIComponent(result.symbol)}`}>
+              Open Details →
             </Link>
           </p>
         </div>
@@ -300,6 +330,7 @@ export default function VerifyPage() {
                 <th>Symbol</th>
                 <th>MOS</th>
                 <th>Verdict</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -311,6 +342,11 @@ export default function VerifyPage() {
                   </td>
                   <td>{run.mos !== null ? `${run.mos}%` : '—'}</td>
                   <td>{run.recommendation}</td>
+                  <td>
+                    <Link to={`/verify/full?symbol=${encodeURIComponent(run.symbol)}&from=verify`}>
+                      Full Verify
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

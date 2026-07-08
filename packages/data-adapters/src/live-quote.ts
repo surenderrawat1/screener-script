@@ -28,14 +28,14 @@ export async function liveQuoteForSymbol(symbol: string, refresh = false): Promi
     const result = json.chart?.result?.[0];
     const metaPrice = result?.meta?.regularMarketPrice;
     if (metaPrice && metaPrice > 0) {
-      await cacheSetJson(key, { price: metaPrice }, CACHE_TTL.yahoo);
+      await cacheSetJson(key, { price: metaPrice }, CACHE_TTL.intraday);
       return metaPrice;
     }
     const closes = result?.indicators?.quote?.[0]?.close ?? [];
     for (let i = closes.length - 1; i >= 0; i--) {
       const c = closes[i];
       if (c != null && c > 0) {
-        await cacheSetJson(key, { price: c }, CACHE_TTL.yahoo);
+        await cacheSetJson(key, { price: c }, CACHE_TTL.intraday);
         return c;
       }
     }

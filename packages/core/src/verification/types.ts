@@ -55,7 +55,7 @@ export interface Verdict {
   color: string;
   summary: string;
   score: number;
-  mos: number;
+  mos: number | null;
   grade: string;
   mos_zone: string;
 }
@@ -83,7 +83,7 @@ export interface DerivedMetrics {
   fair_pe: number;
   fair_pe_detail: unknown;
   mos_method: string;
-  margin_of_safety: number;
+  margin_of_safety: number | null;
   fcf: number;
   fcf_yield: number;
   moat_count: number;

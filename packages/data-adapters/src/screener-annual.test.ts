@@ -44,7 +44,11 @@ describe('parseScreenerAnnualFinancials', () => {
     expect(parsed.sector_label).toBe('Information Technology');
     expect(parsed.industry).toBe('Computers - Software & Consulting');
     expect(parsed.promoter_holding_pct).toBe(71.8);
+    expect(parsed.market_cap_cr).toBe(748257);
+    expect(parsed.revenue_cr).toBe(267021);
     expect(parsed.shareholders_equity_cr).toBe(158649);
+    expect(parsed.roe_pct).toBe(31.17);
+    expect(parsed.roce_pct).toBe(57.95);
     expect(parsed.operating_margin_pct).toBe(27);
     expect(parsed.roa_pct).toBe(24.73);
     expect(parsed.debt_to_equity).toBe(0.0711);
@@ -73,5 +77,42 @@ describe('enrichMetricsFromScreenerAnnual', () => {
     expect(enriched.fcf_cr).toBe(48013);
     expect(enriched.total_debt_cr).toBe(11283);
     expect(enriched.total_cash_cr).toBe(45000);
+  });
+
+  it('backfills core CFA ratios from annual statements when Yahoo is price-only', () => {
+    const base = buildStockMetrics('SOLARINDS', {
+      price: 1000,
+      market_cap_cr: 0,
+      pe: 0,
+      eps: 0,
+      roe: 0,
+      roce: 0,
+    });
+    const enriched = enrichMetricsFromScreenerAnnual(base, {
+      revenue_history: [6000, 7200],
+      pat_history: [800, 1000],
+      shareholders_equity_cr: 5000,
+      summary: '',
+      market_cap_cr: 20000,
+      revenue_cr: 7200,
+      eps_consolidated: 50,
+      operating_profit_latest: 1500,
+      roe_pct: 20,
+      roce_pct: 25,
+      cfo_cr: 1200,
+      fcf_cr: 900,
+      capex_cr: 300,
+      total_debt_cr: 1000,
+      total_cash_cr: 250,
+    });
+
+    expect(enriched.market_cap_cr).toBe(20000);
+    expect(enriched.revenue_cr).toBe(7200);
+    expect(enriched.eps).toBe(50);
+    expect(enriched.pe).toBe(20);
+    expect(enriched.roe).toBe(20);
+    expect(enriched.roce).toBe(25);
+    expect(enriched.cfo_cr).toBe(1200);
+    expect(enriched.fcf_cr).toBe(900);
   });
 });

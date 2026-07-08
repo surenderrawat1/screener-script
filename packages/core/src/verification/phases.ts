@@ -315,10 +315,18 @@ export function evaluatePhase4(
 
   const mos = metrics.margin_of_safety;
   const mosZone =
-    mos >= 25 ? 'Deep value' : mos >= 15 ? 'Buy zone' : mos >= 0 ? 'Fair' : 'Expensive';
+    mos === null
+      ? 'Unknown'
+      : mos >= 25
+        ? 'Deep value'
+        : mos >= 15
+          ? 'Buy zone'
+          : mos >= 0
+            ? 'Fair'
+            : 'Expensive';
 
   const gates = [
-    gate(ctx, '4.mos', `Margin of safety (${mosZone})`, mos >= 15, 2),
+    gate(ctx, '4.mos', `Margin of safety (${mosZone})`, mos !== null && mos >= 15, 2),
     gate(ctx, '4.1', 'Not: low P/E + declining revenue 3+ yrs', !input.vt_revenue_declining),
     gate(ctx, '4.2', 'Not: high dividend but FCF cannot pay', !input.vt_div_fcf_mismatch),
     gate(ctx, '4.3', 'Not: structurally disrupted industry', !input.vt_industry_disrupted),

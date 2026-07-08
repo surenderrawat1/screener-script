@@ -1,6 +1,6 @@
 import { passesFilters, passesTableGates, PRESET_FILTERS, screenSymbol, buildStockMetrics, type ScreenerFilters } from '@sv/core';
 import type { ScreenerRow, StockMetrics } from '@sv/shared';
-import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
+import { CACHE_PREFIX, CACHE_TTL, getCacheTtl } from '@sv/shared';
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
 import { prisma } from '@sv/db';
 import {
@@ -65,6 +65,61 @@ function presetCacheKey(preset?: string): string {
   return preset?.trim() || 'custom';
 }
 
+function usefulValue(value: unknown): boolean {
+  if (typeof value === 'number') return Number.isFinite(value) && value !== 0;
+  if (typeof value === 'string') return value.trim() !== '';
+  return value !== null && value !== undefined;
+}
+
+function hasIncompleteCoreFundamentals(metrics: StockMetrics): boolean {
+  return (
+    Number(metrics.market_cap_cr ?? 0) <= 0 ||
+    Number(metrics.pe ?? 0) <= 0 ||
+    Number(metrics.eps ?? 0) <= 0 ||
+    Number(metrics.roe ?? 0) <= 0 ||
+    Number(metrics.roce ?? 0) <= 0
+  );
+}
+
+async function cacheResolvedStockMetrics(
+  symbol: string,
+  metrics: StockMetrics,
+  sources: string[],
+): Promise<void> {
+  if (hasIncompleteCoreFundamentals(metrics)) return;
+  const baseSymbol = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
+  await cacheSetJson(
+    cacheKey(CACHE_PREFIX.STOCK, baseSymbol),
+    {
+      success: true,
+      symbol: baseSymbol,
+      company_name: String(metrics.name ?? baseSymbol),
+      sources: [...new Set(sources)],
+      metrics,
+      from_cache: false,
+    },
+    getCacheTtl().stock,
+  ).catch(() => undefined);
+}
+
+function mergeMissingFundamentals(symbol: string, metrics: StockMetrics): StockMetrics {
+  const fallback = buildStockMetrics(symbol);
+  const merged: StockMetrics = { ...fallback, symbol: String(metrics.symbol ?? fallback.symbol ?? symbol) };
+  for (const [key, value] of Object.entries(metrics)) {
+    if (key === 'symbol') continue;
+    if (usefulValue(value)) {
+      merged[key] = value;
+    }
+  }
+  if (Number(metrics.price ?? 0) > 0) {
+    merged.price = metrics.price;
+  }
+  if (!usefulValue(metrics.name) || String(metrics.name).toUpperCase() === symbol.toUpperCase()) {
+    merged.name = String(fallback.name ?? metrics.name ?? symbol);
+  }
+  return merged;
+}
+
 export async function resolveStockMetrics(
   symbol: string,
   refresh = false,
@@ -77,7 +132,11 @@ export async function resolveStockMetrics(
   ]);
 
   if (fetched.success && fetched.metrics) {
-    let metrics = enrichStockMetrics(fetched.metrics, annual, {
+    const usedFundamentalFallback = hasIncompleteCoreFundamentals(fetched.metrics);
+    let metrics = usedFundamentalFallback
+      ? mergeMissingFundamentals(baseSymbol, fetched.metrics)
+      : fetched.metrics;
+    metrics = enrichStockMetrics(metrics, annual, {
       symbol: baseSymbol,
       div_yield: screener?.div_yield,
     });
@@ -85,10 +144,15 @@ export async function resolveStockMetrics(
 
     const sources = [...fetched.sources];
     if (annual?.revenue_history?.length) sources.push('Screener.in (annual P&L)');
+    if (usedFundamentalFallback && hasIncompleteCoreFundamentals(fetched.metrics)) {
+      sources.push('sample_fallback (incomplete live fundamentals)');
+    }
+    const uniqueSources = [...new Set(sources)];
+    await cacheResolvedStockMetrics(baseSymbol, metrics, uniqueSources);
 
     return {
       metrics,
-      sources: [...new Set(sources)],
+      sources: uniqueSources,
       from_cache: Boolean(fetched.from_cache) && !refresh,
     };
   }

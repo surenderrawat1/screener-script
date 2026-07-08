@@ -60,7 +60,7 @@ export function SwingTradePlan({ entry }: Props) {
           <dd>{paCandleLabel(pa)}</dd>
         </div>
       </dl>
-      <Link to="/swing/positions" className="btn btn-secondary btn-xs swing-all-positions">
+      <Link to="/positions" className="btn btn-secondary btn-xs swing-all-positions">
         Open positions ledger →
       </Link>
     </section>

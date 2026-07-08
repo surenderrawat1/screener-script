@@ -72,12 +72,14 @@ function mapPosition(p: {
 export async function listSwingPositions(
   userId?: string,
   status?: 'open' | 'closed',
-  options: { live?: boolean } = {},
+  options: { live?: boolean; date_from?: string; date_to?: string } = {},
 ) {
+  const dateWhere = swingDateWhere(status, options.date_from, options.date_to);
   const positions = await prisma.swingPosition.findMany({
     where: {
       ...(userId ? { userId } : {}),
       ...(status ? { status } : {}),
+      ...(dateWhere ?? {}),
     },
     orderBy: [{ status: 'asc' }, { entryDate: 'desc' }],
   });
@@ -125,6 +127,36 @@ export async function listSwingPositions(
     closed_stats: closedStats,
     session: nseSession(),
   };
+}
+
+function swingDateWhere(status: 'open' | 'closed' | undefined, from?: string, to?: string) {
+  const bounds = dateBounds(from, to);
+  if (!bounds) return null;
+  const range = { gte: bounds.start, lt: bounds.endExclusive };
+  if (status === 'open') return null;
+  if (status === 'closed') return { closedAt: range };
+  return { OR: [{ status: 'open' as const }, { closedAt: range }] };
+}
+
+function dateBounds(from?: string, to?: string): { start: Date; endExclusive: Date } | null {
+  const start = parseDateOnly(from);
+  const end = parseDateOnly(to || from);
+  if (!start || !end) return null;
+  const endExclusive = new Date(end);
+  endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+  return start <= end ? { start, endExclusive } : { start: end, endExclusive: addUtcDay(start) };
+}
+
+function parseDateOnly(v?: string): Date | null {
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d = new Date(`${v}T00:00:00.000Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function addUtcDay(d: Date): Date {
+  const out = new Date(d);
+  out.setUTCDate(out.getUTCDate() + 1);
+  return out;
 }
 
 export async function createSwingPosition(userId: string, input: SwingPositionCreateInput) {

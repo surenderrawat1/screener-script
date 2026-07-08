@@ -176,6 +176,15 @@ function btTitle(hit: HitRow): string {
   return parts.join(' · ');
 }
 
+function addBlockReason(hit: HitRow, canAdd: boolean): string {
+  if (hit.already_held) return 'Already held';
+  if (hit.incremental_stale) return 'Stale carried';
+  if (!canAdd) return 'Portfolio gate blocked';
+  if (!hit.add_allowed) return 'Engine gate blocked';
+  if (hit.suggested_shares <= 0) return 'No share size';
+  return '';
+}
+
 export default function SwingAutoPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTier = (searchParams.get('tier') as TierId) || 'high_conviction';
@@ -294,10 +303,11 @@ export default function SwingAutoPage() {
     const shares = hit.suggested_shares;
     const confirmMsg = [
       `Add ${hit.symbol}?`,
-      `Entry ₹${hit.price.toFixed(2)}`,
+      `Entry ₹${hit.price.toFixed(2)} (EOD scan price${hit.as_of_date ? ` ${hit.as_of_date}` : ''})`,
       `Stop ₹${hit.stop_loss.toFixed(2)}`,
       `${shares} shares`,
       hit.profit_target > 0 ? `Target ₹${hit.profit_target.toFixed(2)}` : '',
+      hit.risk_flags.length ? `Flags: ${hit.risk_flags.join(', ')}` : '',
     ]
       .filter(Boolean)
       .join(' · ');
@@ -584,6 +594,18 @@ export default function SwingAutoPage() {
       />
 
       <section className="card">
+        <div className="swing-auto-section-head">
+          <div>
+            <h2 style={{ margin: 0 }}>{TIER_TABS.find((t) => t.id === activeTier)?.label ?? 'Radar hits'}</h2>
+            <p className="muted" style={{ margin: '0.25rem 0 0' }}>
+              Buckets are non-exclusive. Table is sorted by <strong>D-Score</strong> (actionability); Rank is the
+              original swing rank.
+            </p>
+          </div>
+          <Link to="/swing?mode=symbol" className="btn btn-secondary btn-xs">
+            Symbol analysis
+          </Link>
+        </div>
         <div className="swing-tier-tabs">
           {TIER_TABS.map((tab) => (
             <button
@@ -635,8 +657,24 @@ function HitTable({
   sessionLive: boolean;
   waitingForWorker: boolean;
 }) {
-  const [showAll, setShowAll] = useState(false);
-  const visible = showAll ? rows : rows.slice(0, 20);
+  const [query, setQuery] = useState('');
+  const [addableOnly, setAddableOnly] = useState(false);
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(1);
+  const normalizedQuery = query.trim().toUpperCase();
+  const filtered = rows.filter((h) => {
+    if (normalizedQuery && !h.symbol.toUpperCase().includes(normalizedQuery)) return false;
+    if (addableOnly && !(h.add_allowed && canAdd && h.suggested_shares > 0 && !h.already_held && !h.incremental_stale)) {
+      return false;
+    }
+    return true;
+  });
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const start = (currentPage - 1) * pageSize;
+  const visible = filtered.slice(start, start + pageSize);
+  const rangeStart = filtered.length === 0 ? 0 : start + 1;
+  const rangeEnd = Math.min(start + pageSize, filtered.length);
 
   if (rows.length === 0) {
     return (
@@ -658,16 +696,58 @@ function HitTable({
 
   return (
     <>
+      <div className="swing-auto-table-tools">
+        <label>
+          Search
+          <input
+            type="search"
+            value={query}
+            placeholder="Symbol"
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(1);
+            }}
+          />
+        </label>
+        <label className="morning-live-toggle">
+          <input
+            type="checkbox"
+            checked={addableOnly}
+            onChange={(e) => {
+              setAddableOnly(e.target.checked);
+              setPage(1);
+            }}
+          />
+          Addable only
+        </label>
+        <label>
+          Rows
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+          >
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+          </select>
+        </label>
+        <span className="segmented-meta">
+          Showing {rangeStart}-{rangeEnd} / {filtered.length} filtered · {rows.length} tier rows
+        </span>
+      </div>
       <div className="table-scroll">
         <table className="data-table compact swing-auto-hits-table">
           <thead>
             <tr>
               <th>Symbol</th>
               <th>Decision</th>
-              <th>D-Score</th>
-              <th>BT 2y</th>
-              <th>Rank</th>
-              <th>Entry</th>
+              <th title="Decision score: actionability after risk flags, BT truth, and gates. Table sorts by this.">D-Score</th>
+              <th title="2-year walk-forward backtest truth. Blank means not preloaded/evaluated for this state.">BT 2y</th>
+              <th title="Original swing rank from the scan engine; not the table sort order.">Rank</th>
+              <th title="Entry rule composite score (E1-E11), different from D-Score.">Entry</th>
               <th>Strict</th>
               <th>R</th>
               <th>Price</th>
@@ -683,6 +763,7 @@ function HitTable({
             {visible.map((h) => {
               const showAdd =
                 h.add_allowed && canAdd && h.suggested_shares > 0 && !h.already_held && !h.incremental_stale;
+              const blocked = addBlockReason(h, canAdd);
               return (
                 <tr key={h.symbol} className={h.incremental_stale ? 'row-stale' : undefined}>
                   <td>
@@ -771,8 +852,11 @@ function HitTable({
                         </span>
                       </div>
                     ) : (
-                      <span className="muted">—</span>
+                      <span className="muted swing-add-blocked">{blocked || '—'}</span>
                     )}
+                    <Link to={swingSymbolUrl(h.symbol)} className="btn btn-secondary btn-xs swing-row-analyze">
+                      Analyze
+                    </Link>
                   </td>
                 </tr>
               );
@@ -780,11 +864,32 @@ function HitTable({
           </tbody>
         </table>
       </div>
-      {rows.length > 20 && !showAll && (
-        <button type="button" className="btn btn-secondary" style={{ marginTop: '0.75rem' }} onClick={() => setShowAll(true)}>
-          Show all {rows.length} hits
-        </button>
-      )}
+      {filtered.length === 0 ? (
+        <p className="muted" style={{ marginTop: '0.75rem' }}>No rows match the current table filters.</p>
+      ) : null}
+      {filtered.length > pageSize ? (
+        <div className="swing-table-pager">
+          <button
+            type="button"
+            className="btn btn-secondary btn-xs"
+            disabled={currentPage <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Previous
+          </button>
+          <span className="muted">
+            Page {currentPage} / {totalPages}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-xs"
+            disabled={currentPage >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            Next
+          </button>
+        </div>
+      ) : null}
     </>
   );
 }

@@ -64,7 +64,8 @@ function buildDirectional(
   ];
 
   const presetBlock = presetEval.find((p) => p.id === recommendedPreset);
-  const presetPass = presetBlock?.pass_15m !== false;
+  const passKey = interval === '5m' ? 'pass_5m' : 'pass_15m';
+  const presetPass = Boolean(presetBlock?.[passKey]);
   const effectivePreflight = preflightOk && presetPass;
 
   const headline = headlineFn(effectivePreflight, entryStep, isLong, String(plan.bias_label ?? ''));

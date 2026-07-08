@@ -87,12 +87,14 @@ function mapPosition(p: {
 export async function listIntradayPositions(
   userId?: string,
   status?: 'open' | 'closed',
-  options: { live?: boolean } = {},
+  options: { live?: boolean; date_from?: string; date_to?: string } = {},
 ) {
+  const dateWhere = intradayDateWhere(options.date_from, options.date_to);
   const positions = await prisma.niftyIntradayPosition.findMany({
     where: {
       ...(userId ? { userId } : {}),
       ...(status ? { status } : {}),
+      ...(dateWhere ?? {}),
     },
     orderBy: [{ status: 'asc' }, { entryTime: 'desc' }],
   });
@@ -132,6 +134,33 @@ export async function listIntradayPositions(
     live: liveBlock,
     closed_stats: closedStats,
   };
+}
+
+function intradayDateWhere(from?: string, to?: string) {
+  const bounds = dateBounds(from, to);
+  if (!bounds) return null;
+  return { sessionDate: { gte: bounds.start, lt: bounds.endExclusive } };
+}
+
+function dateBounds(from?: string, to?: string): { start: Date; endExclusive: Date } | null {
+  const start = parseDateOnly(from);
+  const end = parseDateOnly(to || from);
+  if (!start || !end) return null;
+  const endExclusive = new Date(end);
+  endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+  return start <= end ? { start, endExclusive } : { start: end, endExclusive: addUtcDay(start) };
+}
+
+function parseDateOnly(v?: string): Date | null {
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d = new Date(`${v}T00:00:00.000Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function addUtcDay(d: Date): Date {
+  const out = new Date(d);
+  out.setUTCDate(out.getUTCDate() + 1);
+  return out;
 }
 
 export async function createIntradayPosition(userId: string, input: NiftyIntradayPositionCreateInput) {

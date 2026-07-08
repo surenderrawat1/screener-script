@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api';
-import { StockDailyChart, type ChartPayload } from '../StockDailyChart';
+import { StockDailyChart, type ChartPayload, type ChartPriceLevel } from '../StockDailyChart';
+import type { SwingEntryPayload } from './types';
 
 const TIMEFRAMES = [
   { id: '6mo', label: '6M daily' },
@@ -29,9 +30,10 @@ interface Props {
   defaultTimeframe?: TimeframeId;
   title?: string;
   asOfDate?: string | null;
+  entry?: SwingEntryPayload | null;
 }
 
-export function SwingPriceChart({ symbol, defaultTimeframe = '1h', title, asOfDate }: Props) {
+export function SwingPriceChart({ symbol, defaultTimeframe = '1h', title, asOfDate, entry }: Props) {
   const sym = symbol.trim().toUpperCase();
   const [activeTf, setActiveTf] = useState<TimeframeId>(defaultTimeframe);
   const [chart, setChart] = useState<ChartPayload | null>(null);
@@ -87,6 +89,7 @@ export function SwingPriceChart({ symbol, defaultTimeframe = '1h', title, asOfDa
   if (!sym) return null;
 
   const heading = title ?? `Price chart — ${sym}`;
+  const priceLevels = useMemo(() => swingEntryPriceLevels(entry), [entry]);
 
   return (
     <section className={`card swing-chart-card${loading && chart ? ' is-loading' : ''}`}>
@@ -132,8 +135,23 @@ export function SwingPriceChart({ symbol, defaultTimeframe = '1h', title, asOfDa
       ) : null}
       <div className="swing-chart-body">
         {loading && chart ? <div className="swing-chart-overlay" aria-hidden /> : null}
-        <StockDailyChart chart={chart} />
+        <StockDailyChart chart={chart} priceLevels={priceLevels} />
       </div>
     </section>
   );
+}
+
+function swingEntryPriceLevels(entry: SwingEntryPayload | null | undefined): ChartPriceLevel[] {
+  if (!entry) return [];
+  const levels: ChartPriceLevel[] = [];
+  if (typeof entry.entry_price === 'number' && Number.isFinite(entry.entry_price)) {
+    levels.push({ price: entry.entry_price, title: 'Entry', color: '#60a5fa', lineStyle: 'solid' });
+  }
+  if (typeof entry.stop_loss === 'number' && Number.isFinite(entry.stop_loss)) {
+    levels.push({ price: entry.stop_loss, title: 'Stop', color: '#ef4444', lineStyle: 'dashed' });
+  }
+  if (typeof entry.profit_target === 'number' && Number.isFinite(entry.profit_target)) {
+    levels.push({ price: entry.profit_target, title: 'Target', color: '#22c55e', lineStyle: 'dotted' });
+  }
+  return levels;
 }

@@ -19,6 +19,17 @@ function normalizeBaseSymbol(query: string): string {
   return query.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
 }
 
+function hasCoreFundamentals(metrics: StockMetrics): boolean {
+  return (
+    Number(metrics.price ?? 0) > 0 &&
+    Number(metrics.market_cap_cr ?? 0) > 0 &&
+    Number(metrics.pe ?? 0) > 0 &&
+    Number(metrics.eps ?? 0) > 0 &&
+    Number(metrics.roe ?? 0) > 0 &&
+    Number(metrics.roce ?? 0) > 0
+  );
+}
+
 export function mergeMetrics(
   baseSymbol: string,
   yahoo: Awaited<ReturnType<typeof fetchYahooFundamentals>>,
@@ -100,14 +111,14 @@ export async function fetchStockData(
 
   if (!options.refresh) {
     const cached = await cacheGetJson<FetchResult>(stockKey);
-    if (cached?.success && cached.metrics) {
+    if (cached?.success && cached.metrics && hasCoreFundamentals(cached.metrics)) {
       return { ...cached, from_cache: true };
     }
   }
 
   const sources: string[] = [];
   const [yahoo, screener] = await Promise.all([
-    fetchYahooFundamentals(baseSymbol),
+    fetchYahooFundamentals(baseSymbol, options.refresh ?? false),
     fetchScreenerRatios(baseSymbol, options.refresh ?? false),
   ]);
   if (yahoo) sources.push(`Yahoo Finance (${yahoo.symbol})`);
@@ -141,6 +152,8 @@ export async function fetchStockData(
     from_cache: false,
   };
 
-  await cacheSetJson(stockKey, result, getCacheTtl().stock).catch(() => undefined);
+  if (hasCoreFundamentals(metrics)) {
+    await cacheSetJson(stockKey, result, getCacheTtl().stock).catch(() => undefined);
+  }
   return result;
 }

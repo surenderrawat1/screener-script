@@ -22,6 +22,7 @@ export function SwingSymbolSummary({
 }: Props) {
   const strict = String(entry.strict_verdict ?? 'AVOID');
   const discovery = String(entry.discovery_verdict ?? 'AVOID');
+  const strictReady = entry.strict_enter_ready !== false;
   const strictFloor = Number(entry.strict_floor ?? 0);
   const minR = Number(entry.min_r_multiple ?? engineMeta?.min_r_multiple ?? 0);
   const minNetEdge = Number(engineMeta?.min_net_edge_pct ?? 0);
@@ -29,6 +30,9 @@ export function SwingSymbolSummary({
   const ruleCount = Number(engineMeta?.entry_rule_count ?? entry.rules?.length ?? 11);
   const gc9 = entry.gc9 ?? {};
   const gc9Label = gc9.label ? String(gc9.label) : gc9.gc9_entry || gc9.gc9_active ? 'GC9 · swing long' : gc9.entry_ok ? 'GC9 structure' : '';
+  const failedChaseRules = (entry.rules ?? [])
+    .filter((r) => r.passed === false && ['E2', 'E4', 'E5'].includes(r.id))
+    .map((r) => `${r.id} ${r.name}`);
 
   return (
     <header className="swing-symbol-summary">
@@ -101,6 +105,23 @@ export function SwingSymbolSummary({
       ) : null}
       {scanEligibility?.passes ? (
         <p className="swing-scan-eligibility-ok muted">Passes active scanner filters.</p>
+      ) : null}
+      {discovery === 'ENTER' && strict !== 'ENTER' ? (
+        <p className="swing-scan-eligibility-warn">
+          Discovery ENTER is for ranking only. Strict gate is <strong>{strict}</strong>
+          {strictFloor > 0 ? ` and needs score >= ${strictFloor}` : ''}; do not use this as an order-ready signal.
+        </p>
+      ) : null}
+      {strict === 'ENTER' && !strictReady ? (
+        <p className="swing-scan-eligibility-warn">
+          Strict verdict is ENTER, but strict readiness is not confirmed. Re-check rule table and risk gates before adding.
+        </p>
+      ) : null}
+      {failedChaseRules.length > 0 ? (
+        <p className="swing-scan-eligibility-warn">
+          CFA caution: chase-risk rules failed ({failedChaseRules.join(' · ')}). Prefer pullback/confirmation before sizing up,
+          even if the strict gate passes.
+        </p>
       ) : null}
     </header>
   );

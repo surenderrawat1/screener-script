@@ -66,6 +66,10 @@ interface RunResponse {
 
 const DRAFT_KEY = 'sv:verify-full:draft';
 
+function normalizeSymbolInput(value: string): string {
+  return value.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
+}
+
 function manualOverridesForFetch(
   input: Record<string, string | number | boolean>,
   autoKeys: Set<string>,
@@ -99,6 +103,7 @@ export default function VerifyFullPage() {
   const [watchlistSaved, setWatchlistSaved] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
+  const [draftMessage, setDraftMessage] = useState('');
   const skipUrlPrefillRef = useRef(false);
   const autoFetchDoneRef = useRef(false);
   const fromVerify =
@@ -116,15 +121,22 @@ export default function VerifyFullPage() {
   }
 
   const loadPrefill = useCallback(async (sym: string) => {
+    const normalized = normalizeSymbolInput(sym);
+    if (!normalized) return;
     setLoading(true);
     setError('');
+    setDraftMessage('');
+    setFetchMeta(null);
+    setRunResult(null);
+    setWatchlistSaved(false);
     try {
-      const q = sym.trim() ? `?symbol=${encodeURIComponent(sym.trim())}` : '';
+      const q = `?symbol=${encodeURIComponent(normalized)}`;
       const res = await api<PrefillResponse>(`/api/v1/verify/full/prefill${q}`);
       setPrefill(res);
       setInput(res.input);
       setAutoKeys(new Set(res.auto_keys));
-      setSymbol(res.symbol || sym.toUpperCase());
+      setSymbol(res.symbol || normalized);
+      setActivePhase(0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load form');
     } finally {
@@ -176,7 +188,7 @@ export default function VerifyFullPage() {
   }
 
   function onLoadSymbol() {
-    const sym = symbol.trim().toUpperCase();
+    const sym = normalizeSymbolInput(symbol);
     if (!sym) return;
     skipUrlPrefillRef.current = true;
     updateSymbolParam(sym);
@@ -184,11 +196,14 @@ export default function VerifyFullPage() {
   }
 
   async function onFetchFill(refresh = false) {
-    const sym = symbol.trim().toUpperCase();
+    const sym = normalizeSymbolInput(symbol);
     if (!sym) return;
     setFetching(true);
     setError('');
+    setDraftMessage('');
     setFetchMeta(null);
+    setRunResult(null);
+    setWatchlistSaved(false);
     skipUrlPrefillRef.current = true;
     updateSymbolParam(sym);
     try {
@@ -212,6 +227,7 @@ export default function VerifyFullPage() {
       setAutoKeys(new Set(res.auto_keys));
       setFetchMeta(res.fetch_meta);
       setSymbol(res.symbol);
+      setActivePhase(0);
       setLoading(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fetch failed');
@@ -237,10 +253,11 @@ export default function VerifyFullPage() {
   const attestationRequired = thesisValidation.errors.some((e) => e.includes('attestation'));
 
   async function onRunVerification() {
-    const sym = symbol.trim().toUpperCase();
+    const sym = normalizeSymbolInput(symbol);
     if (!sym) return;
     setRunning(true);
     setError('');
+    setDraftMessage('');
     setRunResult(null);
     setWatchlistSaved(false);
     try {
@@ -250,6 +267,8 @@ export default function VerifyFullPage() {
       });
       setRunResult(res.result);
       setSymbol(res.symbol);
+      skipUrlPrefillRef.current = true;
+      updateSymbolParam(res.symbol);
       setWatchlistSaved(Boolean(res.watchlist_saved));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed');
@@ -267,18 +286,20 @@ export default function VerifyFullPage() {
   }
 
   async function saveDraft() {
-    if (!symbol) return;
+    const sym = normalizeSymbolInput(symbol);
+    if (!sym) return;
     const draft = {
-      symbol,
+      symbol: sym,
       input,
       auto_keys: [...autoKeys],
       updatedAt: new Date().toISOString(),
     };
-    localStorage.setItem(`${DRAFT_KEY}:${symbol}`, JSON.stringify(draft));
+    localStorage.setItem(`${DRAFT_KEY}:${sym}`, JSON.stringify(draft));
+    setDraftMessage(`Draft saved for ${sym}.`);
     try {
       await api('/api/v1/verify/full/draft', {
         method: 'PUT',
-        body: JSON.stringify({ symbol, input, auto_keys: [...autoKeys] }),
+        body: JSON.stringify({ symbol: sym, input, auto_keys: [...autoKeys] }),
       });
     } catch {
       /* local draft still saved */
@@ -286,7 +307,10 @@ export default function VerifyFullPage() {
   }
 
   async function loadDraft() {
-    const sym = symbol.trim().toUpperCase();
+    const sym = normalizeSymbolInput(symbol);
+    if (!sym) return;
+    setError('');
+    setDraftMessage('');
     try {
       const res = await api<{
         draft: {
@@ -297,6 +321,9 @@ export default function VerifyFullPage() {
       if (res.draft?.input) {
         setInput((prev) => ({ ...prev, ...res.draft!.input }));
         if (res.draft.auto_keys) setAutoKeys(new Set(res.draft.auto_keys));
+        setRunResult(null);
+        setWatchlistSaved(false);
+        setDraftMessage(`Draft loaded for ${sym}.`);
         return;
       }
     } catch {
@@ -311,6 +338,9 @@ export default function VerifyFullPage() {
       };
       setInput((prev) => ({ ...prev, ...draft.input }));
       if (draft.auto_keys) setAutoKeys(new Set(draft.auto_keys));
+      setRunResult(null);
+      setWatchlistSaved(false);
+      setDraftMessage(`Local draft loaded for ${sym}.`);
     } catch {
       /* ignore corrupt draft */
     }
@@ -383,13 +413,15 @@ export default function VerifyFullPage() {
         </div>
       )}
 
+      {draftMessage && <div className="verify-fetch-success">{draftMessage}</div>}
+
       <div className="verify-full-layout">
         <section className="verify-full-main card">
           <h2>{t('page.checklist', 'Verification Checklist')}</h2>
 
           <div className="verify-fetch-bar">
             <h4>{t('fetch.title', 'Auto mode — fetch & fill gates')}</h4>
-            <div className="verify-fetch-row">
+            <div className="verify-fetch-row verify-command-row">
               <label className="verify-field verify-symbol-field">
                 <span className="verify-field-label">{t('fetch.symbol', 'NSE/BSE symbol')}</span>
                 <input
@@ -420,11 +452,7 @@ export default function VerifyFullPage() {
               >
                 {t('btn.refresh', 'Refresh')}
               </button>
-              <Link
-                className="btn btn-secondary"
-                to={`/verify?symbol=${encodeURIComponent(symbol)}`}
-                style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
-              >
+              <Link className="btn btn-secondary" to={`/verify?symbol=${encodeURIComponent(symbol)}`}>
                 CFA Verify →
               </Link>
             </div>

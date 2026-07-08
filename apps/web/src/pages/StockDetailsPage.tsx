@@ -25,6 +25,11 @@ interface StockSummary {
   };
   sources?: string[];
   from_cache?: boolean;
+  data_quality?: {
+    level: 'reported' | 'limited' | 'estimated';
+    label: string;
+    message: string;
+  };
   iv_drift?: {
     screener_iv: number;
     full_iv: number;
@@ -127,6 +132,10 @@ function fmtMoney(v: unknown): string {
   return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 }
 
+function normalizeSymbolInput(value: string): string {
+  return value.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
+}
+
 function verdictClass(rec: string): string {
   const r = rec.toLowerCase();
   if (r.includes('strong') || r.includes('buy')) return 'badge badge-buy';
@@ -167,32 +176,41 @@ function MetricTile({
   );
 }
 
-const FUNDAMENTAL_TILES: Array<{ label: string; key: string; fmt?: (v: unknown) => string; hint?: string }> = [
+function metricValue(metrics: Record<string, unknown>, keys: string | string[]): unknown {
+  const list = Array.isArray(keys) ? keys : [keys];
+  for (const key of list) {
+    const value = metrics[key];
+    if (value !== null && value !== undefined && value !== '') return value;
+  }
+  return undefined;
+}
+
+const FUNDAMENTAL_TILES: Array<{ label: string; key: string | string[]; fmt?: (v: unknown) => string; hint?: string }> = [
   { label: 'Price', key: 'price', fmt: fmtMoney },
-  { label: 'Market cap (₹ Cr)', key: 'market_cap_cr' },
-  { label: 'P/E', key: 'pe' },
-  { label: 'P/B', key: 'pb_ratio' },
-  { label: 'PEG', key: 'peg_ratio' },
+  { label: 'Market cap (₹ Cr)', key: ['market_cap_cr', 'market_cap', 'marketCap'] },
+  { label: 'P/E', key: ['pe', 'trailing_pe', 'trailingPE'] },
+  { label: 'P/B', key: ['pb_ratio', 'price_to_book', 'priceToBook'] },
+  { label: 'PEG', key: ['peg_ratio', 'pegRatio'] },
   { label: 'EPS', key: 'eps', fmt: fmtMoney },
-  { label: 'Book value', key: 'book_value', fmt: fmtMoney },
-  { label: 'ROE', key: 'roe', fmt: (v) => fmtNum(v, '%') },
-  { label: 'ROA', key: 'roa', fmt: (v) => fmtNum(v, '%') },
+  { label: 'Book value', key: ['book_value', 'bookValue'], fmt: fmtMoney },
+  { label: 'ROE', key: ['roe', 'return_on_equity', 'returnOnEquity'], fmt: (v) => fmtNum(v, '%') },
+  { label: 'ROA', key: ['roa', 'return_on_assets', 'returnOnAssets'], fmt: (v) => fmtNum(v, '%') },
   { label: 'ROCE', key: 'roce', fmt: (v) => fmtNum(v, '%') },
-  { label: 'Debt / equity', key: 'debt_to_equity' },
-  { label: 'Div yield', key: 'div_yield', fmt: (v) => fmtNum(v, '%') },
-  { label: 'Sales YoY', key: 'sales_yoy', fmt: (v) => fmtNum(v, '%') },
-  { label: 'Profit YoY', key: 'profit_yoy', fmt: (v) => fmtNum(v, '%') },
-  { label: '52w High', key: 'high_52w', fmt: fmtMoney },
-  { label: '52w Low', key: 'low_52w', fmt: fmtMoney },
-  { label: 'Gross margin', key: 'gross_margin', fmt: (v) => fmtNum(v, '%') },
-  { label: 'EBITDA margin', key: 'ebitda_margin', fmt: (v) => fmtNum(v, '%') },
-  { label: 'Operating margin', key: 'operating_margin', fmt: (v) => fmtNum(v, '%') },
-  { label: 'FCF (₹ Cr)', key: 'fcf_cr' },
-  { label: 'CFO (₹ Cr)', key: 'cfo_cr' },
-  { label: 'Est. Capex (₹ Cr)', key: 'capex_cr', hint: 'CFO − FCF proxy' },
-  { label: 'Interest coverage', key: 'interest_coverage' },
-  { label: 'Total debt (₹ Cr)', key: 'total_debt_cr' },
-  { label: 'Total cash (₹ Cr)', key: 'total_cash_cr' },
+  { label: 'Debt / equity', key: ['debt_to_equity', 'debtToEquity'] },
+  { label: 'Div yield', key: ['div_yield', 'dividend_yield', 'dividendYield'], fmt: (v) => fmtNum(v, '%') },
+  { label: 'Sales YoY', key: ['sales_yoy', 'revenue_growth', 'revenueGrowth'], fmt: (v) => fmtNum(v, '%') },
+  { label: 'Profit YoY', key: ['profit_yoy', 'eps_growth', 'earningsGrowth'], fmt: (v) => fmtNum(v, '%') },
+  { label: '52w High', key: ['high_52w', 'fiftyTwoWeekHigh'], fmt: fmtMoney },
+  { label: '52w Low', key: ['low_52w', 'fiftyTwoWeekLow'], fmt: fmtMoney },
+  { label: 'Gross margin', key: ['gross_margin', 'grossMargins'], fmt: (v) => fmtNum(v, '%') },
+  { label: 'EBITDA margin', key: ['ebitda_margin', 'ebitdaMargins'], fmt: (v) => fmtNum(v, '%') },
+  { label: 'Operating margin', key: ['operating_margin', 'operatingMargins'], fmt: (v) => fmtNum(v, '%') },
+  { label: 'FCF (₹ Cr)', key: ['fcf_cr', 'free_cash_flow', 'freeCashflow'] },
+  { label: 'CFO (₹ Cr)', key: ['cfo_cr', 'operating_cash_flow', 'operatingCashflow'] },
+  { label: 'Est. Capex (₹ Cr)', key: ['capex_cr', 'capital_expenditure'], hint: 'CFO − FCF proxy' },
+  { label: 'Interest coverage', key: ['interest_coverage', 'interestCoverage'] },
+  { label: 'Total debt (₹ Cr)', key: ['total_debt_cr', 'totalDebt'] },
+  { label: 'Total cash (₹ Cr)', key: ['total_cash_cr', 'totalCash'] },
   { label: 'Sector', key: 'sector', fmt: fmtSector },
   { label: 'Industry', key: 'industry', fmt: fmtText },
 ];
@@ -211,57 +229,66 @@ export default function StockDetailsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState('');
   const [error, setError] = useState('');
+  const [chartError, setChartError] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [swingError, setSwingError] = useState('');
   const [swingEval, setSwingEval] = useState<Record<string, unknown> | null>(null);
   const [swingLoading, setSwingLoading] = useState(false);
 
   const canRefreshLive = user?.role === 'admin' || user?.role === 'analyst';
 
   const loadChart = useCallback(async (sym: string, refresh = false) => {
-    const normalized = sym.trim().toUpperCase();
+    const normalized = normalizeSymbolInput(sym);
     if (!normalized) return;
     setChartLoading(true);
+    setChartError('');
     try {
       const q = refresh ? '?refresh=true' : '';
       const data = await api<ChartResponse>(
         `/api/v1/stock/${encodeURIComponent(normalized)}/chart${q}`,
       );
       setChartData(data);
-    } catch {
+    } catch (err) {
       setChartData(null);
+      setChartError(err instanceof Error ? err.message : 'Chart load failed');
     } finally {
       setChartLoading(false);
     }
   }, []);
 
   const loadSwing = useCallback(async (sym: string, refresh = false) => {
-    const normalized = sym.trim().toUpperCase();
+    const normalized = normalizeSymbolInput(sym);
     if (!normalized) return;
     setSwingLoading(true);
+    setSwingError('');
     try {
       const data = await api<Record<string, unknown>>('/api/v1/swing/evaluate', {
         method: 'POST',
         body: JSON.stringify({ symbol: normalized, refresh }),
       });
       setSwingEval(data);
-    } catch {
+    } catch (err) {
       setSwingEval(null);
+      setSwingError(err instanceof Error ? err.message : 'Swing evaluation unavailable');
     } finally {
       setSwingLoading(false);
     }
   }, []);
 
   const loadProfile = useCallback(async (sym: string, refresh = false) => {
-    const normalized = sym.trim().toUpperCase();
+    const normalized = normalizeSymbolInput(sym);
     if (!normalized) return;
     setProfileLoading(true);
+    setProfileError('');
     try {
       const q = refresh ? '?refresh=true' : '';
       const data = await api<{ profile: ScreenerProfile | null }>(
         `/api/v1/stock/${encodeURIComponent(normalized)}/profile${q}`,
       );
       setProfile(data.profile);
-    } catch {
+    } catch (err) {
       setProfile(null);
+      setProfileError(err instanceof Error ? err.message : 'Profile load failed');
     } finally {
       setProfileLoading(false);
     }
@@ -269,13 +296,17 @@ export default function StockDetailsPage() {
 
   const load = useCallback(
     async (sym: string, refresh = false) => {
-      const normalized = sym.trim().toUpperCase();
+      const normalized = normalizeSymbolInput(sym);
       if (!normalized) return;
       setError('');
+      setRefreshMsg('');
       setLoading(true);
       setChartData(null);
       setProfile(null);
       setSwingEval(null);
+      setChartError('');
+      setProfileError('');
+      setSwingError('');
       try {
         const q = refresh ? '?refresh=true' : '';
         const data = await api<StockSummary>(
@@ -296,7 +327,7 @@ export default function StockDetailsPage() {
   );
 
   const refreshLive = useCallback(async (sym: string) => {
-    const normalized = sym.trim().toUpperCase();
+    const normalized = normalizeSymbolInput(sym);
     if (!normalized) return;
     setRefreshMsg('');
     setError('');
@@ -310,23 +341,25 @@ export default function StockDetailsPage() {
       setRefreshMsg(`Cleared ${data.deleted_keys} cache key(s) and reloaded live data.`);
       void loadChart(normalized, true);
       void loadProfile(normalized, true);
+      void loadSwing(normalized, true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Cache refresh failed');
     } finally {
       setRefreshing(false);
     }
-  }, [loadChart, loadProfile]);
+  }, [loadChart, loadProfile, loadSwing]);
 
   useEffect(() => {
     if (routeSymbol) {
-      setQuery(routeSymbol.toUpperCase());
-      void load(routeSymbol, false);
+      const normalized = normalizeSymbolInput(routeSymbol);
+      setQuery(normalized);
+      void load(normalized, false);
     }
   }, [routeSymbol, load]);
 
   function onSearch(e: FormEvent) {
     e.preventDefault();
-    const sym = query.trim().toUpperCase();
+    const sym = normalizeSymbolInput(query);
     if (!sym) return;
     navigate(`/stock/${encodeURIComponent(sym)}`);
   }
@@ -335,6 +368,10 @@ export default function StockDetailsPage() {
   const v = summary?.valuation;
   const ta = chartData?.ta ?? {};
   const phases = chartData?.phases;
+  const expenditureItems = (profile?.expenditures?.items ?? []).filter(
+    (item) => item.latest_cr !== null && item.latest_cr !== undefined && Number.isFinite(Number(item.latest_cr)),
+  );
+  const expenditureUnit = profile?.expenditures?.unit ?? 'Rs Cr';
 
   return (
     <Page>
@@ -352,13 +389,16 @@ export default function StockDetailsPage() {
             <label>Symbol</label>
             <input
               value={query}
-              onChange={(e) => setQuery(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                setQuery(e.target.value.toUpperCase());
+                setRefreshMsg('');
+              }}
               placeholder="TCS"
               style={{ width: '100%' }}
             />
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div className="stock-details-actions">
           <button type="submit" className="btn" disabled={loading}>
             {loading ? 'Loading…' : 'Load'}
           </button>
@@ -413,7 +453,13 @@ export default function StockDetailsPage() {
                 {summary.from_cache ? ' (cached)' : ''}
               </p>
             )}
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+            {summary.data_quality && summary.data_quality.level !== 'reported' ? (
+              <div className={`data-quality-banner data-quality-${summary.data_quality.level}`} role="alert">
+                <strong>{summary.data_quality.label}</strong>
+                <span>{summary.data_quality.message}</span>
+              </div>
+            ) : null}
+            <div className="stock-details-actions stock-details-hero-actions">
               <Link className="btn btn-secondary" to={`/verify/full?symbol=${encodeURIComponent(summary.symbol)}`}>
                 Full verify
               </Link>
@@ -462,7 +508,7 @@ export default function StockDetailsPage() {
               <MetricTile label="Fair P/E" value={`${v.fair_pe}×`} />
               <MetricTile label="Graham number" value={fmtMoney(v.graham)} />
               <MetricTile label="Quality score" value={`${v.quality_score}/100`} />
-              <MetricTile label="Verify score" value={`${v.verify_score}/56`} />
+              <MetricTile label="Quick score" value={`${v.verify_score}/56`} hint="Quality proxy; Full Verify has manual gates" />
               <MetricTile label="Method" value={v.method || '—'} />
               <MetricTile label="Verdict" value={v.recommendation || '—'} />
             </div>
@@ -473,9 +519,9 @@ export default function StockDetailsPage() {
             <div className="sd-metric-grid">
               {FUNDAMENTAL_TILES.map((tile) => (
                 <MetricTile
-                  key={tile.key}
+                  key={Array.isArray(tile.key) ? tile.key[0] : tile.key}
                   label={tile.label}
-                  value={(tile.fmt ?? fmtNum)(m[tile.key])}
+                  value={(tile.fmt ?? fmtNum)(metricValue(m, tile.key))}
                   hint={tile.hint}
                 />
               ))}
@@ -498,6 +544,7 @@ export default function StockDetailsPage() {
           <div className="card">
             <h2>Daily chart (2y)</h2>
             {chartLoading && <p className="muted">Loading chart…</p>}
+            {chartError && !chartLoading && <p className="error">{chartError}</p>}
             {!chartLoading && <StockDailyChart chart={chartData?.chart ?? null} />}
           </div>
 
@@ -532,6 +579,8 @@ export default function StockDetailsPage() {
             <h2>Technical indicators</h2>
             {chartLoading ? (
               <p className="muted">Loading TA metrics…</p>
+            ) : chartError ? (
+              <p className="muted">Technical indicators unavailable until chart data loads.</p>
             ) : (
               <div className="sd-metric-grid">
                 <MetricTile label="RSI-14" value={fmtNum(ta.ta_rsi14)} hint="14-day RSI" />
@@ -608,6 +657,7 @@ export default function StockDetailsPage() {
               </Link>
             </div>
             {swingLoading && <p className="muted">Evaluating swing rules…</p>}
+            {swingError && !swingLoading && <p className="error">{swingError}</p>}
             {!swingLoading && swingEval?.entry ? (
               <>
                 <SwingVerdictBanner
@@ -641,6 +691,7 @@ export default function StockDetailsPage() {
           <div className="card">
             <h2>Business profile</h2>
             {profileLoading && <p className="muted">Loading Screener.in profile…</p>}
+            {profileError && !profileLoading && <p className="error">{profileError}</p>}
             {!profileLoading && !profile && (
               <p className="muted">Company profile unavailable for this symbol.</p>
             )}
@@ -665,7 +716,7 @@ export default function StockDetailsPage() {
                     <p>{profile.key_points}</p>
                   </>
                 )}
-                {profile.business_plans.highlights.length > 0 && (
+                {profile.business_plans?.highlights?.length > 0 && (
                   <>
                     <h3>Business plans &amp; guidance</h3>
                     <ul>
@@ -675,7 +726,7 @@ export default function StockDetailsPage() {
                     </ul>
                   </>
                 )}
-                {profile.concalls.length > 0 && (
+                {profile.concalls?.length > 0 && (
                   <>
                     <h3>Concalls</h3>
                     <table className="data-table compact">
@@ -718,11 +769,11 @@ export default function StockDetailsPage() {
                     </table>
                   </>
                 )}
-                {profile.expenditures.items.length > 0 && (
+                {expenditureItems.length > 0 ? (
                   <>
-                    <h3>Expenditures ({profile.expenditures.unit})</h3>
+                    <h3>Expenditures ({expenditureUnit})</h3>
                     <div className="sd-metric-grid">
-                      {profile.expenditures.items.map((item) => (
+                      {expenditureItems.map((item) => (
                         <MetricTile
                           key={item.label}
                           label={item.label}
@@ -732,6 +783,10 @@ export default function StockDetailsPage() {
                       ))}
                     </div>
                   </>
+                ) : (
+                  <p className="muted">
+                    Expenditure data unavailable from Screener for this symbol. Use Refresh data to retry.
+                  </p>
                 )}
               </>
             )}

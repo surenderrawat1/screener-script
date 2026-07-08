@@ -13,9 +13,13 @@ export interface ScreenerAnnualFinancials {
   sector_label?: string;
   industry?: string;
   promoter_holding_pct?: number;
+  market_cap_cr?: number;
+  revenue_cr?: number;
   eps_consolidated?: number;
   operating_profit_latest?: number;
   ebitda_margin_pct?: number;
+  roe_pct?: number;
+  roce_pct?: number;
   cfo_cr?: number;
   fcf_cr?: number;
   capex_cr?: number;
@@ -93,6 +97,16 @@ function parsePromoterHoldingPct(html: string): number {
   return Number.isFinite(n) && n > 0 && n <= 100 ? Math.round(n * 100) / 100 : 0;
 }
 
+function parseDescriptionNumber(html: string, label: string): number {
+  const desc = html.match(/<meta name="description" content="([^"]+)"/i);
+  if (!desc) return 0;
+  const re = new RegExp(`${label}:\\s*([0-9,.]+)`, 'i');
+  const match = desc[1].match(re);
+  if (!match) return 0;
+  const n = parseFloat(match[1].replace(/,/g, ''));
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0;
+}
+
 export function parseScreenerAnnualFinancials(html: string): ScreenerAnnualFinancials {
   const pl = parseSectionTable(html, 'profit-loss');
   const bs = parseSectionTable(html, 'balance-sheet');
@@ -122,6 +136,7 @@ export function parseScreenerAnnualFinancials(html: string): ScreenerAnnualFinan
   const borrowings = latestRowValue(bs.rows, ['Borrowings', 'Total Debt']);
   const totalCash = latestCashCr(bs.rows);
   const promoterHoldingPct = parsePromoterHoldingPct(html);
+  const marketCapCr = parseDescriptionNumber(html, 'Mkt Cap');
 
   let summary = '';
   const desc = html.match(/<meta name="description" content="([^"]+)"/i);
@@ -148,6 +163,12 @@ export function parseScreenerAnnualFinancials(html: string): ScreenerAnnualFinan
       : 0;
   const debtToEquity =
     borrowings > 0 && equity > 0 ? Math.round((borrowings / equity) * 10000) / 10000 : 0;
+  const roePct = patLatest > 0 && equity > 0 ? Math.round((patLatest / equity) * 10000) / 100 : 0;
+  const capitalEmployed = Math.max(equity + borrowings - totalCash, 0);
+  const rocePct =
+    operatingProfit > 0 && capitalEmployed > 0
+      ? Math.round((operatingProfit / capitalEmployed) * 10000) / 100
+      : 0;
 
   return {
     revenue_history: revenue,
@@ -158,9 +179,13 @@ export function parseScreenerAnnualFinancials(html: string): ScreenerAnnualFinan
     sector_label: sectorLabel || undefined,
     industry: industry || undefined,
     promoter_holding_pct: promoterHoldingPct > 0 ? promoterHoldingPct : undefined,
+    market_cap_cr: marketCapCr > 0 ? marketCapCr : undefined,
+    revenue_cr: revLatest > 0 ? revLatest : undefined,
     eps_consolidated: epsConsolidated > 0 ? epsConsolidated : undefined,
     operating_profit_latest: operatingProfit > 0 ? operatingProfit : undefined,
     ebitda_margin_pct: ebitdaMargin > 0 ? ebitdaMargin : undefined,
+    roe_pct: roePct > 0 ? roePct : undefined,
+    roce_pct: rocePct > 0 ? rocePct : undefined,
     cfo_cr: cfo > 0 ? cfo : undefined,
     fcf_cr: fcf > 0 ? fcf : undefined,
     capex_cr: capex > 0 ? capex : undefined,
@@ -180,8 +205,15 @@ export function enrichMetricsFromScreenerAnnual(
   if (!annual) return metrics;
   const out: StockMetrics = { ...metrics };
   const price = Number(out.price ?? 0);
-  const mcap = Number(out.market_cap_cr ?? 0);
+  const mcap = Number(out.market_cap_cr ?? annual.market_cap_cr ?? 0);
   const pe = Number(out.pe ?? 0);
+
+  if (Number(out.market_cap_cr ?? 0) <= 0 && annual.market_cap_cr) {
+    out.market_cap_cr = annual.market_cap_cr;
+  }
+  if (Number(out.revenue_cr ?? 0) <= 0 && annual.revenue_cr) {
+    out.revenue_cr = annual.revenue_cr;
+  }
 
   if (annual.eps_consolidated) {
     out.eps = annual.eps_consolidated;
@@ -192,25 +224,37 @@ export function enrichMetricsFromScreenerAnnual(
     if (pat > 0) out.eps = Math.round((pat * price) / mcap * 100) / 100;
   }
 
-  if (Number(out.ebitda_margin ?? 0) <= 0 && annual.ebitda_margin_pct) {
+  const eps = Number(out.eps ?? 0);
+  if (Number(out.pe ?? 0) <= 0 && price > 0 && eps > 0) {
+    out.pe = Math.round((price / eps) * 100) / 100;
+  }
+
+  if (Number(out.roe ?? 0) <= 0 && annual.roe_pct) {
+    out.roe = annual.roe_pct;
+  }
+  if (Number(out.roce ?? 0) <= 0 && annual.roce_pct) {
+    out.roce = annual.roce_pct;
+  }
+
+  if (annual.ebitda_margin_pct) {
     out.ebitda_margin = annual.ebitda_margin_pct;
   }
-  if (Number(out.cfo_cr ?? 0) <= 0 && annual.cfo_cr) out.cfo_cr = annual.cfo_cr;
-  if (Number(out.fcf_cr ?? 0) <= 0 && annual.fcf_cr) out.fcf_cr = annual.fcf_cr;
-  if (Number(out.capex_cr ?? 0) <= 0 && annual.capex_cr) out.capex_cr = annual.capex_cr;
-  if (Number(out.total_debt_cr ?? 0) <= 0 && annual.total_debt_cr) {
+  if (annual.cfo_cr) out.cfo_cr = annual.cfo_cr;
+  if (annual.fcf_cr) out.fcf_cr = annual.fcf_cr;
+  if (annual.capex_cr) out.capex_cr = annual.capex_cr;
+  if (annual.total_debt_cr) {
     out.total_debt_cr = annual.total_debt_cr;
   }
-  if (Number(out.total_cash_cr ?? 0) <= 0 && annual.total_cash_cr) {
+  if (annual.total_cash_cr) {
     out.total_cash_cr = annual.total_cash_cr;
   }
-  if (Number(out.operating_margin ?? 0) <= 0 && annual.operating_margin_pct) {
+  if (annual.operating_margin_pct) {
     out.operating_margin = annual.operating_margin_pct;
   }
-  if (Number(out.roa ?? 0) <= 0 && annual.roa_pct) {
+  if (annual.roa_pct) {
     out.roa = annual.roa_pct;
   }
-  if (Number(out.debt_to_equity ?? 0) <= 0 && annual.debt_to_equity) {
+  if (annual.debt_to_equity) {
     out.debt_to_equity = annual.debt_to_equity;
   }
 

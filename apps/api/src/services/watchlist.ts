@@ -159,7 +159,7 @@ export async function syncWatchlistFromFullVerify(
     stock_name?: string;
     sector?: string;
     scorecard?: { total?: number };
-    metrics?: { margin_of_safety?: number };
+    metrics?: { margin_of_safety?: number | null };
     verdict?: { action?: string };
   },
 ): Promise<{ saved: boolean }> {
@@ -190,7 +190,7 @@ export async function syncWatchlistFromFullVerify(
     invalidation_2: String(input.invalidation_2 ?? ''),
     last_verified_at: today,
     last_score: result.scorecard?.total ?? 0,
-    last_mos: result.metrics?.margin_of_safety ?? 0,
+    last_mos: result.metrics?.margin_of_safety ?? null,
     last_verdict: result.verdict?.action ?? '',
   };
 

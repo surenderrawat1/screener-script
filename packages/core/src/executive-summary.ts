@@ -8,14 +8,18 @@ function pillarLabel(score: number, max: number): string {
   return 'Poor';
 }
 
-function mosPillar(mos: number): string {
+function mosPillar(mos: number | null): string {
+  if (mos === null) return 'Unknown';
   if (mos >= 25) return 'Deep value';
   if (mos >= 15) return 'Buy zone';
   if (mos >= 0) return 'Fair';
   return 'Expensive';
 }
 
-function headline(action: string, score: number, mos: number): string {
+function headline(action: string, score: number, mos: number | null): string {
+  if (mos === null) {
+    return `Analysis incomplete — score ${score}/56 but MOS is unavailable. Refresh fundamentals before acting.`;
+  }
   if (action.includes('STRONG BUY')) {
     return `High-conviction candidate — score ${score}/56 with ${Math.round(mos * 10) / 10}% MOS.`;
   }
@@ -47,7 +51,8 @@ function qualityPillars(
     Ratios: pillarLabel(phaseScore(3), phaseMax(3)),
     Valuation: pillarLabel(phaseScore(4), phaseMax(4)),
     Quant: pillarLabel(phaseScore(5), phaseMax(5)),
-    [`MoS ${Math.round(m.margin_of_safety)}%`]: mosPillar(m.margin_of_safety),
+    [`MoS ${m.margin_of_safety === null ? 'Unknown' : `${Math.round(m.margin_of_safety)}%`}`]:
+      mosPillar(m.margin_of_safety),
   };
 }
 
@@ -76,7 +81,8 @@ function nextSteps(action: string, result: VerificationResult): string[] {
   return steps;
 }
 
-function conviction(score: number, mos: number, riskCount: number): string {
+function conviction(score: number, mos: number | null, riskCount: number): string {
+  if (mos === null) return score >= 35 ? 'Low' : 'None';
   if (score >= 45 && mos >= 15 && riskCount <= 1) return 'High';
   if (score >= 35 && mos >= 0 && riskCount <= 2) return 'Medium';
   if (score >= 25) return 'Low';
@@ -99,7 +105,7 @@ export function buildExecutiveSummary(result: VerificationResult): ExecutiveSumm
   if (m.moat_count >= 2) {
     strengths.push(`Economic moat signals present (${m.moat_strength})`);
   }
-  if (m.margin_of_safety >= 15) {
+  if (mos !== null && mos >= 15) {
     strengths.push(`Margin of safety ${Math.round(mos * 10) / 10}% — price below intrinsic estimate`);
   }
   if (m.piotroski >= 7) {
@@ -122,7 +128,7 @@ export function buildExecutiveSummary(result: VerificationResult): ExecutiveSumm
   if (m.altman_z > 0 && m.altman_z < 2.99) {
     risks.push(`Altman Z-score ${m.altman_z} — distress zone risk`);
   }
-  if (mos < 0) {
+  if (mos !== null && mos < 0) {
     risks.push('Trading above intrinsic value (negative MOS)');
   }
   for (const cf of result.critical_fails) {

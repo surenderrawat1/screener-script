@@ -209,6 +209,8 @@ export function normalizeContext(stock: Partial<StockMetrics> & Record<string, u
     debt_to_equity: de,
     div_yield: divYield,
     market_cap_cr: mcap,
+    revenue_cr: Number(stock.revenue_cr ?? stock.revenue_latest_cr ?? 0) ||
+      (revHistory.length ? revHistory[revHistory.length - 1] : 0),
     fcf_cr: Number(stock.fcf_cr ?? stock.fcf ?? 0),
     ebitda_cr: Number(stock.ebitda_cr ?? 0),
     ebitda_margin: Number(stock.ebitda_margin ?? stock.ebitda_margin_latest ?? 0),
@@ -252,10 +254,10 @@ export function resolveFcfPerShare(ctx: Record<string, unknown>) {
 export function resolveEbitdaCr(ctx: Record<string, unknown>) {
   const ebitdaCr = Number(ctx.ebitda_cr ?? 0);
   if (ebitdaCr > 0) return { value: ebitdaCr, source: 'reported' as const };
-  const mcap = Number(ctx.market_cap_cr ?? 0);
+  const revenueCr = Number(ctx.revenue_cr ?? ctx.revenue_latest_cr ?? 0);
   const margin = Number(ctx.ebitda_margin ?? 0);
-  if (mcap > 0 && margin > 0) {
-    return { value: mcap * (margin / 100), source: 'estimated' as const };
+  if (revenueCr > 0 && margin > 0) {
+    return { value: Math.round(revenueCr * (margin / 100) * 100) / 100, source: 'estimated' as const };
   }
   return { value: 0, source: 'missing' as const };
 }
@@ -339,6 +341,41 @@ export function fairPe(ctx: Record<string, unknown>, moatTierVal: string): numbe
     debtPen;
 
   return Math.round(Math.max(8, Math.min(40, raw)) * 10) / 10;
+}
+
+export function fairPeDetail(ctx: Record<string, unknown>, moatTierVal: string) {
+  const sector = String(ctx.sector_key ?? '');
+  const fairPeVal = fairPe(ctx, moatTierVal);
+  if (fairPeVal <= 0) {
+    return {
+      fair_pe: 0,
+      sector_key: sector,
+      moat_tier: moatTierVal,
+      rationale: `Fair P/E not primary for ${sector || 'this'} sector; model uses ${MODEL_BY_SECTOR[sector] ?? 'sector-specific'} valuation.`,
+    };
+  }
+
+  const epsCagr = Number(ctx.eps_cagr_5y ?? 0);
+  const roce = Number(ctx.roce ?? 0);
+  const mcap = Number(ctx.market_cap_cr ?? 0);
+  const de = Number(ctx.debt_to_equity ?? 0);
+  const moatPrem =
+    moatTierVal === 'exceptional' ? 5 : moatTierVal === 'strong' ? 3 : moatTierVal === 'moderate' ? 1 : 0;
+  const sizePrem = mcap >= 50000 ? 2 : mcap >= 5000 ? 0 : -2;
+  const debtPen = de < 0.3 ? 0 : de <= 1.0 ? 2 : 5;
+
+  return {
+    fair_pe: fairPeVal,
+    sector_key: sector,
+    moat_tier: moatTierVal,
+    eps_cagr_5y: epsCagr,
+    roce,
+    moat_premium: moatPrem,
+    size_premium: sizePrem,
+    debt_penalty: debtPen,
+    rationale:
+      `Fair P/E ${fairPeVal}x from production CFA engine: 8 + 0.4x EPS CAGR (${epsCagr}%) + 0.1x ROCE (${roce}%) + moat ${moatPrem} + size ${sizePrem} - debt ${debtPen}.`,
+  };
 }
 
 export function dcfValue(ctx: Record<string, unknown>, fcfPs?: number): number {
@@ -511,7 +548,8 @@ export function analyze(stock: Partial<StockMetrics> & Record<string, unknown>) 
 
   const quality = qualityScore(ctx);
   const moatTierVal = moatTier(ctx);
-  const fairPeVal = fairPe(ctx, moatTierVal);
+  const fairPeInfo = fairPeDetail(ctx, moatTierVal);
+  const fairPeVal = fairPeInfo.fair_pe;
   const fcfResolved = resolveFcfPerShare(ctx);
   const ebitdaResolved = resolveEbitdaCr(ctx);
   const dcf = dcfValue(ctx, fcfResolved.value);
@@ -543,6 +581,7 @@ export function analyze(stock: Partial<StockMetrics> & Record<string, unknown>) 
     quality_score: quality.total,
     quality_breakdown: quality.breakdown,
     fair_pe: fairPeVal,
+    fair_pe_detail: fairPeInfo,
     dcf_value: dcf,
     pe_intrinsic: peIntrinsic,
     pb_value: pbVal,
@@ -551,7 +590,7 @@ export function analyze(stock: Partial<StockMetrics> & Record<string, unknown>) 
     intrinsic,
     intrinsic_value: intrinsic,
     mos,
-    margin_of_safety: mos ?? 0,
+    margin_of_safety: mos,
     mos_zone: mosZone(mos),
     mos_action: rating.label,
     final_rating: rating.label,

@@ -26,27 +26,41 @@ function Layout() {
   const { user, logout } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
 
+  const moreLinks = [
+    { to: '/presets', label: 'Presets' },
+    { to: '/strategies', label: 'Strategies' },
+    { to: '/verify/full', label: 'Full Verify' },
+    { to: '/cfa-reference', label: 'CFA Ref' },
+    { to: '/stock/TCS', label: 'Details' },
+    { to: '/watchlist', label: 'Watchlist' },
+    { to: '/swing/backtest', label: 'Swing Backtest' },
+    { to: '/intraday/backtest', label: 'Intraday Backtest' },
+    { to: '/intraday/positions', label: 'Nifty Positions' },
+    { to: '/admin', label: 'Admin' },
+  ];
+
   return (
     <div className="app-shell">
       <nav className="nav">
         <span className="brand">{APP_NAME}</span>
         <NavLink to="/" end>Dashboard</NavLink>
         <NavLink to="/morning">Morning</NavLink>
-        <NavLink to="/presets">Presets</NavLink>
-        <NavLink to="/strategies">Strategies</NavLink>
         <NavLink to="/screener">Screener</NavLink>
         <NavLink to="/verify">Verify</NavLink>
-        <NavLink to="/verify/full">Full Verify</NavLink>
-        <NavLink to="/cfa-reference">CFA Ref</NavLink>
-        <NavLink to="/stock/TCS">Details</NavLink>
-        <NavLink to="/watchlist">Watchlist</NavLink>
         <NavLink to="/positions">Positions</NavLink>
         <NavLink to="/swing">Swing</NavLink>
         <NavLink to="/swing/auto">Auto Radar</NavLink>
         <NavLink to="/intraday">Intraday</NavLink>
-        <NavLink to="/intraday/backtest">Backtest</NavLink>
-        <NavLink to="/intraday/positions">Nifty Pos</NavLink>
-        <NavLink to="/admin">Admin</NavLink>
+        <details className="nav-more">
+          <summary>More</summary>
+          <div className="nav-more-menu">
+            {moreLinks.map((link) => (
+              <NavLink key={link.to} to={link.to}>
+                {link.label}
+              </NavLink>
+            ))}
+          </div>
+        </details>
         <span className="nav-user muted">{user.email}</span>
         <button type="button" className="btn btn-secondary" onClick={logout}>
           Logout

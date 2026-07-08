@@ -60,8 +60,9 @@ export async function getSwingAutoState(
   const livePositions = includePositions
     ? await refreshOpenPositions(dbPositions, Boolean(options.live), regime)
     : [];
+  const positionsForTierOverlay = includePositions ? livePositions : dbPositions;
 
-  const state = buildState(scanResult, livePositions, regime, {
+  const state = buildState(scanResult, positionsForTierOverlay, regime, {
     includeCarried,
     backtestAttached,
   });

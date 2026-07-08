@@ -60,7 +60,7 @@ export function investmentReady(
 
   const scoreOk = sc.total >= minScore;
   const mosVal = metrics.margin_of_safety;
-  const mosOk = mosVal >= minMos;
+  const mosOk = mosVal !== null && mosVal >= minMos;
   const noCritical = result.critical_fails.length === 0;
   const redCount = result.red_flag_scan.count;
   const redFlagsOk = redCount <= maxRedFlags;
@@ -103,7 +103,11 @@ export function investmentReady(
     reasons.push(`Scorecard ${sc.total}/56 — need ≥ ${minScore} (Grade B)`);
   }
   if (!mosOk) {
-    reasons.push(`MOS ${mosVal.toFixed(1)}% — need ≥ ${minMos}%`);
+    reasons.push(
+      mosVal === null
+        ? `MOS unavailable — need ≥ ${minMos}%`
+        : `MOS ${mosVal.toFixed(1)}% — need ≥ ${minMos}%`,
+    );
   }
   if (!noCritical) {
     reasons.push('Critical gate failure(s) present');
@@ -116,7 +120,9 @@ export function investmentReady(
   }
   if (!mosSanOk) {
     reasons.push(
-      `MOS ${mosVal.toFixed(1)}% is extreme (|MOS| > ${MOS_EXTREME_THRESHOLD}%) — verify intrinsic manually`,
+      mosVal === null
+        ? 'MOS unavailable — verify intrinsic manually'
+        : `MOS ${mosVal.toFixed(1)}% is extreme (|MOS| > ${MOS_EXTREME_THRESHOLD}%) — verify intrinsic manually`,
     );
   }
   if (screeningMode) {
