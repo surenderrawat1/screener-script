@@ -185,7 +185,29 @@ function metricValue(metrics: Record<string, unknown>, keys: string | string[]):
   return undefined;
 }
 
-const FUNDAMENTAL_TILES: Array<{ label: string; key: string | string[]; fmt?: (v: unknown) => string; hint?: string }> = [
+function isBankingSector(metrics: Record<string, unknown>): boolean {
+  const sector = String(metrics.sector ?? '').toLowerCase();
+  const industry = String(metrics.industry ?? '').toLowerCase();
+  return sector.includes('bank') || sector === 'nbfc' || industry.includes('bank');
+}
+
+type FundamentalTile = {
+  label: string;
+  key: string | string[];
+  fmt?: (v: unknown) => string;
+  hint?: string;
+  bankingNa?: boolean;
+};
+
+function fundamentalDisplayValue(tile: FundamentalTile, metrics: Record<string, unknown>): string {
+  const value = metricValue(metrics, tile.key);
+  if (tile.bankingNa && isBankingSector(metrics) && (value === undefined || value === null || value === '' || Number(value) === 0)) {
+    return 'N/A for banks';
+  }
+  return (tile.fmt ?? fmtNum)(value);
+}
+
+const FUNDAMENTAL_TILES: FundamentalTile[] = [
   { label: 'Price', key: 'price', fmt: fmtMoney },
   { label: 'Market cap (₹ Cr)', key: ['market_cap_cr', 'market_cap', 'marketCap'] },
   { label: 'P/E', key: ['pe', 'trailing_pe', 'trailingPE'] },
@@ -202,15 +224,15 @@ const FUNDAMENTAL_TILES: Array<{ label: string; key: string | string[]; fmt?: (v
   { label: 'Profit YoY', key: ['profit_yoy', 'eps_growth', 'earningsGrowth'], fmt: (v) => fmtNum(v, '%') },
   { label: '52w High', key: ['high_52w', 'fiftyTwoWeekHigh'], fmt: fmtMoney },
   { label: '52w Low', key: ['low_52w', 'fiftyTwoWeekLow'], fmt: fmtMoney },
-  { label: 'Gross margin', key: ['gross_margin', 'grossMargins'], fmt: (v) => fmtNum(v, '%') },
-  { label: 'EBITDA margin', key: ['ebitda_margin', 'ebitdaMargins'], fmt: (v) => fmtNum(v, '%') },
-  { label: 'Operating margin', key: ['operating_margin', 'operatingMargins'], fmt: (v) => fmtNum(v, '%') },
-  { label: 'FCF (₹ Cr)', key: ['fcf_cr', 'free_cash_flow', 'freeCashflow'] },
-  { label: 'CFO (₹ Cr)', key: ['cfo_cr', 'operating_cash_flow', 'operatingCashflow'] },
-  { label: 'Est. Capex (₹ Cr)', key: ['capex_cr', 'capital_expenditure'], hint: 'CFO − FCF proxy' },
-  { label: 'Interest coverage', key: ['interest_coverage', 'interestCoverage'] },
-  { label: 'Total debt (₹ Cr)', key: ['total_debt_cr', 'totalDebt'] },
-  { label: 'Total cash (₹ Cr)', key: ['total_cash_cr', 'totalCash'] },
+  { label: 'Gross margin', key: ['gross_margin', 'grossMargins'], fmt: (v) => fmtNum(v, '%'), bankingNa: true },
+  { label: 'EBITDA margin', key: ['ebitda_margin', 'ebitdaMargins'], fmt: (v) => fmtNum(v, '%'), bankingNa: true },
+  { label: 'Operating margin', key: ['operating_margin', 'operatingMargins'], fmt: (v) => fmtNum(v, '%'), bankingNa: true },
+  { label: 'FCF (₹ Cr)', key: ['fcf_cr', 'free_cash_flow', 'freeCashflow'], bankingNa: true },
+  { label: 'CFO (₹ Cr)', key: ['cfo_cr', 'operating_cash_flow', 'operatingCashflow'], bankingNa: true },
+  { label: 'Est. Capex (₹ Cr)', key: ['capex_cr', 'capital_expenditure'], hint: 'CFO − FCF proxy', bankingNa: true },
+  { label: 'Interest coverage', key: ['interest_coverage', 'interestCoverage'], bankingNa: true },
+  { label: 'Total debt (₹ Cr)', key: ['total_debt_cr', 'totalDebt'], bankingNa: true },
+  { label: 'Total cash (₹ Cr)', key: ['total_cash_cr', 'totalCash'], bankingNa: true },
   { label: 'Sector', key: 'sector', fmt: fmtSector },
   { label: 'Industry', key: 'industry', fmt: fmtText },
 ];
@@ -521,7 +543,7 @@ export default function StockDetailsPage() {
                 <MetricTile
                   key={Array.isArray(tile.key) ? tile.key[0] : tile.key}
                   label={tile.label}
-                  value={(tile.fmt ?? fmtNum)(metricValue(m, tile.key))}
+                  value={fundamentalDisplayValue(tile, m)}
                   hint={tile.hint}
                 />
               ))}

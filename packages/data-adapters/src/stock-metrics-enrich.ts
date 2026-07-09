@@ -20,6 +20,26 @@ function revenueCagr3y(revs: number[]): number {
   return Math.round((Math.pow(last / first, 1 / 3) - 1) * 1000) / 10;
 }
 
+function industryFromSector(sector: string | undefined): string {
+  const key = String(sector ?? '').toLowerCase();
+  if (key === 'banking') return 'Banking / Financial Services';
+  if (key === 'nbfc') return 'Non-Banking Financial Services';
+  if (key === 'insurance') return 'Insurance';
+  if (key === 'defence') return 'Defence / Aerospace';
+  if (key === 'it') return 'Information Technology Services';
+  if (key === 'pharma') return 'Pharmaceuticals / Healthcare';
+  if (key === 'fmcg') return 'Fast-Moving Consumer Goods';
+  if (key === 'auto') return 'Automobiles';
+  if (key === 'oil_gas' || key === 'oil & gas') return 'Oil & Gas';
+  if (key === 'cement') return 'Cement';
+  if (key === 'metal') return 'Metals & Mining';
+  if (key === 'telecom') return 'Telecom';
+  if (key === 'utility') return 'Utilities';
+  if (key === 'infra') return 'Infrastructure';
+  if (key === 'reit') return 'REIT / InvIT';
+  return '';
+}
+
 /** Shared enrich for Stock Details, Verify, and Full Verify fetch paths. */
 export function enrichStockMetrics(
   metrics: StockMetrics,
@@ -57,13 +77,26 @@ export function enrichStockMetrics(
   if (hint && (!out.sector || out.sector === 'general')) {
     out = { ...out, sector: hint };
   }
+  if (!out.industry) {
+    const industry = industryFromSector(out.sector);
+    if (industry) out = { ...out, industry };
+  }
 
   const price = Number(out.price ?? 0);
   const mcap = Number(out.market_cap_cr ?? 0);
   const equity = annual?.shareholders_equity_cr ?? 0;
 
+  if (Number(out.eps ?? 0) <= 0 && Number(out.pe ?? 0) > 0 && price > 0) {
+    out = { ...out, eps: Math.round((price / Number(out.pe)) * 100) / 100 };
+  }
+
   if (Number(out.book_value ?? 0) <= 0 && equity > 0 && price > 0 && mcap > 0) {
     const bv = Math.round(((equity * price) / mcap) * 100) / 100;
+    out = { ...out, book_value: bv };
+  }
+
+  if (Number(out.book_value ?? 0) <= 0 && Number(out.eps ?? 0) > 0 && Number(out.roe ?? 0) > 0) {
+    const bv = Math.round(((Number(out.eps) * 100) / Number(out.roe)) * 100) / 100;
     out = { ...out, book_value: bv };
   }
 

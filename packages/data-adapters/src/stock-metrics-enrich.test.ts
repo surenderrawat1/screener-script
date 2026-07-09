@@ -35,4 +35,28 @@ describe('enrichStockMetrics', () => {
     expect(out.sales_yoy).toBeGreaterThan(0);
     expect(out.industry).toContain('Technology');
   });
+
+  it('derives display fundamentals from price and ratios when live data is sparse', () => {
+    const out = enrichStockMetrics(
+      {
+        symbol: 'SBIN',
+        name: 'SBIN',
+        price: 1000,
+        pe: 20,
+        roe: 15,
+        roce: 14,
+        sales_yoy: 8,
+        profit_yoy: 8,
+        sector: 'general',
+      },
+      null,
+      { symbol: 'SBIN' },
+    );
+
+    expect(out.eps).toBe(50);
+    expect(out.book_value).toBe(333.33);
+    expect(out.pb_ratio).toBe(3);
+    expect(out.sector).toBe('banking');
+    expect(out.industry).toBe('Banking / Financial Services');
+  });
 });

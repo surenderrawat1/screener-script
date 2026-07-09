@@ -3,6 +3,7 @@ import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import { httpGet, pct, raw, toCrores } from './http.js';
 
 type YahooModule = Record<string, unknown>;
+type YahooQuoteMeta = Partial<YahooFundamentals>;
 
 export interface YahooFundamentals {
   symbol: string;
@@ -68,6 +69,56 @@ async function fetchQuoteSummary(
     if (!result) return null;
     await cacheSetJson(cacheKeyStr, result, getCacheTtl().yahoo);
     return result;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchYahooQuoteMeta(
+  yahooSymbol: string,
+  refresh = false,
+): Promise<YahooQuoteMeta | null> {
+  const cacheKeyStr = cacheKey(CACHE_PREFIX.YAHOO, `${yahooSymbol}:quote`);
+  if (!refresh) {
+    const cached = await cacheGetJson<YahooQuoteMeta>(cacheKeyStr);
+    if (cached) return cached;
+  }
+
+  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(yahooSymbol)}`;
+  const body = await httpGet(url);
+  if (!body) return null;
+
+  try {
+    const json = JSON.parse(body) as {
+      quoteResponse?: { result?: Array<Record<string, unknown>> };
+    };
+    const quote = json.quoteResponse?.result?.[0];
+    if (!quote) return null;
+
+    const price = Number(quote.regularMarketPrice ?? 0);
+    const eps = Number(quote.epsTrailingTwelveMonths ?? 0);
+    const bookValue = Number(quote.bookValue ?? 0);
+    const pe = Number(quote.trailingPE ?? 0) || (eps > 0 && price > 0 ? price / eps : 0);
+    const marketCap = Number(quote.marketCap ?? 0);
+    const divYield = Number(quote.trailingAnnualDividendYield ?? quote.dividendYield ?? 0);
+    const high52 = Number(quote.fiftyTwoWeekHigh ?? 0);
+    const low52 = Number(quote.fiftyTwoWeekLow ?? 0);
+
+    const meta: YahooQuoteMeta = {
+      symbol: yahooSymbol,
+      company_name: String(quote.longName ?? quote.shortName ?? yahooSymbol),
+      price: Math.round(price * 100) / 100,
+      eps: Math.round(eps * 100) / 100,
+      book_value: Math.round(bookValue * 100) / 100,
+      pe: Math.round(pe * 100) / 100,
+      market_cap_cr: toCrores(marketCap),
+      div_yield: pct(divYield),
+      high_52w: Math.round(high52 * 100) / 100,
+      low_52w: Math.round(low52 * 100) / 100,
+    };
+
+    await cacheSetJson(cacheKeyStr, meta, getCacheTtl().yahoo);
+    return meta;
   } catch {
     return null;
   }
@@ -177,6 +228,22 @@ function mergeChartMeta(parsed: YahooFundamentals, chart: NonNullable<Awaited<Re
   };
 }
 
+function mergeQuoteMeta(parsed: YahooFundamentals, meta: YahooQuoteMeta | null): YahooFundamentals {
+  if (!meta) return parsed;
+  return {
+    ...parsed,
+    company_name: parsed.company_name && parsed.company_name !== parsed.symbol ? parsed.company_name : (meta.company_name ?? parsed.company_name),
+    price: parsed.price > 0 ? parsed.price : (meta.price ?? 0),
+    eps: parsed.eps > 0 ? parsed.eps : (meta.eps ?? 0),
+    book_value: parsed.book_value > 0 ? parsed.book_value : (meta.book_value ?? 0),
+    pe: parsed.pe > 0 ? parsed.pe : (meta.pe ?? 0),
+    market_cap_cr: parsed.market_cap_cr > 0 ? parsed.market_cap_cr : (meta.market_cap_cr ?? 0),
+    div_yield: parsed.div_yield > 0 ? parsed.div_yield : (meta.div_yield ?? 0),
+    high_52w: parsed.high_52w > 0 ? parsed.high_52w : (meta.high_52w ?? 0),
+    low_52w: parsed.low_52w > 0 ? parsed.low_52w : (meta.low_52w ?? 0),
+  };
+}
+
 export async function fetchYahooFundamentals(
   baseSymbol: string,
   refresh = false,
@@ -188,6 +255,7 @@ export async function fetchYahooFundamentals(
     if (data) {
       let parsed = parseYahooQuote(yahooSymbol, data);
       if (parsed.price > 0) {
+        parsed = mergeQuoteMeta(parsed, await fetchYahooQuoteMeta(yahooSymbol, refresh));
         if (!chartFallback) chartFallback = await fetchYahooChartPrice(baseSymbol);
         if (chartFallback) parsed = mergeChartMeta(parsed, chartFallback);
         return parsed;
@@ -199,28 +267,29 @@ export async function fetchYahooFundamentals(
   }
 
   if (chartFallback) {
+    const meta = await fetchYahooQuoteMeta(chartFallback.symbol, refresh);
     return {
       symbol: chartFallback.symbol,
-      company_name: baseSymbol,
+      company_name: meta?.company_name ?? baseSymbol,
       sector: 'general',
       industry: '',
-      price: chartFallback.price,
-      eps: 0,
-      book_value: 0,
-      pe: 0,
+      price: meta?.price && meta.price > 0 ? meta.price : chartFallback.price,
+      eps: meta?.eps ?? 0,
+      book_value: meta?.book_value ?? 0,
+      pe: meta?.pe ?? 0,
       pb_ratio: 0,
       peg_ratio: 0,
       roe: 0,
       roa: 0,
-      market_cap_cr: 0,
-      div_yield: 0,
+      market_cap_cr: meta?.market_cap_cr ?? 0,
+      div_yield: meta?.div_yield ?? 0,
       debt_to_equity: 0,
       revenue_growth: 0,
       eps_growth: 0,
       fcf_cr: 0,
       cfo_cr: 0,
-      high_52w: chartFallback.high_52w,
-      low_52w: chartFallback.low_52w,
+      high_52w: meta?.high_52w && meta.high_52w > 0 ? meta.high_52w : chartFallback.high_52w,
+      low_52w: meta?.low_52w && meta.low_52w > 0 ? meta.low_52w : chartFallback.low_52w,
       gross_margin: 0,
       ebitda_margin: 0,
       operating_margin: 0,
