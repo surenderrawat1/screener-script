@@ -6,6 +6,7 @@ import { matchesGc9Entry } from './scanner.js';
 describe('swing parity — validate-logic.php', () => {
   const gc9Ta = {
     ta_sma9: 105.0,
+    ta_sma20: 104.0,
     ta_sma50: 100.0,
     ta_sma200: 95.0,
     ta_ema9: 106.0,
@@ -28,6 +29,18 @@ describe('swing parity — validate-logic.php', () => {
     const entry = evaluateEntry(gc9Ta, 106.0);
     expect(entry.gc9?.gc9_entry).toBe(true);
     expect(entry.rules[10]?.passed).toBe(true);
+  });
+
+  it('E12 20 MA Stratzy passes on pullback above SMA-20', () => {
+    const entry = evaluateEntry(gc9Ta, 105.5);
+    expect(entry.rules[11]?.id).toBe('E12');
+    expect(entry.rules[11]?.passed).toBe(true);
+    expect(entry.sma20_stratzy?.entry_ok).toBe(true);
+  });
+
+  it('E12 fails when price is below SMA-20', () => {
+    const entry = evaluateEntry({ ...gc9Ta, ta_sma20: 110 }, 106.0);
+    expect(entry.rules[11]?.passed).toBe(false);
   });
 
   it('DC9 fixture is short bias', () => {

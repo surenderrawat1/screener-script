@@ -11,10 +11,16 @@ describe('swing-engine-meta', () => {
     expect(meta.score_categories).toHaveLength(6);
     expect(meta.min_r_multiple).toBe(3);
     expect(meta.min_net_edge_pct).toBe(4);
+    expect(meta.min_target_pct).toBe(7);
+    expect(meta.max_target_pct).toBe(25);
+    expect(meta.target_policy).toBe('frozen_3r_band');
+    expect(meta.bt_scaled_weights).toEqual([0.4, 0.4, 0.2]);
+    expect(meta.bt_scaled_rr).toEqual([1, 2, 3]);
   });
 
   it('exit rule X4 text matches partial target fraction', () => {
-    expect(exitRuleDefinitions()[3]).toContain('85% of target');
+    expect(exitRuleDefinitions()[3]).toContain('92% of target');
+    expect(exitRuleDefinitions()[3]).toContain('70');
     expect(exitRuleDefinitions()[3]).not.toContain('40%');
   });
 });

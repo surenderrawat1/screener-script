@@ -1,5 +1,6 @@
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
-import { CACHE_PREFIX, dateKeyInTimezone, getConfigTimezone } from '@sv/shared';
+import { CACHE_PREFIX, dateKeyInTimezone, getAlertsConfig, getConfigTimezone } from '@sv/shared';
+import { alertsFromMorningStrings, notifyTradeSignalEmails } from './signal-alerts.js';
 
 export interface MorningAlertPayload {
   alerts: string[];
@@ -37,4 +38,19 @@ export async function dispatchMorningAlertWebhook(payload: MorningAlertPayload):
   } catch {
     return false;
   }
+}
+
+/** Webhook + email for morning exit alerts. */
+export async function dispatchMorningAlerts(
+  payload: MorningAlertPayload,
+  userId?: string,
+): Promise<{ webhook: boolean; email: boolean }> {
+  const emailEnabled = getAlertsConfig().email?.morning_exits !== false;
+  const [webhook, email] = await Promise.all([
+    dispatchMorningAlertWebhook(payload),
+    emailEnabled
+      ? notifyTradeSignalEmails(userId, alertsFromMorningStrings(payload.alerts))
+      : Promise.resolve(false),
+  ]);
+  return { webhook, email };
 }

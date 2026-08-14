@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { SwingEntryRulesTable } from './SwingEntryRulesTable';
+import { SwingRulesTable, entryRuleTier } from './SwingRulesTable';
 import { SwingScanHitAddButton } from './SwingScanHitAddButton';
 import { fmtMoney, fmtNum, verdictClass, zoneClass } from './format';
 
@@ -12,6 +12,10 @@ export interface UniverseScanHit {
   entry_score: number;
   rules_passed: number;
   rules_scored?: number;
+  rules_hard_passed?: number;
+  rules_hard_total?: number;
+  rules_soft_passed?: number;
+  rules_soft_total?: number;
   stop_loss: number | null;
   profit_target: number | null;
   r_multiple: number | null;
@@ -64,7 +68,7 @@ export function SwingUniverseHitsTable({ hits }: Props) {
               <th>Score</th>
               <th>Discovery</th>
               <th>Strict</th>
-              <th>Rules</th>
+              <th title="Hard E1–E8 passed (soft E9–E12 in expand)">Hard</th>
               <th>Price</th>
               <th>Stop</th>
               <th>Target</th>
@@ -81,7 +85,13 @@ export function SwingUniverseHitsTable({ hits }: Props) {
             {hits.map((h) => {
               const rules = h.entry_rules ?? h.rules ?? [];
               const open = expanded === h.symbol;
-              const scored = h.rules_scored ?? 11;
+              const hardTotal = h.rules_hard_total ?? 8;
+              const hardPassed =
+                h.rules_hard_passed ??
+                rules.filter((r) => entryRuleTier(r.id) === 'hard' && r.passed === true).length;
+              const softPassed =
+                h.rules_soft_passed ??
+                rules.filter((r) => entryRuleTier(r.id) === 'soft' && r.passed === true).length;
               const symbolUrl = `/swing?mode=symbol&symbol=${encodeURIComponent(h.symbol)}&autorun=1`;
               return (
                 <Fragment key={h.symbol}>
@@ -113,8 +123,12 @@ export function SwingUniverseHitsTable({ hits }: Props) {
                     <td>
                       <span className={`swing-verdict-pill ${verdictClass(h.strict_verdict)}`}>{h.strict_verdict}</span>
                     </td>
-                    <td>
-                      {h.rules_passed}/{scored}
+                    <td title={`Hard ${hardPassed}/${hardTotal} · Soft ${softPassed}/4 · All ${h.rules_passed}`}>
+                      {hardPassed}/{hardTotal}
+                      <span className="muted" style={{ fontSize: '0.75em' }}>
+                        {' '}
+                        · s{softPassed}
+                      </span>
                     </td>
                     <td className="swing-uni-price">
                       {fmtMoney(h.price)}
@@ -161,7 +175,7 @@ export function SwingUniverseHitsTable({ hits }: Props) {
                   {open && rules.length > 0 ? (
                     <tr key={`${h.symbol}-rules`}>
                       <td colSpan={18}>
-                        <SwingEntryRulesTable rules={rules} />
+                        <SwingRulesTable showTiers rules={rules} emptyLabel="Entry rules not available." />
                       </td>
                     </tr>
                   ) : null}

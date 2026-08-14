@@ -5,6 +5,7 @@ import {
   buildAlerts,
   intradayPositionsPanel,
   routineSteps,
+  overnightTierChangesFromSnapshots,
   serializeNiftyPanel,
   swingPositionsPanel,
 } from './morning-routine.js';
@@ -12,9 +13,9 @@ import {
 describe('routineSteps', () => {
   const session = nseSession(new Date('2026-07-06T05:00:00Z'));
 
-  it('returns 7 checklist steps', () => {
+  it('returns 11 checklist steps', () => {
     const steps = routineSteps(session, { open: 0 }, { open: 0 }, { hits: [] }, { available: false });
-    expect(steps).toHaveLength(7);
+    expect(steps).toHaveLength(11);
   });
 
   it('warns when swing EXIT count > 0', () => {
@@ -158,5 +159,28 @@ describe('autoRadarPanel', () => {
     expect(panel.available).toBe(true);
     expect(panel.hits[0]?.symbol).toBe('TCS');
     expect(panel.saved_ago).toMatch(/ago|now/);
+  });
+});
+
+describe('overnightTierChangesFromSnapshots', () => {
+  it('returns added/removed symbols per tier', () => {
+    const latest = {
+      tiers: {
+        high_conviction: [{ symbol: 'TCS' }, { symbol: 'INFY' }],
+        strict_enter: [{ symbol: 'RELIANCE' }],
+      },
+    };
+    const previous = {
+      tiers: {
+        high_conviction: [{ symbol: 'TCS' }, { symbol: 'AXISBANK' }],
+        strict_enter: [],
+      },
+    };
+
+    const diff = overnightTierChangesFromSnapshots(latest, previous);
+    expect(diff.high_conviction?.added).toEqual(['INFY']);
+    expect(diff.high_conviction?.removed).toEqual(['AXISBANK']);
+    expect(diff.strict_enter?.added).toEqual(['RELIANCE']);
+    expect(diff.strict_enter?.removed).toEqual([]);
   });
 });

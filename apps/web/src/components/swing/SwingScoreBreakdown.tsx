@@ -20,7 +20,7 @@ export function SwingScoreBreakdown({ entry, engineMeta }: Props) {
   return (
     <section className="swing-subsection" aria-label="Score breakdown">
       <h3>Score breakdown</h3>
-      <p className="swing-subsection-hint muted">Weighted composite from E1–E11 rule outcomes and trade geometry.</p>
+      <p className="swing-subsection-hint muted">Weighted composite from hard E1–E8 outcomes plus soft catalysts and trade geometry.</p>
       <div className="swing-score-grid">
         {categories.map((cat) => {
           const value = Number(detail[cat.key] ?? 0);

@@ -1,0 +1,14 @@
+---
+description: PHP stock-verifier is a source of improvements only — never a reason to downgrade v2.
+alwaysApply: true
+---
+
+# PHP vs v2
+
+The old PHP project (`tools/stock-verifier`) is a **feature and gap source**, not a spec to match when v2 is already ahead.
+
+- **Do** port missing PHP capability that v2 lacks (UI, gates, calendars, scalp, PWA).
+- **Do** adopt PHP rules that are *stricter* or fix a real bug (e.g. stock entry floors, holiday-adjusted F&O expiry).
+- **Do not** replace a v2 default, preset, exit profile, or workflow with an older/looser PHP equivalent just for "parity".
+- **Examples of v2 staying ahead:** Bank Nifty / Fin Nifty recommend `banknifty_tuned` (not PHP `strict_mtf`); Sensex stays `cfa_precision` (not PHP `production`).
+- When in doubt, keep the v2 behavior and add the PHP idea as an extra gate or optional path.

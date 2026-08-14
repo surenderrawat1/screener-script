@@ -1,4 +1,6 @@
 import type { SwingRule, TaMetrics } from './types.js';
+import { ENGINE_VERSION } from './evaluate-entry.js';
+import { summarizeHardSoftRules } from './entry-rule-tiers.js';
 
 /** Flatten evaluateEntry + TA onto a scan hit for auto-decision, UI, and API parity. */
 export function normalizeScanHit(
@@ -11,6 +13,15 @@ export function normalizeScanHit(
   const pa = (entry.price_action ?? {}) as Record<string, unknown>;
   const dynamic = (entry.dynamic ?? {}) as Record<string, unknown>;
   const rules = (entry.rules ?? []) as SwingRule[];
+  const hardSoft =
+    entry.rules_hard_total != null
+      ? {
+          hard_passed: Number(entry.rules_hard_passed ?? 0),
+          hard_total: Number(entry.rules_hard_total ?? 8),
+          soft_passed: Number(entry.rules_soft_passed ?? 0),
+          soft_total: Number(entry.rules_soft_total ?? 4),
+        }
+      : summarizeHardSoftRules(rules);
 
   return {
     symbol,
@@ -22,6 +33,10 @@ export function normalizeScanHit(
     entry_score_detail: entry.entry_score_detail ?? null,
     rules_passed: Number(entry.rules_passed ?? 0),
     rules_scored: Number(entry.rules_scored ?? 0),
+    rules_hard_passed: hardSoft.hard_passed,
+    rules_hard_total: hardSoft.hard_total,
+    rules_soft_passed: hardSoft.soft_passed,
+    rules_soft_total: hardSoft.soft_total,
     rules,
     entry_rules: rules,
     stop_loss: entry.stop_loss ?? null,
@@ -31,6 +46,7 @@ export function normalizeScanHit(
     target_pct: entry.target_pct ?? null,
     strict_enter_ready: Boolean(entry.strict_enter_ready),
     net_edge_ok: Boolean(entry.net_edge_ok),
+    deploy_scale: Number(entry.deploy_scale ?? 1),
     ta_avg_value_cr: num(ta.ta_avg_value_cr),
     ta_rsi14: num(ta.ta_rsi14),
     ta_pct_52w: num(ta.ta_pct_52w),
@@ -51,7 +67,7 @@ export function normalizeScanHit(
     entry,
     stale: Boolean(extras.stale),
     regime_key: extras.regime_key ?? null,
-    engine_version: String(entry.engine_version ?? 'v3.9-gc9'),
+    engine_version: String(entry.engine_version ?? ENGINE_VERSION),
   };
 }
 

@@ -1,6 +1,7 @@
 import { fmtNum } from './format';
 
 export interface ChargeDetail {
+  brokerage?: number;
   stt?: number;
   stamp?: number;
   nse_txn?: number;
@@ -72,9 +73,15 @@ export function PnlBreakdown({
         {totalCharges > 0 ? (
           <>
             <div className="swing-pnl-section">Charges (est.)</div>
+            {c?.brokerage != null ? (
+              <div className="swing-pnl-row swing-charge-row">
+                <span>Brokerage</span>
+                <span>{fmtInr(c.brokerage)}</span>
+              </div>
+            ) : null}
             {c?.stt != null ? (
               <div className="swing-pnl-row swing-charge-row">
-                <span>STT (buy + sell 0.1%)</span>
+                <span>STT</span>
                 <span>{fmtInr(c.stt)}</span>
               </div>
             ) : null}

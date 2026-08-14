@@ -4,6 +4,7 @@ import { fetchInstrumentIntradayChart } from '@sv/data-adapters';
 import {
   closedTradeMetrics,
   evaluateIntradayPosition,
+  isCompatibleMarkPrice,
   normalizeInterval,
   resolveInstrument,
   resolveInstrumentFromSymbol,
@@ -12,7 +13,7 @@ import {
   summarizeClosedIntradayPositions,
   summarizeOpenIntradayPortfolio,
 } from '@sv/intraday';
-import type { NiftyIntradayPositionCreateInput } from '@sv/shared';
+import type { NiftyIntradayPositionCreateInput, NiftyIntradayPositionUpdateInput } from '@sv/shared';
 import { undoCloseMeta } from '@sv/shared';
 
 function istSessionDate(d = new Date()): string {
@@ -169,10 +170,47 @@ export async function createIntradayPosition(userId: string, input: NiftyIntrada
     throw new Error(`Unknown instrument: ${input.instrument_id}`);
   }
 
-  const id = randomBytes(8).toString('hex');
+  const side = input.side === 'short' ? 'short' : 'long';
+  const entry = Number(input.entry_price);
+  if (!(entry > 0)) throw new Error('Entry price must be positive.');
+
+  const stop = input.stop_loss != null ? Number(input.stop_loss) : null;
+  if (stop != null && stop > 0) {
+    if (side === 'long' && stop >= entry) throw new Error('Long stop must be below entry.');
+    if (side === 'short' && stop <= entry) throw new Error('Short stop must be above entry.');
+  }
+
+  for (const [label, raw] of [
+    ['T1', input.target_t1],
+    ['T2', input.target_t2],
+    ['T3', input.target_t3],
+  ] as const) {
+    if (raw == null) continue;
+    const t = Number(raw);
+    if (!(t > 0)) continue;
+    if (side === 'long' && t <= entry) throw new Error(`${label} must be above entry for long.`);
+    if (side === 'short' && t >= entry) throw new Error(`${label} must be below entry for short.`);
+  }
+
   const entryTime = input.entry_time ? new Date(input.entry_time) : new Date();
   const sessionDate = istSessionDate(entryTime);
 
+  const duplicate = await prisma.niftyIntradayPosition.findFirst({
+    where: {
+      userId,
+      instrumentId: instrument.id,
+      status: 'open',
+      sessionDate: new Date(sessionDate),
+    },
+    select: { id: true, entryPrice: true },
+  });
+  if (duplicate) {
+    throw new Error(
+      `Open ${instrument.label} position already exists today @ ₹${duplicate.entryPrice}. Close it first or use a different instrument.`,
+    );
+  }
+
+  const id = randomBytes(8).toString('hex');
   const position = await prisma.niftyIntradayPosition.create({
     data: {
       id,
@@ -180,21 +218,91 @@ export async function createIntradayPosition(userId: string, input: NiftyIntrada
       instrumentId: instrument.id,
       symbol: input.symbol?.toUpperCase() ?? instrument.cache_key,
       instrumentLabel: instrument.label,
-      side: input.side ?? 'long',
+      side,
       timeframe: input.timeframe ?? '15m',
-      entryPrice: input.entry_price,
+      entryPrice: entry,
       entryTime,
       sessionDate: new Date(sessionDate),
       quantity: input.quantity,
-      stopLoss: input.stop_loss,
-      effectiveStop: input.stop_loss,
+      stopLoss: stop && stop > 0 ? stop : null,
+      effectiveStop: stop && stop > 0 ? stop : null,
       targetT1: input.target_t1,
       targetT2: input.target_t2,
       targetT3: input.target_t3,
       notes: input.notes,
       source: input.source ?? 'manual',
-      highestSinceEntry: input.entry_price,
-      lowestSinceEntry: input.entry_price,
+      highestSinceEntry: entry,
+      lowestSinceEntry: entry,
+    },
+  });
+
+  return { position: mapPosition(position) };
+}
+
+export async function updateIntradayPosition(
+  userId: string,
+  id: string,
+  input: NiftyIntradayPositionUpdateInput,
+) {
+  const existing = await prisma.niftyIntradayPosition.findFirst({
+    where: { id, userId, status: 'open' },
+  });
+  if (!existing) return null;
+
+  const side = existing.side === 'short' ? 'short' : 'long';
+  const entry = input.entry_price ?? existing.entryPrice;
+  if (!(entry > 0)) throw new Error('Entry price must be positive.');
+
+  const nextStop =
+    input.stop_loss === undefined
+      ? existing.stopLoss
+      : input.stop_loss;
+
+  if (nextStop != null && nextStop > 0) {
+    if (side === 'long' && nextStop >= entry) throw new Error('Long stop must be below entry.');
+    if (side === 'short' && nextStop <= entry) throw new Error('Short stop must be above entry.');
+
+    // Trail ratchet: never loosen the effective stop once set.
+    const prior = existing.effectiveStop ?? existing.stopLoss;
+    if (prior != null && prior > 0) {
+      if (side === 'long' && nextStop < prior) {
+        throw new Error(`Stop cannot be loosened below current effective stop ₹${prior}.`);
+      }
+      if (side === 'short' && nextStop > prior) {
+        throw new Error(`Stop cannot be loosened above current effective stop ₹${prior}.`);
+      }
+    }
+  }
+
+  for (const [label, raw] of [
+    ['T1', input.target_t1],
+    ['T2', input.target_t2],
+    ['T3', input.target_t3],
+  ] as const) {
+    if (raw === undefined || raw === null) continue;
+    if (!(raw > 0)) continue;
+    if (side === 'long' && raw <= entry) throw new Error(`${label} must be above entry for long.`);
+    if (side === 'short' && raw >= entry) throw new Error(`${label} must be below entry for short.`);
+  }
+
+  const position = await prisma.niftyIntradayPosition.update({
+    where: { id },
+    data: {
+      ...(input.entry_price != null ? { entryPrice: input.entry_price } : {}),
+      ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
+      ...(input.stop_loss !== undefined
+        ? {
+            stopLoss: input.stop_loss,
+            effectiveStop: input.stop_loss,
+          }
+        : {}),
+      ...(input.target_t1 !== undefined ? { targetT1: input.target_t1 } : {}),
+      ...(input.target_t2 !== undefined ? { targetT2: input.target_t2 } : {}),
+      ...(input.target_t3 !== undefined ? { targetT3: input.target_t3 } : {}),
+      ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      ...(input.t1_booked !== undefined ? { t1Booked: input.t1_booked } : {}),
+      ...(input.t2_booked !== undefined ? { t2Booked: input.t2_booked } : {}),
+      ...(input.breakeven_armed !== undefined ? { breakevenArmed: input.breakeven_armed } : {}),
     },
   });
 
@@ -211,6 +319,11 @@ export async function closeIntradayPosition(
     where: { id, userId, status: 'open' },
   });
   if (!existing) return null;
+  if (!isCompatibleMarkPrice(existing.entryPrice, closedPrice)) {
+    throw new Error(
+      `INCOMPATIBLE_MARK: close ₹${closedPrice} vs entry ₹${existing.entryPrice} (index/ETF mix-up)`,
+    );
+  }
 
   const position = await prisma.niftyIntradayPosition.update({
     where: { id },
@@ -282,3 +395,84 @@ export async function trackOpenIntradayPositions(
 }
 
 export { closedTradeMetrics };
+
+const INTRADAY_CSV_HEADERS = [
+  'instrument',
+  'symbol',
+  'source',
+  'side',
+  'timeframe',
+  'session_date',
+  'entry_time',
+  'entry_price',
+  'quantity',
+  'stop_loss',
+  'target_t1',
+  'target_t2',
+  'target_t3',
+  'closed_at',
+  'closed_price',
+  'closed_reason',
+  'net_pnl',
+  'net_pnl_pct',
+  'r_multiple',
+  'notes',
+] as const;
+
+function csvEscape(value: string | number | null | undefined): string {
+  if (value == null) return '';
+  const s = String(value);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+/** Closed-journal CSV — PHP `nifty-positions-export.php` / NP-C4. */
+export async function exportIntradayPositionsCsv(
+  userId?: string,
+  options: { limit?: number; date_from?: string; date_to?: string } = {},
+): Promise<string> {
+  const limit = Math.max(1, Math.min(500, options.limit ?? 100));
+  const dateWhere = intradayDateWhere(options.date_from, options.date_to);
+  const positions = await prisma.niftyIntradayPosition.findMany({
+    where: {
+      status: 'closed',
+      ...(userId ? { userId } : {}),
+      ...(dateWhere ?? {}),
+    },
+    orderBy: [{ closedAt: 'desc' }, { entryTime: 'desc' }],
+    take: limit,
+  });
+
+  const lines = [INTRADAY_CSV_HEADERS.join(',')];
+  for (const p of positions) {
+    const mapped = mapPosition(p);
+    const metrics = closedTradeMetrics(mapped);
+    lines.push(
+      [
+        mapped.instrument_label ?? mapped.instrument_id,
+        mapped.symbol,
+        mapped.source ?? '',
+        mapped.side,
+        mapped.timeframe,
+        mapped.session_date,
+        mapped.entry_time,
+        mapped.entry_price,
+        mapped.quantity ?? '',
+        mapped.stop_loss ?? '',
+        mapped.target_t1 ?? '',
+        mapped.target_t2 ?? '',
+        mapped.target_t3 ?? '',
+        mapped.closed_at ?? '',
+        mapped.closed_price ?? '',
+        mapped.closed_reason ?? '',
+        metrics?.net_pnl ?? '',
+        metrics?.net_pnl_pct ?? '',
+        metrics?.r_multiple ?? '',
+        mapped.notes ?? '',
+      ]
+        .map(csvEscape)
+        .join(','),
+    );
+  }
+  return `${lines.join('\n')}\n`;
+}

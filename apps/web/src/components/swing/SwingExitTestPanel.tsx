@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { api } from '../../api';
 import { fmtMoney, fmtNum } from './format';
-import { SwingEntryRulesTable, type SwingRuleRow } from './SwingEntryRulesTable';
+import { SwingRulesTable, type SwingRuleRow } from './SwingRulesTable';
 import type { SwingEntryPayload } from './types';
 
 interface ExitResult {
@@ -117,7 +117,7 @@ export function SwingExitTestPanel({ symbol, entry, asOfDate }: Props) {
             Active stop {fmtMoney(exit.active_stop)} · target {fmtMoney(exit.profit_target ?? entry.profit_target)}
             {exit.triggered?.length ? ` · triggered: ${exit.triggered.join(', ')}` : ''}
           </p>
-          <SwingEntryRulesTable rules={exit.rules ?? []} />
+          <SwingRulesTable rules={exit.rules ?? []} emptyLabel="Exit rules not available." />
         </div>
       ) : null}
     </section>

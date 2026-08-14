@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { EvidenceStrip, type EconStatus } from '../research/EvidenceStrip';
 
 type ProductMode = 'spot' | 'futures' | 'options';
 
@@ -40,6 +41,7 @@ export function IntradayDecisionCockpit({
   onProductModeChange,
   kind,
   fnoSupported,
+  econStatus,
 }: {
   playbook: Record<string, unknown>;
   analysis?: Record<string, unknown>;
@@ -52,6 +54,7 @@ export function IntradayDecisionCockpit({
   onProductModeChange: (m: ProductMode) => void;
   kind: 'index' | 'stock';
   fnoSupported: boolean;
+  econStatus?: EconStatus;
 }) {
   const setupQuality = (analysis?.setup_quality as Record<string, unknown> | undefined) ?? {};
   const preset = activePreset(presets, recommended);
@@ -77,6 +80,12 @@ export function IntradayDecisionCockpit({
             Direction {direction} · confidence {fmtPct(Number(analysis?.confidence ?? 0))} · MTF{' '}
             {String(mtf?.title ?? mtf?.key ?? '—')}
           </p>
+          <EvidenceStrip
+            recommendationBasis="screening_matrix"
+            scoreBasis="quality_proxy"
+            econStatus={econStatus}
+            compact
+          />
         </div>
         <div className="intraday-decision-actions">
           <IntradayProductTabs mode={productMode} onChange={onProductModeChange} kind={kind} fnoSupported={fnoSupported} />
@@ -109,7 +118,7 @@ export function IntradayDecisionCockpit({
         />
         <DecisionTile label="Deploy" value={fmtPct(Number(mtf?.deploy_pct ?? 0))} detail="Advisory, not position size" />
         <DecisionTile label="LTP" value={fmtRs(Number(playbook.current_price ?? NaN))} detail={`Active TF ${interval}`} />
-        <DecisionTile label="Time exit" value={String(plan?.time_stop_ist ?? '15:15')} detail="No overnight hold" />
+        <DecisionTile label="Time exit" value={String(plan?.time_stop_ist ?? '14:30')} detail="No overnight hold" />
       </div>
 
       <div className={presetPass ? 'intraday-gate intraday-gate-ok' : 'intraday-gate intraday-gate-warn'}>
@@ -183,7 +192,7 @@ export function IntradayTradePlanCard({ plan }: { plan: Record<string, unknown> 
         ))}
       </div>
       <p className="muted intraday-plan-meta">
-        Time exit {String(plan.time_stop_ist ?? '15:15')} IST · confidence {Number(plan.confidence ?? 0)}%
+        Time exit {String(plan.time_stop_ist ?? '14:30')} IST · confidence {Number(plan.confidence ?? 0)}%
       </p>
     </div>
   );
@@ -436,17 +445,75 @@ export function IntradayProductTabs({
   );
 }
 
+export function IntradayScalpSetupCard({
+  setup,
+  instrumentId,
+  interval,
+}: {
+  setup?: Record<string, unknown> | null;
+  instrumentId: string;
+  interval: '5m' | '15m';
+}) {
+  if (!setup) return null;
+  const allowed = Boolean(setup.entry_allowed);
+  const plan = (setup.plan as Record<string, unknown> | null) ?? null;
+  const reasons = Array.isArray(setup.gate_reasons) ? setup.gate_reasons.map(String) : [];
+  const preflight = (setup.preflight as Record<string, unknown> | undefined) ?? {};
+  const details = Array.isArray(preflight.details) ? preflight.details.map(String) : [];
+
+  return (
+    <section className={`card intraday-scalp-card ${allowed ? 'is-cleared' : 'is-blocked'}`}>
+      <div className="intraday-scalp-head">
+        <span className={`intraday-scalp-badge ${allowed ? 'ok' : 'wait'}`}>
+          {allowed ? 'SCALP CLEARED' : 'SCALP BLOCKED'}
+        </span>
+        <div>
+          <h2 style={{ margin: 0 }}>{String(setup.preset_label ?? '5m Trend scalp')}</h2>
+          <p className="muted" style={{ margin: '0.25rem 0 0' }}>
+            {String(setup.summary ?? '')} · {String(setup.exit_label ?? 'quick scalp')} ·{' '}
+            {String(setup.direction ?? '—')} · {fmtPct(Number(setup.confidence ?? 0))}
+            {interval !== '5m' ? ' · switch to 5m for live scalp execution' : ''}
+          </p>
+        </div>
+      </div>
+      {reasons.length > 0 && !allowed ? (
+        <ul className="intraday-scalp-reasons">
+          {reasons.slice(0, 6).map((r) => (
+            <li key={r}>{r}</li>
+          ))}
+        </ul>
+      ) : null}
+      {details.length > 0 ? (
+        <p className="muted intraday-scalp-preflight">{details.slice(0, 4).join(' · ')}</p>
+      ) : null}
+      {plan ? (
+        <>
+          <IntradayTradePlanCard plan={plan} />
+          <IntradayLedgerLink
+            instrumentId={instrumentId}
+            plan={plan}
+            source={String(setup.source ?? 'nifty_scalp_5m')}
+          />
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 export function IntradayLedgerLink({
   instrumentId,
   plan,
   product = 'spot',
+  source,
 }: {
   instrumentId: string;
   plan?: Record<string, unknown> | null;
   product?: ProductMode;
+  source?: string;
 }) {
   const params = new URLSearchParams({ instrument: instrumentId });
   if (product !== 'spot') params.set('product', product);
+  if (source) params.set('source', source);
   const entry = (plan?.entry as Record<string, unknown> | undefined)?.price;
   const stop = (plan?.stop_loss as Record<string, unknown> | undefined)?.price;
   const exits = (plan?.exits as Array<Record<string, unknown>>) ?? [];

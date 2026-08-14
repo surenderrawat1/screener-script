@@ -1,0 +1,40 @@
+# Script Screener — alerts & signal email product settings
+# Edit this file to change evening GTT / exit-alert behaviour without code changes.
+# Cron times stay in schedules.yaml. Restart API + worker after edits (or reload config).
+# Env overrides still win for hard off-switches: EVENING_GTT_EMAIL=0, EXIT_ALERT_EMAIL=0, SWING_RADAR_EMAIL=0, WHATSAPP_ALERTS=0
+# See docs/EVENING-GTT-AND-DAILY-PROOF.md · docs/DATA-RULES.md · docs/WHATSAPP-ALERTS.md
+
+version: 1
+
+# Master email feature toggles (SMTP must still be configured in .env)
+email:
+  evening_gtt: true          # post-close GTT digest
+  exit_alerts: true          # open journal EXIT cards
+  swing_radar: true          # High Conviction HOT radar emails
+  morning_exits: true        # Morning-page exit strings → email
+  pattern_alerts: true       # Chart-pattern breakout/confirmed digest
+
+# WhatsApp channel (credentials in .env — Twilio / CallMeBot / Meta)
+whatsapp:
+  swing_radar: true          # HOT tier additions
+  evening_gtt: true          # post-close GTT summary
+  exit_alerts: true          # open-book EXIT summary
+  pattern_alerts: true       # Chart-pattern breakout digest
+
+# Evening GTT — High Conviction / Strict ENTER → manual Zerodha GTT lines
+evening_gtt:
+  # Tiers from Swing Auto snapshot (order = priority; symbols deduped)
+  tiers:
+    - high_conviction
+    - strict_enter
+  max_orders: 15
+  # Buy limit = trigger × (1 + limit_premium_pct/100)
+  limit_premium_pct: 0.2
+  send_email: true           # false = build digest only (API/UI), no SMTP
+
+# Open-book EXIT alerts (swing journal + intraday journal)
+exit_alerts:
+  include_swing: true
+  include_intraday: true
+  skip_weekends: true
+  max_positions_per_book: 50

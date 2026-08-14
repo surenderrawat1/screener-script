@@ -4,6 +4,9 @@ export async function fetchDailySyncStatus() {
   return getDailySyncStatus();
 }
 
-export async function runDailySyncJob(userId?: string, force = false) {
-  return runDailySync({ userId, force, trigger: 'manual' });
+export async function runDailySyncJob(userId?: string, force = false, background = true) {
+  if (background) {
+    return runDailySync({ userId, force, trigger: 'manual', background: true });
+  }
+  return runDailySync({ userId, force, trigger: 'manual', background: false });
 }

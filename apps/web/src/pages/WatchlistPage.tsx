@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState, Page, PageHeader } from '../components/PageLayout';
+import { EvidenceStrip } from '../components/research/EvidenceStrip';
+import { SignalCard } from '../components/research/SignalCard';
 
 interface WatchlistItem {
   id: string;
@@ -127,15 +129,28 @@ export default function WatchlistPage() {
         <div className="card">
           <h2>Reviews due</h2>
           <ul className="watchlist-due-list">
-            {dueItems.map((item) => (
-              <li key={item.id}>
-                <Link to={`/verify/full?symbol=${encodeURIComponent(item.symbol)}`}>
-                  {item.symbol}
-                </Link>
-                {' — '}
-                <ReviewBadge date={String(item.meta?.review_date ?? '')} />
-              </li>
-            ))}
+            {dueItems.map((item) => {
+              const meta = item.meta ?? {};
+              return (
+                <li key={item.id}>
+                  <SignalCard
+                    variant="inline"
+                    symbol={item.symbol}
+                    verdict={String(meta.last_verdict ?? 'Review due')}
+                    verdictClassName="badge badge-hold"
+                    mos={meta.last_mos != null ? Number(meta.last_mos) : null}
+                    qualityScore={meta.last_score != null ? Number(meta.last_score) : null}
+                    subtitle={String(meta.review_date ?? '')}
+                    recommendationBasis={
+                      meta.verify_mode === 'full' ? 'full_verify_matrix' : 'screening_matrix'
+                    }
+                    scoreBasis={meta.verify_mode === 'full' ? 'full_scorecard' : 'quality_proxy'}
+                  />
+                  {' '}
+                  <Link to={`/verify/full?symbol=${encodeURIComponent(item.symbol)}`}>Full Verify →</Link>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
@@ -202,7 +217,20 @@ export default function WatchlistPage() {
                     </td>
                     <td>{meta.last_score != null ? String(meta.last_score) : '—'}</td>
                     <td>{meta.last_mos != null ? `${meta.last_mos}%` : '—'}</td>
-                    <td>{String(meta.last_verdict ?? '—')}</td>
+                    <td>
+                      <div>{String(meta.last_verdict ?? '—')}</div>
+                      <EvidenceStrip
+                        recommendationBasis={
+                          String(meta.recommendation_basis ?? '') ||
+                          (meta.verify_mode === 'full' ? 'full_verify_matrix' : 'screening_matrix')
+                        }
+                        scoreBasis={
+                          String(meta.score_basis ?? '') ||
+                          (meta.verify_mode === 'full' ? 'full_scorecard' : 'quality_proxy')
+                        }
+                        compact
+                      />
+                    </td>
                     <td>
                       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                         <Link

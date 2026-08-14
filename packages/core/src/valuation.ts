@@ -29,10 +29,10 @@ export function normalizeSector(sector: string): string {
   )
     return 'oil_gas';
   if (s.includes('bank') || (s.includes('finance') && !s.includes('non-bank'))) return 'banking';
-  if (s.includes('it') || s.includes('software') || s.includes('tech')) return 'it';
+  if (s.includes('auto') || s.includes('automobile') || s.includes('vehicle')) return 'auto';
+  if (/\bit\b/.test(s) || s.includes('software') || /\btech\b/.test(s)) return 'it';
   if (s.includes('fmcg') || s.includes('consumer')) return 'fmcg';
   if (s.includes('pharma') || s.includes('health')) return 'pharma';
-  if (s.includes('auto')) return 'auto';
   if (s.includes('infra') || s.includes('power')) return 'infra';
   if (s.includes('defence') || s.includes('defense')) return 'defence';
   return 'general';

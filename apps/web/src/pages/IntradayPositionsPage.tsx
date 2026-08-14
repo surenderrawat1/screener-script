@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { api } from '../api';
+import { api, getToken } from '../api';
 import {
   LedgerDateRangeFilter,
   rangeForPreset,
@@ -12,6 +12,12 @@ import {
   IntradayOpenPanel,
   type IntradayPositionRow,
 } from '../components/intraday/IntradayPositionsPanels';
+import { IntradayPaperWalletPanel } from '../components/intraday/IntradayPaperWalletPanel';
+import {
+  IntradayLogEntryForm,
+  type InstrumentsResponse,
+  type LogEntryPrefill,
+} from '../components/intraday/IntradayLogEntryForm';
 
 interface PositionsResponse {
   positions: IntradayPositionRow[];
@@ -39,14 +45,43 @@ interface PositionsResponse {
 const REFRESH_MS = 60_000;
 const DEFAULT_RANGE = rangeForPreset('today');
 
+const FALLBACK_INSTRUMENTS: InstrumentsResponse = {
+  indices: [
+    { id: 'nifty50', label: 'Nifty 50', kind: 'index' },
+    { id: 'banknifty', label: 'Bank Nifty', kind: 'index' },
+    { id: 'sensex', label: 'Sensex', kind: 'index' },
+    { id: 'finnifty', label: 'Fin Nifty', kind: 'index' },
+  ],
+  stocks: [
+    { id: 'tcs', label: 'TCS', kind: 'stock' },
+    { id: 'reliance', label: 'Reliance', kind: 'stock' },
+  ],
+};
+
+function buildPrefill(searchParams: URLSearchParams): LogEntryPrefill {
+  const productRaw = searchParams.get('product');
+  return {
+    instrument_id: searchParams.get('instrument') ?? 'nifty50',
+    product_type:
+      productRaw === 'futures' || productRaw === 'options' ? productRaw : 'spot',
+    side: searchParams.get('side') === 'short' ? 'short' : 'long',
+    timeframe: searchParams.get('timeframe') === '5m' ? '5m' : '15m',
+    entry_price: searchParams.get('entry') ?? '',
+    stop_loss: searchParams.get('stop') ?? '',
+    target_t1: searchParams.get('t1') ?? '',
+    target_t2: searchParams.get('t2') ?? '',
+    target_t3: searchParams.get('t3') ?? '',
+    quantity: searchParams.get('qty') ?? searchParams.get('quantity') ?? '',
+    notes: searchParams.get('notes') ?? '',
+    source: searchParams.get('source') ?? undefined,
+  };
+}
+
 export default function IntradayPositionsPage() {
   const [searchParams] = useSearchParams();
-  const prefillInstrument = searchParams.get('instrument') ?? 'nifty50';
-  const prefillSide = searchParams.get('side') === 'short' ? 'short' : 'long';
-  const prefillTf = searchParams.get('timeframe') === '5m' ? '5m' : '15m';
-  const prefillProductRaw = searchParams.get('product');
-  const prefillProduct: 'spot' | 'futures' | 'options' =
-    prefillProductRaw === 'futures' || prefillProductRaw === 'options' ? prefillProductRaw : 'spot';
+  const fromRadar = Boolean(
+    searchParams.get('entry') || searchParams.get('stop') || searchParams.get('instrument'),
+  );
 
   const [data, setData] = useState<PositionsResponse | null>(null);
   const [filter, setFilter] = useState<'all' | 'open' | 'closed'>('open');
@@ -55,43 +90,51 @@ export default function IntradayPositionsPage() {
   const [customTo, setCustomTo] = useState(DEFAULT_RANGE.to);
   const [live, setLive] = useState(true);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({
-    instrument_id: prefillInstrument,
-    product_type: prefillProduct,
-    side: prefillSide as 'long' | 'short',
-    timeframe: prefillTf as '5m' | '15m',
-    entry_price: searchParams.get('entry') ?? '',
-    stop_loss: searchParams.get('stop') ?? '',
-    target_t1: searchParams.get('t1') ?? '',
-    target_t2: searchParams.get('t2') ?? '',
-    target_t3: searchParams.get('t3') ?? '',
-    quantity: '',
-    notes: '',
-  });
-  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [instruments, setInstruments] = useState<InstrumentsResponse>(FALLBACK_INSTRUMENTS);
+  const [prefill, setPrefill] = useState<LogEntryPrefill>(() => buildPrefill(searchParams));
 
-  const dateRange = useMemo(() => rangeForPreset(datePreset, customFrom, customTo), [datePreset, customFrom, customTo]);
+  useEffect(() => {
+    setPrefill(buildPrefill(searchParams));
+  }, [searchParams]);
 
-  const load = useCallback(async (statusOverride?: 'all' | 'open' | 'closed') => {
-    setError('');
-    setLoading(true);
-    try {
-      const status = statusOverride ?? filter;
-      const params = new URLSearchParams();
-      if (status !== 'all') params.set('status', status);
-      if (live) params.set('live', '1');
-      params.set('date_from', dateRange.from);
-      params.set('date_to', dateRange.to);
-      const qs = params.toString() ? `?${params.toString()}` : '';
-      const res = await api<PositionsResponse>(`/api/v1/intraday/positions${qs}`);
-      setData(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Load failed');
-    } finally {
-      setLoading(false);
-    }
-  }, [dateRange.from, dateRange.to, filter, live]);
+  useEffect(() => {
+    api<InstrumentsResponse>('/api/v1/intraday/instruments')
+      .then((res) => {
+        const next = { indices: res.indices ?? [], stocks: res.stocks ?? [] };
+        if (!next.indices.length && !next.stocks.length) return;
+        setInstruments({ ...next, etfs: res.etfs ?? [] });
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const dateRange = useMemo(
+    () => rangeForPreset(datePreset, customFrom, customTo),
+    [datePreset, customFrom, customTo],
+  );
+
+  const load = useCallback(
+    async (statusOverride?: 'all' | 'open' | 'closed') => {
+      setError('');
+      setLoading(true);
+      try {
+        const status = statusOverride ?? filter;
+        const params = new URLSearchParams();
+        if (status !== 'all') params.set('status', status);
+        if (live) params.set('live', '1');
+        params.set('date_from', dateRange.from);
+        params.set('date_to', dateRange.to);
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        const res = await api<PositionsResponse>(`/api/v1/intraday/positions${qs}`);
+        setData(res);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Load failed');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [dateRange.from, dateRange.to, filter, live],
+  );
 
   useEffect(() => {
     void load();
@@ -100,60 +143,37 @@ export default function IntradayPositionsPage() {
     return () => window.clearInterval(id);
   }, [load, live]);
 
-  const openPositions = (data?.positions ?? []).filter((p) => p.status === 'open');
-  const closedPositions = (data?.positions ?? []).filter((p) => p.status === 'closed');
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
+  async function exportCsv() {
     setError('');
     try {
-      await api('/api/v1/intraday/positions', {
-        method: 'POST',
-        body: JSON.stringify({
-          instrument_id: form.instrument_id,
-          side: form.side,
-          timeframe: form.timeframe,
-          entry_price: Number(form.entry_price),
-          stop_loss: form.stop_loss ? Number(form.stop_loss) : undefined,
-          target_t1: form.target_t1 ? Number(form.target_t1) : undefined,
-          target_t2: form.target_t2 ? Number(form.target_t2) : undefined,
-          target_t3: form.target_t3 ? Number(form.target_t3) : undefined,
-          quantity: form.quantity ? Number(form.quantity) : undefined,
-          notes: [
-            form.product_type !== 'spot' ? `[${form.product_type.toUpperCase()}]` : '',
-            form.notes,
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .trim() || undefined,
-          source: form.product_type === 'spot' ? 'manual' : `fno_${form.product_type}`,
-        }),
+      const params = new URLSearchParams();
+      params.set('date_from', dateRange.from);
+      params.set('date_to', dateRange.to);
+      const token = getToken();
+      const res = await fetch(`/api/v1/intraday/positions/export?${params}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      setForm((f) => ({
-        ...f,
-        entry_price: '',
-        stop_loss: '',
-        target_t1: '',
-        target_t2: '',
-        target_t3: '',
-        quantity: '',
-        notes: '',
-      }));
-      setFilter('open');
-      await load();
+      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `intraday-closed-${dateRange.from}_${dateRange.to}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Create failed');
-    } finally {
-      setSaving(false);
+      setError(err instanceof Error ? err.message : 'Export failed');
     }
   }
+
+  const openPositions = (data?.positions ?? []).filter((p) => p.status === 'open');
+  const closedPositions = (data?.positions ?? []).filter((p) => p.status === 'closed');
 
   return (
     <Page>
       <PageHeader
-        title="Nifty Positions"
-        subtitle="Same-day intraday ledger — live exit actions, stops & targets"
+        title="Intraday Positions"
+        subtitle="Same-day ledger — log entries, live exits, paper wallet"
         actions={
           <>
             <label className="morning-live-toggle">
@@ -162,6 +182,9 @@ export default function IntradayPositionsPage() {
             </label>
             <button type="button" className="btn btn-secondary" onClick={() => void load()} disabled={loading}>
               {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={() => void exportCsv()}>
+              Export CSV
             </button>
             <Link to="/intraday" className="btn btn-secondary">
               Intraday radar
@@ -206,6 +229,19 @@ export default function IntradayPositionsPage() {
 
       {error && <p className="error">{error}</p>}
 
+      <IntradayPaperWalletPanel />
+
+      <IntradayLogEntryForm
+        instruments={instruments}
+        openPositions={openPositions}
+        prefill={prefill}
+        fromRadar={fromRadar}
+        onCreated={async () => {
+          setFilter('open');
+          await load('open');
+        }}
+      />
+
       {(filter === 'open' || filter === 'all') && (
         <IntradayOpenPanel
           positions={openPositions}
@@ -218,123 +254,6 @@ export default function IntradayPositionsPage() {
           }}
         />
       )}
-
-      <div className="card">
-        <h2>Log trade</h2>
-        <form className="form-grid" onSubmit={handleCreate}>
-          <label>
-            Product
-            <select
-              value={form.product_type}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  product_type: e.target.value as 'spot' | 'futures' | 'options',
-                }))
-              }
-            >
-              <option value="spot">Spot / index</option>
-              <option value="futures">Futures</option>
-              <option value="options">Options</option>
-            </select>
-          </label>
-          <label>
-            Instrument
-            <select
-              value={form.instrument_id}
-              onChange={(e) => setForm((f) => ({ ...f, instrument_id: e.target.value }))}
-            >
-              <option value="nifty50">Nifty 50</option>
-              <option value="banknifty">Bank Nifty</option>
-              <option value="tcs">TCS</option>
-              <option value="reliance">Reliance</option>
-            </select>
-          </label>
-          <label>
-            Side
-            <select value={form.side} onChange={(e) => setForm((f) => ({ ...f, side: e.target.value as 'long' | 'short' }))}>
-              <option value="long">Long</option>
-              <option value="short">Short</option>
-            </select>
-          </label>
-          <label>
-            Timeframe
-            <select
-              value={form.timeframe}
-              onChange={(e) => setForm((f) => ({ ...f, timeframe: e.target.value as '5m' | '15m' }))}
-            >
-              <option value="5m">5m</option>
-              <option value="15m">15m</option>
-            </select>
-          </label>
-          <label>
-            Entry price
-            <input
-              type="number"
-              step="0.05"
-              required
-              value={form.entry_price}
-              onChange={(e) => setForm((f) => ({ ...f, entry_price: e.target.value }))}
-            />
-          </label>
-          <label>
-            Stop loss
-            <input
-              type="number"
-              step="0.05"
-              value={form.stop_loss}
-              onChange={(e) => setForm((f) => ({ ...f, stop_loss: e.target.value }))}
-            />
-          </label>
-          <label>
-            Target T1
-            <input
-              type="number"
-              step="0.05"
-              value={form.target_t1}
-              onChange={(e) => setForm((f) => ({ ...f, target_t1: e.target.value }))}
-            />
-          </label>
-          <label>
-            Target T2
-            <input
-              type="number"
-              step="0.05"
-              value={form.target_t2}
-              onChange={(e) => setForm((f) => ({ ...f, target_t2: e.target.value }))}
-            />
-          </label>
-          <label>
-            Target T3
-            <input
-              type="number"
-              step="0.05"
-              value={form.target_t3}
-              onChange={(e) => setForm((f) => ({ ...f, target_t3: e.target.value }))}
-            />
-          </label>
-          <label>
-            Quantity
-            <input
-              type="number"
-              value={form.quantity}
-              onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
-              placeholder={form.product_type === 'futures' ? 'e.g. 75 = 1 Nifty lot' : ''}
-            />
-          </label>
-          <label>
-            Notes
-            <input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
-          </label>
-          <button type="submit" className="btn" disabled={saving}>
-            {saving ? 'Saving…' : 'Log position'}
-          </button>
-        </form>
-        <p className="muted" style={{ marginTop: '0.5rem' }}>
-          Prefill from <Link to="/intraday">intraday radar</Link> trade plan · T1/T2/T3 = 1R/2R/3R partials · time
-          stop 15:15 IST
-        </p>
-      </div>
 
       {(filter === 'closed' || filter === 'all') && (
         <IntradayClosedPanel

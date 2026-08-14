@@ -1,3 +1,5 @@
+import { EvidenceStrip } from '../research/EvidenceStrip';
+
 export interface VerifyFullResultData {
   stock_name: string;
   scorecard: {
@@ -151,6 +153,12 @@ export default function VerifyFullResults({ result, running, labels }: Props) {
           </div>
         ) : null}
       </div>
+
+      <EvidenceStrip
+        recommendationBasis="full_verify_matrix"
+        scoreBasis="full_scorecard"
+        dataQuality={data_quality.passed ? 'reported' : 'limited'}
+      />
 
       {investment_ready.reasons.length > 0 && (
         <div className="verify-ready-reasons">

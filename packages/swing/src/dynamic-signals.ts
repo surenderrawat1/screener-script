@@ -7,15 +7,16 @@ export const MOMENTUM_NEUTRAL = 'neutral';
 export const VOLUME_SURGE_MIN = 1.08;
 export const VOLUME_DRY_MAX = 0.7;
 export const EMA9_STOP_BUFFER_PCT = 0.5;
-export const MOMENTUM_TARGET_BOOST = 1.12;
+/** @deprecated Momentum no longer extends the frozen 3R entry target. */
+export const MOMENTUM_TARGET_BOOST = 1.0;
 
 const DEFAULT_STOP_LOSS_PCT = 5.0;
 const ATR_STOP_MULTIPLIER = 1.2;
 const SMA50_STOP_BUFFER_PCT = 1.0;
 const EMA21_STOP_BUFFER_PCT = 1.0;
 const TARGET_RR_RATIO = 3.0;
-const MIN_TARGET_PCT = 6.0;
-const MAX_TARGET_PCT = 24.0;
+const MIN_TARGET_PCT = 7.0;
+const MAX_TARGET_PCT = 25.0;
 const MIN_CHARGE_AWARE_TARGET_PCT = 4.0;
 
 export function goldenCrossActive(ta: TaMetrics): boolean {
@@ -186,34 +187,30 @@ function dynamicStop(
 function dynamicTarget(
   price: number,
   dynamicStop: number | null,
-  ema50: number | null,
-  momentum: string,
-  golden: boolean,
-  volRatio: number | null,
+  _ema50: number | null,
+  _momentum: string,
+  _golden: boolean,
+  _volRatio: number | null,
 ) {
   if (price <= 0 || dynamicStop === null || dynamicStop >= price) {
-    return { dynamic_target: Math.round(price * (1 + MIN_TARGET_PCT / 100) * 100) / 100, dynamic_target_pct: MIN_TARGET_PCT, target_reason: 'fallback min target' };
+    return {
+      dynamic_target: Math.round(price * (1 + MIN_TARGET_PCT / 100) * 100) / 100,
+      dynamic_target_pct: MIN_TARGET_PCT,
+      target_reason: 'fallback min target',
+    };
   }
   const risk = price - dynamicStop;
   const riskPct = (risk / price) * 100;
-  let rawTargetPct = riskPct * TARGET_RR_RATIO;
-  let reason = `${TARGET_RR_RATIO}R from ${riskPct.toFixed(2)}% risk`;
-  if (momentum === MOMENTUM_STRONG && (golden || (volRatio !== null && volRatio >= VOLUME_SURGE_MIN))) {
-    rawTargetPct *= MOMENTUM_TARGET_BOOST;
-    reason += ' + momentum/golden extension';
-  }
-  if (ema50 !== null && ema50 > price && golden) {
-    const emaStretch = ((ema50 - price) / price) * 100 + 3.0;
-    if (emaStretch > rawTargetPct) {
-      rawTargetPct = Math.min(emaStretch, MAX_TARGET_PCT);
-      reason += ' toward EMA-50 zone';
-    }
-  }
-  const targetPct = Math.min(Math.max(rawTargetPct, MIN_TARGET_PCT, MIN_CHARGE_AWARE_TARGET_PCT), MAX_TARGET_PCT);
+  // Advisory dynamic target mirrors the frozen entry policy: 3R in the 7–25% band.
+  const targetPct =
+    Math.round(
+      Math.min(Math.max(riskPct * TARGET_RR_RATIO, MIN_TARGET_PCT, MIN_CHARGE_AWARE_TARGET_PCT), MAX_TARGET_PCT) *
+        100,
+    ) / 100;
   return {
     dynamic_target: Math.round(price * (1 + targetPct / 100) * 100) / 100,
-    dynamic_target_pct: Math.round(targetPct * 100) / 100,
-    target_reason: reason,
+    dynamic_target_pct: targetPct,
+    target_reason: `frozen ${TARGET_RR_RATIO}R from ${riskPct.toFixed(2)}% risk (+${MIN_TARGET_PCT}–${MAX_TARGET_PCT}%)`,
   };
 }
 

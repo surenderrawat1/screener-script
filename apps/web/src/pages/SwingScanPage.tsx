@@ -46,7 +46,7 @@ interface TradingPresetResponse {
   };
 }
 
-const RULE_OPTIONS = ['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'E10', 'E11'] as const;
+const RULE_OPTIONS = ['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'E10', 'E11', 'E12'] as const;
 const BACKGROUND_SCAN_THRESHOLD = 25;
 
 export default function SwingScanPage() {
@@ -89,10 +89,28 @@ export default function SwingScanPage() {
     const presetParam = searchParams.get('preset');
     const universeParam = searchParams.get('universe');
     const symbolParam = searchParams.get('symbol');
+    const requireRulesParam = searchParams.get('require_rules');
+    const minVerdictParam = searchParams.get('min_verdict');
 
     if (symbolParam) {
       setMode('symbol');
       setSingleSymbol(symbolParam);
+    }
+
+    if (requireRulesParam) {
+      const ids = requireRulesParam
+        .split(',')
+        .map((s) => s.trim().toUpperCase())
+        .filter((id): id is (typeof RULE_OPTIONS)[number] =>
+          (RULE_OPTIONS as readonly string[]).includes(id),
+        );
+      if (ids.length) setRequireRules(ids);
+    }
+    if (
+      minVerdictParam &&
+      ['ENTER', 'SETUP_PLUS', 'WATCH', 'ALL'].includes(minVerdictParam.toUpperCase())
+    ) {
+      setMinVerdict(minVerdictParam.toUpperCase() as typeof minVerdict);
     }
 
     if (!presetParam) {
@@ -221,6 +239,10 @@ export default function SwingScanPage() {
               strict_verdict: String(entry.strict_verdict ?? 'AVOID'),
               entry_score: Number(entry.entry_score ?? 0),
               rules_passed: Number(entry.rules_passed ?? 0),
+              rules_hard_passed: Number(entry.rules_hard_passed ?? 0),
+              rules_hard_total: Number(entry.rules_hard_total ?? 8),
+              rules_soft_passed: Number(entry.rules_soft_passed ?? 0),
+              rules_soft_total: Number(entry.rules_soft_total ?? 4),
               stop_loss: (entry.stop_loss as number | null) ?? null,
               profit_target: (entry.profit_target as number | null) ?? null,
               r_multiple: (entry.r_multiple as number | null) ?? null,
@@ -316,7 +338,7 @@ export default function SwingScanPage() {
   const engineLabel =
     (meta?.engine_version as string | undefined) ??
     singleEval?.engine_meta?.engine_version ??
-    'v3.9-gc9';
+    'v3.17-quality-floor';
   const evaluatedSymbol =
     singleEval?.symbol && String(singleEval.symbol).toUpperCase() === singleSymbol.trim().toUpperCase()
       ? singleSymbol.trim().toUpperCase()
@@ -326,7 +348,7 @@ export default function SwingScanPage() {
     <Page>
       <PageHeader
         title="Swing Scanner"
-        subtitle="E1–E11 entry rules · universe scan · ETF · single symbol · backtest"
+        subtitle="E1–E8 hard · E9–E12 soft · universe scan · ETF · single symbol · backtest"
         actions={
           <>
             <Link to="/positions" className="btn btn-secondary">
@@ -411,14 +433,15 @@ export default function SwingScanPage() {
 
         <div className="form-row">
           <div className="form-group">
-            <label>Min rules passed (1–11)</label>
+            <label>Min hard rules (E1–E8, 1–8)</label>
             <input
               type="number"
               min={1}
-              max={11}
+              max={8}
               value={minRulesPassed}
               onChange={(e) => setMinRulesPassed(e.target.value)}
               placeholder="optional"
+              title="Counts hard E1–E8 only. Soft E9–E12: use Require rules."
             />
           </div>
           {mode === 'universe' && (

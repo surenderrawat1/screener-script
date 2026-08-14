@@ -1,5 +1,3 @@
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { prisma, JobStatus, JobType } from '@sv/db';
 import {
   dateKeyInTimezone,
@@ -9,11 +7,13 @@ import {
   type ScheduleStep,
 } from '@sv/shared';
 import { syncAllIndicesFromDirectory } from './index-sync.js';
+import { defaultIndicesDir } from './indices-dir.js';
 import { fetchStockData } from './stock-data-fetcher.js';
 import { fetchScreenerRatios } from './screener-in.js';
 import { currentMarketRegime } from './market-regime.js';
 import { warmMorningBriefing } from './morning-prewarm.js';
 import { openSwingPositionSymbols, resolveUniverseSymbols } from './universe.js';
+import { scanChartPatternsBatch } from './chart-pattern-scan.js';
 
 export interface DailySyncStepResult {
   id: string;
@@ -31,14 +31,6 @@ export interface DailySyncResult {
   finished_at: string;
   steps: DailySyncStepResult[];
   error?: string;
-}
-
-function defaultIndicesDir(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  return (
-    process.env.INDICES_DIR ??
-    resolve(here, '../../../../stock-verifier/data/indices')
-  );
 }
 
 function sleep(ms: number): Promise<void> {
@@ -179,6 +171,24 @@ async function runStep(step: ScheduleStep): Promise<DailySyncStepResult> {
         };
       }
 
+      case 'scan_chart_patterns': {
+        const symbols = await collectPrefetchSymbols();
+        const result = await scanChartPatternsBatch(symbols, {
+          refresh: false,
+          trigger: 'daily_sync',
+        });
+        return {
+          ...base,
+          ok: result.symbols_ok > 0 || symbols.length === 0,
+          duration_ms: Date.now() - started,
+          detail: { ...result },
+          error:
+            result.symbols_failed > 0 && result.symbols_ok === 0
+              ? 'All chart pattern scans failed'
+              : undefined,
+        };
+      }
+
       default:
         return {
           ...base,
@@ -253,49 +263,26 @@ export async function getDailySyncStatus() {
   };
 }
 
-export async function runDailySync(options: {
-  force?: boolean;
-  userId?: string;
-  trigger?: 'manual' | 'scheduler' | 'cli';
-} = {}): Promise<DailySyncResult> {
-  const schedules = getSchedules();
+export interface DailySyncAccepted {
+  accepted: true;
+  ok: true;
+  job_id: string;
+  started_at: string;
+  message: string;
+}
 
-  if (!schedules.daily_sync.enabled && !options.force) {
-    throw new Error('Daily sync is disabled in schedules config.');
-  }
-
-  if (!options.force) {
-    if (await hasActiveDailySyncJob()) {
-      throw new Error('Daily sync already running.');
-    }
-    if (
-      schedules.daily_sync.skip_if_completed_today &&
-      (await hasCompletedDailySyncToday(schedules.daily_sync.timezone))
-    ) {
-      throw new Error('Daily sync already completed today.');
-    }
-  }
-
-  const startedAt = new Date();
-  const job = await prisma.job.create({
-    data: {
-      type: JobType.daily_close,
-      status: JobStatus.running,
-      input: { trigger: options.trigger ?? 'manual', force: Boolean(options.force) },
-      createdBy: options.userId,
-      startedAt,
-      progress: { phase: 'running', step: 0, total: 0 },
-    },
-  });
-
+async function executeDailySyncJob(
+  jobId: string,
+  startedAt: Date,
+  enabledSteps: ScheduleStep[],
+): Promise<DailySyncResult> {
   const steps: DailySyncStepResult[] = [];
-  const enabledSteps = schedules.daily_sync.steps.filter((s) => s.enabled);
 
   try {
     for (let i = 0; i < enabledSteps.length; i++) {
       const step = enabledSteps[i]!;
       await prisma.job.update({
-        where: { id: job.id },
+        where: { id: jobId },
         data: {
           progress: {
             phase: 'running',
@@ -314,7 +301,7 @@ export async function runDailySync(options: {
     const finishedAt = new Date();
     const payload: DailySyncResult = {
       ok,
-      job_id: job.id,
+      job_id: jobId,
       started_at: startedAt.toISOString(),
       finished_at: finishedAt.toISOString(),
       steps,
@@ -322,7 +309,7 @@ export async function runDailySync(options: {
     };
 
     await prisma.job.update({
-      where: { id: job.id },
+      where: { id: jobId },
       data: {
         status: ok ? JobStatus.done : JobStatus.failed,
         result: payload as object,
@@ -336,7 +323,7 @@ export async function runDailySync(options: {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Daily sync failed';
     await prisma.job.update({
-      where: { id: job.id },
+      where: { id: jobId },
       data: {
         status: JobStatus.failed,
         error: message,
@@ -346,6 +333,78 @@ export async function runDailySync(options: {
     });
     throw err;
   }
+}
+
+export async function runDailySync(options: {
+  force?: boolean;
+  userId?: string;
+  trigger?: 'manual' | 'scheduler' | 'cli';
+  background: true;
+}): Promise<DailySyncAccepted>;
+export async function runDailySync(options?: {
+  force?: boolean;
+  userId?: string;
+  trigger?: 'manual' | 'scheduler' | 'cli';
+  background?: false;
+}): Promise<DailySyncResult>;
+export async function runDailySync(options: {
+  force?: boolean;
+  userId?: string;
+  trigger?: 'manual' | 'scheduler' | 'cli';
+  /** When true, return immediately after creating the job (Admin HTTP path). */
+  background?: boolean;
+} = {}): Promise<DailySyncResult | DailySyncAccepted> {
+  const schedules = getSchedules();
+
+  if (!schedules.daily_sync.enabled && !options.force) {
+    throw new Error('Daily sync is disabled in schedules config.');
+  }
+
+  if (!options.force) {
+    if (await hasActiveDailySyncJob()) {
+      throw new Error('Daily sync already running.');
+    }
+    if (
+      schedules.daily_sync.skip_if_completed_today &&
+      (await hasCompletedDailySyncToday(schedules.daily_sync.timezone))
+    ) {
+      throw new Error('Daily sync already completed today.');
+    }
+  } else if (await hasActiveDailySyncJob()) {
+    throw new Error('Daily sync already running.');
+  }
+
+  const startedAt = new Date();
+  const enabledSteps = schedules.daily_sync.steps.filter((s) => s.enabled);
+  const job = await prisma.job.create({
+    data: {
+      type: JobType.daily_close,
+      status: JobStatus.running,
+      input: {
+        trigger: options.trigger ?? 'manual',
+        force: Boolean(options.force),
+        background: Boolean(options.background),
+      },
+      createdBy: options.userId,
+      startedAt,
+      progress: { phase: 'running', step: 0, total: enabledSteps.length },
+    },
+  });
+
+  if (options.background) {
+    void executeDailySyncJob(job.id, startedAt, enabledSteps).catch((err) => {
+      console.error('[daily-sync] background job failed', job.id, err);
+    });
+    return {
+      accepted: true,
+      ok: true,
+      job_id: job.id,
+      started_at: startedAt.toISOString(),
+      message: 'Daily sync started — poll /api/v1/admin/sync/status for progress.',
+    };
+  }
+
+  return executeDailySyncJob(job.id, startedAt, enabledSteps);
 }
 
 export async function tickDailySync(): Promise<DailySyncResult | null> {

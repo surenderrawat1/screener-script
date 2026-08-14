@@ -21,6 +21,7 @@
 | [CFA Glossary](CFA-GLOSSARY.md) | Admin-editable terms, definitions, and formulas |
 | [Full Verify](FULL-VERIFY.md) | 8-phase allocation gate, scorecard, thesis (planned) |
 | [Morning Routine](MORNING-ROUTINE.md) | Pre-market cockpit, checklist, alerts (planned) |
+| [Evening GTT & Daily Proof](EVENING-GTT-AND-DAILY-PROOF.md) | Post-close GTT board + scheduled strategy scoreboard |
 | [Trading Presets](TRADING-PRESETS.md) | One-click swing / ETF / intraday profiles (planned) |
 | [Trading Strategies](TRADING-STRATEGIES.md) | 21 curated swing / screener / hybrid strategies (planned) |
 | [Nifty Intraday (5m/15m)](INTRADAY.md) | Direction, presets, playbook, intraday app |

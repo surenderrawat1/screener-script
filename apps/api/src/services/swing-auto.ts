@@ -1,8 +1,11 @@
 import { prisma, JobStatus, JobType } from '@sv/db';
 import {
   attachBacktestTruthToHits,
+  attachFundamentalQualityToHits,
+  backtestTruthForSymbol,
   buildSymbolContext,
   getSwingAutoSnapshotDurable,
+  hitsHaveBacktestTruth,
   triggerSwingAutoScan as runAutoScan,
   hasActiveAutoScanJob,
   currentMarketRegime,
@@ -21,11 +24,36 @@ import {
   nextFullScanInSec,
   MAX_OPEN_POSITIONS,
   HEAT_BLOCK_PCT,
+  DEFAULT_PORTFOLIO_NAV,
   portfolioHeatPct,
+  ENGINE_VERSION,
 } from '@sv/swing';
 import { listSwingPositions, persistPositionTrailRatchet } from './swing-positions.js';
 
 export { triggerSwingAutoScan, shouldStartAutoScan, buildAutoScanPlan } from '@sv/data-adapters';
+
+const SWING_NAV_KEY_PREFIX = 'swing_portfolio_nav:';
+
+export async function getSwingPortfolioNav(userId: string): Promise<number> {
+  const setting = await prisma.appSetting.findUnique({
+    where: { key: `${SWING_NAV_KEY_PREFIX}${userId}` },
+  });
+  const nav = Number(setting?.value ?? DEFAULT_PORTFOLIO_NAV);
+  return Number.isFinite(nav) && nav >= 10_000 ? nav : DEFAULT_PORTFOLIO_NAV;
+}
+
+export async function setSwingPortfolioNav(userId: string, portfolioNav: number) {
+  const nav = Math.round(portfolioNav * 100) / 100;
+  if (!Number.isFinite(nav) || nav < 10_000 || nav > 1_000_000_000) {
+    return { ok: false, error: 'Portfolio NAV must be between ₹10,000 and ₹100 crore.' };
+  }
+  await prisma.appSetting.upsert({
+    where: { key: `${SWING_NAV_KEY_PREFIX}${userId}` },
+    create: { key: `${SWING_NAV_KEY_PREFIX}${userId}`, value: nav, updatedBy: userId },
+    update: { value: nav, updatedBy: userId },
+  });
+  return { ok: true, portfolio_nav: nav };
+}
 
 export async function getSwingAutoState(
   userId: string,
@@ -40,12 +68,17 @@ export async function getSwingAutoState(
       hits: [],
       hit_count: 0,
       scanned: 0,
-      engine_version: 'v3.9-gc9',
+      engine_version: ENGINE_VERSION,
     };
 
   const regime = (scanResult.regime as Record<string, unknown> | undefined) ?? null;
+  const portfolioNav = await getSwingPortfolioNav(userId);
   const rawHits = Array.isArray(scanResult.hits) ? (scanResult.hits as Record<string, unknown>[]) : [];
-  const hitsWithTruth = await attachBacktestTruthToHits(rawHits);
+  // Fast path: scan snapshots already stamp quality + top-40 BT truth — avoid re-fetch on every state poll.
+  const hitsWithQuality = await attachFundamentalQualityToHits(rawHits);
+  const hitsWithTruth = hitsHaveBacktestTruth(hitsWithQuality)
+    ? hitsWithQuality
+    : await attachBacktestTruthToHits(hitsWithQuality);
   const backtestAttached = hitsWithTruth.filter((h) => h.backtest_truth).length;
   scanResult = { ...scanResult, hits: hitsWithTruth };
 
@@ -56,6 +89,7 @@ export async function getSwingAutoState(
       stop_loss: p.stop_loss,
       shares: p.shares,
     })),
+    portfolioNav,
   );
   const livePositions = includePositions
     ? await refreshOpenPositions(dbPositions, Boolean(options.live), regime)
@@ -65,6 +99,7 @@ export async function getSwingAutoState(
   const state = buildState(scanResult, positionsForTierOverlay, regime, {
     includeCarried,
     backtestAttached,
+    portfolioNav,
   });
 
   if (!includePositions) {
@@ -109,6 +144,7 @@ export async function getSwingAutoState(
     },
     portfolio_risk: {
       heat_pct: heatPct,
+      portfolio_nav: portfolioNav,
       open_count: dbPositions.length,
       max_positions: MAX_OPEN_POSITIONS,
       max_heat_pct: HEAT_BLOCK_PCT,
@@ -148,7 +184,7 @@ async function latestSwingScanResult() {
   return (latestJob?.result as Record<string, unknown> | null) ?? null;
 }
 
-const POSITION_REFRESH_CONCURRENCY = 5;
+const POSITION_REFRESH_CONCURRENCY = 8;
 
 async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   if (items.length === 0) return [];
@@ -256,7 +292,25 @@ export async function validateSwingAddPosition(
     | undefined;
   const regime = scanRegime ?? (await currentMarketRegime(false));
   const { positions } = await listSwingPositions(userId, 'open');
-  return checkAddPosition(input, positions, regime);
+  const portfolioNav = await getSwingPortfolioNav(userId);
+  const symbol = String(input.symbol ?? '').toUpperCase().replace(/\.(NS|BO)$/, '');
+  const scanHits = Array.isArray((snapshot?.scan as Record<string, unknown> | undefined)?.hits)
+    ? ((snapshot!.scan as Record<string, unknown>).hits as Record<string, unknown>[])
+    : [];
+  const serverHit = scanHits.find(
+    (hit) => String(hit.symbol ?? '').toUpperCase().replace(/\.(NS|BO)$/, '') === symbol,
+  );
+  const truth = symbol ? await backtestTruthForSymbol(symbol, false) : null;
+  const trustedInput = {
+    ...input,
+    ...(serverHit ?? {}),
+    symbol,
+    backtest_truth: truth,
+    portfolio_nav: portfolioNav,
+    // Research journaling is an explicit user choice; all market evidence is server-owned.
+    research_add: input.research_add === true,
+  };
+  return checkAddPosition(trustedInput, positions, regime);
 }
 
 export async function startSwingAutoScan(

@@ -1,4 +1,5 @@
 import { macd, metricsFromBars, pctFrom52wRange, rsi, sma } from './ta-helper.js';
+import { priceMaCrossMetrics } from './price-ma-cross.js';
 import type { OhlcBar, TaMetrics } from './types.js';
 
 /** Fill TA gaps from fundamentals when Yahoo chart is partial or missing. */
@@ -92,9 +93,11 @@ export function enrichDetailTa(bars: OhlcBar[], price?: number): TaMetrics {
   const sma200 = typeof base.ta_sma200 === 'number' ? base.ta_sma200 : sma(closes, 200);
   const macdVal = closes.length ? macd(closes) : null;
   const bb = closes.length ? bollingerBands(closes) : null;
+  const priceCross = priceMaCrossMetrics(bars, '');
 
   const merged: TaMetrics = {
     ...base,
+    ...priceCross,
     ta_rsi14: typeof base.ta_rsi14 === 'number' ? base.ta_rsi14 : rsi(closes),
     ta_sma20: sma20,
     ta_sma50: sma50,
@@ -119,4 +122,10 @@ export function enrichDetailTa(bars: OhlcBar[], price?: number): TaMetrics {
   merged.ta_bottom_out_hint = bottom.hint;
   merged.ta_bottom_out_reasons = bottom.reasons;
   return merged;
+}
+
+/** Merge hourly price↔MA fresh-cross metrics onto daily TA (screener hourly filters). */
+export function attachHourlyPriceCrossMetrics(ta: TaMetrics, hourlyBars: OhlcBar[]): TaMetrics {
+  if (!hourlyBars.length) return ta;
+  return { ...ta, ...priceMaCrossMetrics(hourlyBars, 'h_') };
 }

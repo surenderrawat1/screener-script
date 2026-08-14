@@ -2,7 +2,7 @@
 
 **Morning Routine** is the pre-market research cockpit: one screen for NSE session status, swing regime, open position alerts, Nifty 15m direction, ETF SETUP+ book, and Swing Auto high-conviction names — plus a linked morning checklist.
 
-In **Script Screener v2 this page does not exist.** The Dashboard shows system health and quick links only. Building blocks (regime, auto snapshot, swing position refresh, intraday state) exist across packages but are **not composed** into a morning briefing API or UI.
+In **Script Screener v2**, the morning research cockpit is implemented as `/morning` with an aggregated `GET /api/v1/morning` briefing API (regime, Swing Auto snapshot, open-position alerts, intraday cards, ETF & checklist panels).
 
 > Research cockpit only — uses cached Yahoo data and last Swing Auto snapshot. Confirm on NSE before orders.
 
@@ -54,22 +54,22 @@ In **Script Screener v2 this page does not exist.** The Dashboard shows system h
 
 | Aspect | PHP (`stock-verifier`) | Script Screener (`stock-verifier-v2`) |
 |--------|------------------------|--------------------------------------|
-| **Page** | `morning-dashboard.php` (nav: Morning) | **No route** |
-| **Planned route** | — | `/morning` or enhanced `/` |
-| **Orchestrator** | `MorningDashboard::build()` | **Not implemented** |
-| **API** | Server-rendered HTML | **No** `GET /api/v1/morning` |
+| **Page** | `morning-dashboard.php` (nav: Morning) | `/morning` route implemented |
+| **Planned route** | — | `/morning` (implemented) |
+| **Orchestrator** | `MorningDashboard::build()` | `apps/web/src/pages/MorningPage.tsx` + `apps/api/src/services/morning.ts` |
+| **API** | Server-rendered HTML | `GET /api/v1/morning` implemented |
 | **NSE session** | `PriceFreshness::nseSession()` | **Not ported** (intraday has session-regime per chart) |
 | **Swing regime** | `SwingMarketRegime::current()` | `currentMarketRegime()` ✅ (`sv:regime:nifty`) |
 | **Regime guidance** | `SwingAutoDecision::regimeGuidance()` | `regimeGuidance()` in `@sv/swing` ✅ |
 | **Nifty 15m** | `Nifty15mDirection::analyze()` | `GET /intraday/nifty/state` ✅ (separate page) |
 | **Swing positions** | `SwingPositionTracker::trackOpen()` | `refreshOpenPositions()` ✅ (Positions API `?live=1`) |
 | **Intraday positions** | `NiftyIntradayPositionTracker` | **Not built** — [NIFTY-POSITIONS.md](NIFTY-POSITIONS.md) |
-| **ETF SETUP+ scan** | `SwingTradingScanner` + ETF universe | **No ETF universe** in v2 |
+| **ETF SETUP+ scan** | `SwingTradingScanner` + ETF universe | ETF panel wired in `MorningPage.tsx` (see `etf` block in API response) |
 | **Swing Auto panel** | `SwingAutoScreener::getSnapshot()` | `getSwingAutoSnapshotDurable()` ✅ |
-| **Trading presets** | `TradingPreset::all()` (3 presets) | **Not ported** |
-| **Morning checklist** | `routineSteps()` — 7 steps | **None** |
-| **Alert banner** | `buildAlerts()` | **None** |
-| **Dashboard** | Health N/A (separate) | System health + quick links only |
+| **Trading presets** | `TradingPreset::all()` (3 presets) | Preset chips wired (see `presets` block in API response) |
+| **Morning checklist** | `routineSteps()` — 7 steps | Implemented checklist (currently 10 steps) |
+| **Alert banner** | `buildAlerts()` | Implemented via `alerts` array in API response |
+| **Dashboard** | Health N/A (separate) | Morning briefing + checklist rendered in `/morning` |
 
 ---
 

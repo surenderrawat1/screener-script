@@ -1,5 +1,10 @@
 import type { OhlcBar } from './types.js';
-import { normalizeSwingChartTimeframe, type SwingChartTimeframe, swingChartYahooParams } from './chart-timeframe.js';
+import {
+  isSwingChartIntraday,
+  normalizeSwingChartTimeframe,
+  type SwingChartTimeframe,
+  swingChartYahooParams,
+} from './chart-timeframe.js';
 
 export interface SmaPoint {
   time: string | number;
@@ -24,6 +29,8 @@ export interface DailyChartPayload {
   sma20: SmaPoint[];
   sma50: SmaPoint[];
   sma200: SmaPoint[];
+  /** RSI-14 series aligned to bar times (0–100). */
+  rsi14: SmaPoint[];
   fetched_at: string;
   intraday?: boolean;
 }
@@ -55,6 +62,32 @@ export function smaLineSeriesFromBars(bars: OhlcBar[], period: number, intraday 
   return out;
 }
 
+/**
+ * RSI-14 line for charts — same simple average method as {@link rsi} in ta-helper,
+ * evaluated at each bar so the last point matches `ta_rsi14`.
+ */
+export function rsiLineSeriesFromBars(bars: OhlcBar[], period = 14, intraday = false): SmaPoint[] {
+  if (period < 1 || bars.length < period + 1) return [];
+  const closes = bars.map((b) => b.close);
+  const times = bars.map((b) => b.time);
+  const out: SmaPoint[] = [];
+  for (let end = period; end < closes.length; end++) {
+    let gains = 0;
+    let losses = 0;
+    for (let i = end - period + 1; i <= end; i++) {
+      const diff = closes[i] - closes[i - 1];
+      if (diff >= 0) gains += diff;
+      else losses -= diff;
+    }
+    const value = losses === 0 ? 100 : Math.round((100 - 100 / (1 + gains / losses)) * 10) / 10;
+    out.push({
+      time: chartTimeFromBar(times[end], intraday),
+      value,
+    });
+  }
+  return out;
+}
+
 export function buildDailyChartPayload(bars: OhlcBar[], symbol: string, range = '2y'): DailyChartPayload {
   return buildSwingChartPayload(bars, symbol, normalizeSwingChartTimeframe(range));
 }
@@ -64,8 +97,9 @@ export function buildSwingChartPayload(
   symbol: string,
   timeframe: SwingChartTimeframe = '2y',
 ): DailyChartPayload {
-  const intraday = timeframe === '1h';
-  const { interval, range } = swingChartYahooParams(timeframe);
+  const intraday = isSwingChartIntraday(timeframe);
+  const { interval, range } =
+    timeframe === '1w' ? { interval: '1wk', range: '5y resampled' } : swingChartYahooParams(timeframe);
 
   return {
     symbol: symbol.toUpperCase(),
@@ -83,6 +117,7 @@ export function buildSwingChartPayload(
     sma20: smaLineSeriesFromBars(bars, 20, intraday),
     sma50: smaLineSeriesFromBars(bars, 50, intraday),
     sma200: smaLineSeriesFromBars(bars, 200, intraday),
+    rsi14: rsiLineSeriesFromBars(bars, 14, intraday),
     fetched_at: new Date().toISOString(),
     intraday,
   };

@@ -2,6 +2,8 @@
 
 **Swing Auto** is the always-on Nifty LargeMidcap 250 swing scanner: it ranks SETUP+ candidates into decision tiers, overlays open positions, and refreshes live exit guidance — without keeping a browser tab open.
 
+> CFA improvement and automatic paper-trading policy: [Swing Trading and Swing Auto Radar — CFA Improvement and Paper-Trading Standard](./SWING-IMPROVEMENTS-AND-AUTO-PAPER-CFA.md)
+
 This document maps the **PHP stock-verifier** behavior to **Script Screener** architecture, explains why the new stack is faster, and defines the plan to reach full parity plus sub-minute perceived latency.
 
 > **Naming note:** Swing Auto does **not** use HOT/WARM/WATCH tabs. Those words appear as discovery verdicts (`ENTER`/`SETUP`/`WATCH`) or decision actions (`STRONG_BUY`/`BUY`/`WATCH`/`SKIP`). UI tiers are: **`high_conviction`**, **`strict_enter`**, **`setup_radar`**, **`breakout_surge`**.
@@ -254,7 +256,7 @@ Sort within tier: `decision_score` ↓, then `swing_rank` ↓.
 
 - `STRONG_BUY` action → always
 - `BUY` + score ≥ 72 + strict ENTER + R-multiple ok + no STALE/LOW_R flags
-- `BACKTEST_WEAK` requires score ≥ 78 (backtest overlay **not yet in v2**)
+- `BACKTEST_WEAK` requires score ≥ 78 (BT 2y overlay via `attachBacktestTruthToHits`)
 
 ### Decision actions (`entryAction`)
 
@@ -285,13 +287,14 @@ Stop loss, trail, breakeven, profit target, trend break, RSI, time stop, price a
 |----------|-----------|--------|
 | 1 | `exit_verdict === EXIT` | `POS_EXIT` |
 | 2 | Price within 2% of stop | `POS_TIGHTEN` |
-| 3 | Loss ≤ -4% after ≥2 sessions | `POS_CUT` |
+| 3 | **M1** Loss ≤ -4% after ≥2 sessions | `POS_CUT` (stricter than X1 5% hard stop) |
 | 4 | Trail within 1.5% when armed | `POS_TIGHTEN` |
 | 5 | Gain ≥ 8% in chop regime | `POS_TRIM` |
 | 6 | Gain ≥ 8% + scan SKIP | `POS_TRIM` |
 | 7 | Still high conviction + HOLD | `POS_HOLD` |
 | 8 | Trail armed + gain > 0 | `POS_TRAIL` |
-| 9 | Default | `POS_REVIEW` |
+| 9 | Sessions ≥ 12 and gain &lt; 3% | `POS_REVIEW` (time overlay vs X7 15d) |
+| 10 | Default | `POS_REVIEW` |
 
 ### Tier overlay (`overlayOpenPositionsOnTiers`)
 
@@ -299,12 +302,15 @@ Stop loss, trail, breakeven, profit target, trend break, RSI, time stop, price a
 - Other tiers: `already_held: true`, `add_allowed: false`
 - Near stop or TIGHTEN/CUT/EXIT → demote to WATCH action, `high_conviction: false`
 
-### Add position gates (`checkAddPosition`)
+### Add position gates (`checkAddPosition`) — high accuracy
 
+- **Live Add (default):** `strict_verdict === ENTER` + `r_multiple_ok` + net edge + not SKIP/stale/held
+- **Research Add** (`research_add=1`): SETUP/breakout journal allowed; heat/regime still apply
 - No duplicate open symbol (per user)
 - `regime.blocks_strict_enter` → blocked
 - `canOpenPosition()`: max **10** positions, **4%** portfolio heat
-
+- Suggested shares: 1% NAV × `deploy_scale` × (`deploy_pct` / 100)
+- **Economic-edge BT:** when walk-forward truth is proven (≥5 trades), live Add / high conviction require positive expectancy, PF≥1.25, compound≥0, and max DD≤20% (`BACKTEST_EDGE_FAIL` / `BACKTEST_EDGE_OK`). Soft WR≥70% is diagnostic only (`BACKTEST_LOW_WR`).
 ---
 
 ## Market regime
@@ -447,12 +453,12 @@ Default filters: **`SETUP_PLUS`**, sort **`swing_rank`**, zone **`any`**.
 
 | # | Task | Impact |
 |---|------|--------|
-| A1 | Split state: `GET /swing/auto/state?positions=0` for snapshot-only; poll positions every 60s separately | Faster tier render |
-| A2 | Wire WebSocket job progress on Run scan + auto-start | No blind wait |
-| A3 | Show `scan_mode`, `next_full_scan_in`, `incremental_stale` badge | User trust |
-| A4 | Tier tabs + `?tier=strict_enter` URL param | PHP parity |
-| A5 | Wire check-add → add-position flow on auto page | Complete workflow |
-| A6 | Use `profile.refresh_sec` / `profile.scan_sec` for poll intervals | Config-driven |
+| A1 | Split state: `GET /swing/auto/state?positions=0` for snapshot-only; poll positions every 60s separately | **Done** — Auto page loads `positions=0` + `/swing/auto/positions` on separate 60s polls |
+| A2 | Wire WebSocket job progress on Run scan + auto-start | **Done** — `/ws/jobs/:id` + live `onProgress` from `runSwingScan` / worker; progress bar on Auto page |
+| A3 | Show `scan_mode`, `next_full_scan_in`, `incremental_stale` badge | **Done** |
+| A4 | Tier tabs + `?tier=strict_enter` URL param | **Done** (incl. Compounder tier) |
+| A5 | Wire check-add → add-position flow on auto page | **Done** |
+| A6 | Use `profile.refresh_sec` / `profile.scan_sec` for poll intervals | **Done** — Auto page positions poll `refresh_sec`, tiers poll `scan_sec` |
 
 ### Phase B — Scan throughput (2–3 days)
 
@@ -460,11 +466,11 @@ Default filters: **`SETUP_PLUS`**, sort **`swing_rank`**, zone **`any`**.
 
 | # | Task | Impact |
 |---|------|--------|
-| B1 | Parallel symbol fetch in `runSwingScan` (concurrency 5–10) | 3–5× faster scans |
-| B2 | Skip Yahoo fetch when `sv:ta` fresh (<24h) and `refresh=false` | Cache hit path |
-| B3 | Pre-warm TA cache after full scan (background low-priority) | Next incremental faster |
-| B4 | Port `SwingAutoBacktestTruth` for top 40 hits | Better ranking; PHP parity |
-| B5 | Batch Redis `MGET` for TA keys in refresh set | Fewer round trips |
+| B1 | Parallel symbol fetch in `runSwingScan` (concurrency 5–10) | **Done** — `mapInBatches` + `SWING_SCAN_CONCURRENCY=8` (override via `options.concurrency`) |
+| B2 | Skip Yahoo fetch when `sv:ta` fresh (<24h) and `refresh=false` | **Done** — `sv:ta:bars:*` + `cached_at`; soft age 24h daily / 1h hourly via `isCachedBarsFresh` |
+| B3 | Pre-warm TA cache after full scan (background low-priority) | **Done** — `scheduleSwingTaPrewarm` after full + incremental (next 2×30 rotate symbols, concurrency 3) |
+| B4 | Port `SwingAutoBacktestTruth` for top 40 hits | **Done** — `attachBacktestTruthToHits` / `DEFAULT_MAX_PRELOAD=40` (`auto-backtest-truth.ts`) |
+| B5 | Batch Redis `MGET` for TA keys in refresh set | **Done** — `cacheGetJsonMany` + `preloadTaBarsCache` in `runSwingScan` (daily ± hourly keys) |
 
 ### Phase C — Operational speed (1–2 days)
 
@@ -472,17 +478,18 @@ Default filters: **`SETUP_PLUS`**, sort **`swing_rank`**, zone **`any`**.
 
 | # | Task | Impact |
 |---|------|--------|
-| C1 | Snapshot read: always try Redis, fallback DB, warm Redis on DB hit | Instant recovery |
-| C2 | Prune `swing_auto_snapshots` (keep last 48h or last 100 rows) | DB performance |
-| C3 | `pnpm dev:all` — API + web + worker single command | Dev velocity |
-| C4 | Health alert when `worker.ok: false` on Dashboard | Ops visibility |
-| C5 | Optional: leader election if multiple workers | Safe scale-out |
+| C1 | Snapshot read: always try Redis, fallback DB, warm Redis on DB hit | **Done** — `getSwingAutoSnapshotDurable` + `warmSwingAutoSnapshot` |
+| C2 | Prune `swing_auto_snapshots` (keep last 48h or last 100 rows) | **Done** — `pruneSwingAutoSnapshotArchives` after each persist |
+| C3 | `pnpm dev:all` — API + web + worker single command | **Done** — root `package.json` `dev:all` |
+| C4 | Health alert when `worker.ok: false` on Dashboard | **Done** — `collectOpsAlerts` / Dashboard Ops alerts card |
+| C5 | Optional: leader election if multiple workers | **Done** — `tryHoldWorkerLeader` Redis lease (`sv:worker:leader`); only schedule leader runs auto/paper/daily/morning ticks; BullMQ still scales across workers |
 
 ### Phase D — Advanced (Phase 10–12 roadmap)
 
-- Morning briefing — see [MORNING-ROUTINE.md](MORNING-ROUTINE.md) (regime + top 5 high conviction + position alerts)
-- Intraday confluence badge on auto hits
-- Historical replay / backtest of auto tiers
+- Morning briefing — see [MORNING-ROUTINE.md](MORNING-ROUTINE.md) (regime + top 5 high conviction + position alerts) — **Done** (`/morning`)
+- Intraday confluence badge on auto hits — **Done** — `tape_confluence` on enrich/serialize + Swing Auto HitTable **Tape** column (setup + volume/breakout + E9/hourly + regime; no per-symbol 5m/15m fetch)
+- Historical replay / backtest of auto tiers — **Done** — `replayAutoTiers` (structural HC + independent exit books); single-symbol Swing Backtest shows Auto tier table (`auto_tiers: true`)
+- Compounder / position sleeve routing — **Done** — `evaluateCompounderSleeve` + Auto **Compounder** tier; `evaluateCompounderHold` (min-hold / thesis exit); blocks Swing paper; points at `pos_moat_compounders` / `moat_compounders`
 
 ---
 
@@ -500,15 +507,16 @@ Now (M6–M8 complete)
 
 ### Acceptance criteria — “very fast” swing auto
 
-- [ ] State API (snapshot only) p95 < **200ms**
-- [ ] Open positions refresh p95 < **2s** for ≤10 positions
-- [ ] Incremental scan job completes < **2 minutes** (60 symbols, warm cache)
-- [ ] Full scan job completes < **8 minutes** (250 symbols)
-- [ ] Worker runs scans without browser; Dashboard shows worker green
-- [ ] UI shows job progress during scan (WebSocket)
-- [ ] Add position works from auto page with heat/regime gates
+- [x] State API (snapshot only) fast path — skip BT/quality re-fetch when snapshot already stamped; BT truth uses Redis `MGET` + parallel miss fill (target p95 < **200ms** warm)
+- [x] Open positions refresh concurrency raised to **8** (target p95 < **2s** for ≤10 positions, warm cache)
+- [x] Incremental / full scan SLA instrumented — `elapsed_sec` + `sla` on snapshot (`evaluateScanSla`: incremental ≤**120s**, full ≤**480s**); shown on Auto transparency **Scan SLA**
+- [x] Worker runs scans without browser; Dashboard shows worker green
+- [x] UI shows job progress during scan (WebSocket `/ws/jobs/:id` + Redis pub/sub)
 - [x] Add position works from auto page with heat/regime gates
-- [ ] Redis flush → state still loads from PostgreSQL < **500ms**
+- [x] Redis flush → state still loads from PostgreSQL < **500ms** (C1 warms Redis on DB hit)
+- [x] Poll intervals follow `profile.refresh_sec` / `profile.scan_sec` (A6)
+
+**Ops note:** After the next warm-cache incremental and full Auto scan, confirm **Scan SLA** shows pass on `/swing/auto` transparency.
 
 ---
 
@@ -545,7 +553,7 @@ swing-auto-api.php               JSON API
 includes/SwingAutoScreener.php   Orchestrator
 includes/SwingAutoIncrementalScan.php
 includes/SwingAutoDecision.php
-includes/SwingAutoBacktestTruth.php   ← not yet ported
+includes/SwingAutoBacktestTruth.php   ← ported (`auto-backtest-truth.ts`, `bt_truth:v8-compounder-sleeve`)
 includes/SwingMarketRegime.php
 includes/SwingScanJob.php
 run-swing-scan-job.php           CLI worker

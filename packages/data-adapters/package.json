@@ -17,19 +17,30 @@
     "test": "vitest run",
     "sync:indices": "tsx src/sync-indices-cli.ts",
     "daily:sync": "tsx src/daily-sync-cli.ts",
-    "morning:prewarm": "tsx src/morning-prewarm-cli.ts"
+    "morning:prewarm": "tsx src/morning-prewarm-cli.ts",
+    "export:stratzy-paper": "tsx scripts/export-stratzy-paper-data.mts",
+    "replay:stratzy-partials": "tsx scripts/replay-stratzy-partials.mts",
+    "email:swing-radar": "tsx scripts/email-swing-radar.mts",
+    "email:evening-gtt": "tsx scripts/email-evening-gtt.mts",
+    "email:exit-alerts": "tsx scripts/email-exit-alerts.mts",
+    "email:test": "tsx scripts/email-test.mts",
+    "whatsapp:test": "tsx scripts/whatsapp-test.mts",
+    "test:ema-cross": "tsx scripts/test-ema-price-cross.mts"
   },
   "dependencies": {
     "@sv/cache": "workspace:*",
     "@sv/core": "workspace:*",
     "@sv/db": "workspace:*",
+    "@sv/intraday": "workspace:*",
     "@sv/jobs": "workspace:*",
     "@sv/shared": "workspace:*",
     "@sv/swing": "workspace:*",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "nodemailer": "^9.0.5"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
+    "@types/nodemailer": "^8.0.1",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
     "vitest": "^3.0.9"

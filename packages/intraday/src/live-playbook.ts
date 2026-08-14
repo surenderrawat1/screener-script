@@ -1,4 +1,14 @@
-import { preflightChecklist } from './entry-filter.js';
+import { preflightChecklist, presetOptions } from './entry-filter.js';
+import { resolveExitProfile, targetsFromProfile } from './exit-profile.js';
+import { DEFAULT_LAST_ENTRY_MIN, DEFAULT_MIN_ENTRY_MIN, formatMinutes, TIME_STOP_IST } from './session-clock.js';
+
+export interface IntradayAccuracyGate {
+  trades?: number;
+  win_rate_pct?: number | null;
+  accuracy_status?: string;
+  accuracy_pass?: boolean;
+  accuracy_floor_pct?: number;
+}
 
 export function build(
   plan: Record<string, unknown> | null,
@@ -8,6 +18,8 @@ export function build(
   presetEval: Record<string, unknown>[],
   recommendedPreset: string,
   activeTf = '15m',
+  accuracyGate?: IntradayAccuracyGate | null,
+  analysis15?: Record<string, unknown> | null,
 ) {
   const price = Number(analysis.price ?? 0);
   const interval = String(analysis.interval ?? activeTf);
@@ -20,7 +32,54 @@ export function build(
     return buildRange(plan, analysis, price, interval);
   }
 
-  return buildDirectional(plan, analysis, analysis5, mtf, presetEval, recommendedPreset, price, interval);
+  const enriched = applyPresetExitProfile(plan, recommendedPreset);
+
+  return buildDirectional(
+    enriched,
+    analysis,
+    analysis5,
+    mtf,
+    presetEval,
+    recommendedPreset,
+    price,
+    interval,
+    accuracyGate,
+    analysis15,
+  );
+}
+
+function applyPresetExitProfile(
+  plan: Record<string, unknown>,
+  recommendedPreset: string,
+): Record<string, unknown> {
+  const opts = presetOptions(recommendedPreset);
+  const profile = resolveExitProfile(String(opts.exit_profile ?? 'as_planned'));
+  const entryPx = Number((plan.entry as Record<string, unknown> | undefined)?.price ?? 0);
+  const stopPx = Number((plan.stop_loss as Record<string, unknown> | undefined)?.price ?? 0);
+  const isLong = plan.bias === 'long';
+  if (!(entryPx > 0) || !(stopPx > 0) || !['long', 'short'].includes(String(plan.bias))) {
+    return { ...plan, exit_profile: profile.id, exit_profile_label: profile.label };
+  }
+  const prices = targetsFromProfile(entryPx, stopPx, isLong, profile);
+  const exits = prices.map((px, i) => ({
+    tier: `T${i + 1}`,
+    price: px,
+    rr: profile.rr[i],
+    action: `Book ${profile.partial_pcts[i]}%`,
+  }));
+  return {
+    ...plan,
+    exits,
+    exit_profile: profile.id,
+    exit_profile_label: profile.label,
+    exit_rules: [
+      `T1 book ${profile.partial_pcts[0]}% + breakeven`,
+      `T2 book ${profile.partial_pcts[1]}%`,
+      `T3 trail remainder (${profile.partial_pcts[2]}%)`,
+      `Time exit ${TIME_STOP_IST} IST`,
+      profile.label,
+    ],
+  };
 }
 
 function buildDirectional(
@@ -32,6 +91,8 @@ function buildDirectional(
   recommendedPreset: string,
   price: number,
   interval: string,
+  accuracyGate?: IntradayAccuracyGate | null,
+  analysis15?: Record<string, unknown> | null,
 ) {
   const isLong = plan.bias === 'long';
   const entry = (plan.entry as Record<string, unknown>) ?? {};
@@ -41,9 +102,18 @@ function buildDirectional(
   const entryType = String(entry.type ?? 'market');
   const entryPx = Number(entry.price ?? 0);
   const stopPx = Number(stop.price ?? 0);
-  const timeStop = String(plan.time_stop_ist ?? '15:15');
+  const timeStop = String(plan.time_stop_ist ?? TIME_STOP_IST);
 
-  const preflight = preflightChecklist(analysis, plan, mtf, analysis5, recommendedPreset, interval);
+  const preflight = preflightChecklist(
+    analysis,
+    plan,
+    mtf,
+    analysis5,
+    recommendedPreset,
+    interval,
+    null,
+    analysis15 ?? null,
+  );
   const preflightOk = preflight.ok;
 
   const entryStep = entryStepFn(entryType, entryPx, entry, trigger, isLong, price, preflightOk);
@@ -66,7 +136,30 @@ function buildDirectional(
   const presetBlock = presetEval.find((p) => p.id === recommendedPreset);
   const passKey = interval === '5m' ? 'pass_5m' : 'pass_15m';
   const presetPass = Boolean(presetBlock?.[passKey]);
-  const effectivePreflight = preflightOk && presetPass;
+  const accuracyRequired = accuracyGate != null;
+  const accuracyPass = !accuracyRequired || accuracyGate.accuracy_pass === true;
+  const effectivePreflight = preflightOk && presetPass && accuracyPass;
+
+  if (accuracyRequired) {
+    const status = String(accuracyGate.accuracy_status ?? 'missing');
+    const wr = accuracyGate.win_rate_pct;
+    const trades = Number(accuracyGate.trades ?? 0);
+    const floor = Number(accuracyGate.accuracy_floor_pct ?? 70);
+    const detail =
+      status === 'pass'
+        ? `✓ Historical accuracy ${wr}% across ${trades} trades (> ${floor}%)`
+        : status === 'unproven'
+          ? `✗ Historical accuracy unproven — ${trades} trades; minimum sample not met`
+          : status === 'fail'
+            ? `✗ Historical win rate ${wr ?? '—'}% is not above ${floor}%`
+            : '✗ Historical accuracy evidence unavailable';
+    const firstStep = steps[0] as Record<string, unknown>;
+    firstStep.details = [...((firstStep.details as string[]) ?? []), detail];
+    if (!accuracyPass) {
+      firstStep.status = 'fail';
+      firstStep.instruction = 'Historical >70% accuracy gate failed — do not enter live.';
+    }
+  }
 
   const headline = headlineFn(effectivePreflight, entryStep, isLong, String(plan.bias_label ?? ''));
 
@@ -79,6 +172,7 @@ function buildDirectional(
     current_price: price > 0 ? Math.round(price * 100) / 100 : null,
     interval,
     actionable: effectivePreflight && Boolean(entryStep.actionable),
+    accuracy_gate: accuracyGate ?? null,
     steps,
   };
 }
@@ -216,7 +310,7 @@ function standAside(message: string, price: number, interval: string) {
     steps: [
       step(1, 'preflight', 'No setup', message, 'fail', null, [
         `Wait for clearer ${interval} structure or higher confidence.`,
-        'Check entry window 10:15–14:45 IST before any new trade.',
+        `Check entry window ${formatMinutes(DEFAULT_MIN_ENTRY_MIN)}–${formatMinutes(DEFAULT_LAST_ENTRY_MIN)} IST before any new trade.`,
       ]),
     ],
   };

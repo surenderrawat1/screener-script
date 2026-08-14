@@ -40,6 +40,8 @@ export interface StrategyDefinition {
   sort_by?: string;
   zone_52w?: string;
   breakout_volume?: boolean;
+  require_rules?: string[];
+  min_rules_passed?: number;
 }
 
 type StrategySeed = Omit<StrategyDefinition, 'key' | 'ready' | 'blocked_reason'>;
@@ -67,19 +69,19 @@ function withReadiness(key: string, seed: StrategySeed): StrategyDefinition {
 const STRATEGY_SEEDS: Record<string, StrategySeed> = {
   swing_setup_plus: {
     label: 'Swing — SETUP+ Discovery',
-    description: 'Pullback setups in uptrend · discovery ENTER or SETUP · default research list',
+    description: 'Pullback setups in uptrend · discovery ENTER or SETUP · ranked by swing score (not raw rule count)',
     style: STRATEGY_STYLE_SWING,
     engine: STRATEGY_ENGINE_SWING,
     horizon: '2–6 weeks',
     universe_default: SWING_TIER_A_UNIVERSE_ID,
     max_scan_default: 0,
     min_verdict: 'SETUP_PLUS',
-    sort_by: 'rules_passed',
+    sort_by: 'swing_rank',
     icon: '↗',
   },
   swing_strict_enter: {
     label: 'Swing — Strict ENTER',
-    description: 'Full E1–E11 + price action · same rules as backtest / live orders',
+    description: 'Core trend + liquidity + PA + R/net-edge · same live/backtest path (E11/E12 optional catalysts)',
     style: STRATEGY_STYLE_SWING,
     engine: STRATEGY_ENGINE_SWING,
     horizon: '2–6 weeks',
@@ -138,6 +140,19 @@ const STRATEGY_SEEDS: Record<string, StrategySeed> = {
     min_verdict: 'SETUP_PLUS',
     sort_by: 'swing_rank',
     icon: 'R',
+  },
+  swing_ma20_stratzy: {
+    label: 'Swing — 20 MA Stratzy',
+    description: 'Style filter — require E12 hard pass (pullback to daily SMA-20); ranked by swing score',
+    style: STRATEGY_STYLE_SWING,
+    engine: STRATEGY_ENGINE_SWING,
+    horizon: '2–6 weeks',
+    universe_default: SWING_TIER_A_UNIVERSE_ID,
+    max_scan_default: 0,
+    min_verdict: 'SETUP_PLUS',
+    sort_by: 'swing_rank',
+    require_rules: ['E12'],
+    icon: '20',
   },
   pos_quality: {
     label: 'Positional — Quality Compounders',

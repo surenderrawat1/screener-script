@@ -42,8 +42,8 @@ describe('morning dashboard parity', () => {
     expect(swing.exit_count).toBe(1);
   });
 
-  it('ships three trading presets for morning chips', () => {
-    expect(tradingPresetIds()).toHaveLength(3);
+  it('ships all trading presets for morning chips', () => {
+    expect(tradingPresetIds()).toHaveLength(4);
   });
 
   it('flags ETF panel for background revalidate when cache is old', () => {

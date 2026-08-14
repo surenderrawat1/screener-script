@@ -49,6 +49,13 @@ daily_sync:
       params:
         config_ref: prefetch
 
+    - id: chart_pattern_scan
+      at: "06:35"
+      action: scan_chart_patterns
+      enabled: true
+      params:
+        config_ref: prefetch
+
     - id: regime_prewarm
       at: "06:45"
       action: warm_market_regime
@@ -70,4 +77,31 @@ intraday:
   morning_prewarm:
     enabled: true
     cron: "45 8 * * *"        # 08:45 IST — ETF + regime before open
+    timezone: Asia/Kolkata
+  paper_auto_trade:
+    enabled: true
+    interval_sec: 60          # worker tick — liquid stocks only, ₹1L paper wallet
+    max_notional_inr: 30000
+    max_open_positions: 10
+    skip_accuracy_gate: true  # no historical backtest for live paper fills
+  swing_paper_auto_trade:
+    enabled: true
+    interval_sec: 60          # strict ENTER + server-side high-accuracy gate
+
+  # Timing only — product knobs (tiers, strategies, email toggles) live in:
+  #   config/alerts.yaml
+  #   config/strategy-daily-proof.yaml
+  evening_gtt:
+    enabled: true
+    cron: "0 16 * * *"        # 16:00 IST weekdays
+    timezone: Asia/Kolkata
+
+  strategy_daily_proof:
+    enabled: true
+    cron: "15 16 * * *"       # 16:15 IST after evening GTT
+    timezone: Asia/Kolkata
+
+  exit_alerts:
+    enabled: true
+    cron: "45 15 * * *"       # 15:45 IST weekdays
     timezone: Asia/Kolkata

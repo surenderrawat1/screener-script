@@ -3,15 +3,32 @@ import { api } from '../../api';
 import { StockDailyChart, type ChartPayload, type ChartPriceLevel } from '../StockDailyChart';
 import type { SwingEntryPayload } from './types';
 
-const TIMEFRAMES = [
-  { id: '6mo', label: '6M daily' },
-  { id: '1y', label: '1Y daily' },
-  { id: '2y', label: '2Y daily' },
-  { id: '5y', label: '5Y daily' },
-  { id: '1h', label: '1H (60d)' },
+const TIMEFRAME_GROUPS = [
+  {
+    label: 'Intraday',
+    frames: [
+      { id: '5m', label: '5m (5d)' },
+      { id: '15m', label: '15m (5d)' },
+      { id: '1h', label: '1H (60d)' },
+      { id: '4h', label: '4H (60d)' },
+    ],
+  },
+  {
+    label: 'Daily',
+    frames: [
+      { id: '6mo', label: '6M' },
+      { id: '1y', label: '1Y' },
+      { id: '2y', label: '2Y' },
+      { id: '5y', label: '5Y' },
+    ],
+  },
+  {
+    label: 'Weekly',
+    frames: [{ id: '1w', label: '1W (5y)' }],
+  },
 ] as const;
 
-type TimeframeId = (typeof TIMEFRAMES)[number]['id'];
+type TimeframeId = (typeof TIMEFRAME_GROUPS)[number]['frames'][number]['id'];
 
 interface SwingChartResponse {
   ok: boolean;
@@ -102,18 +119,23 @@ export function SwingPriceChart({ symbol, defaultTimeframe = '1h', title, asOfDa
         </p>
       )}
       <div className="swing-tf-tabs" role="tablist" aria-label="Chart timeframe">
-        {TIMEFRAMES.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={activeTf === tab.id}
-            className={activeTf === tab.id ? 'active' : undefined}
-            disabled={loading && activeTf === tab.id}
-            onClick={() => setActiveTf(tab.id)}
-          >
-            {tab.label}
-          </button>
+        {TIMEFRAME_GROUPS.map((group) => (
+          <div key={group.label} className="swing-tf-group" role="presentation">
+            <span className="swing-tf-group-label">{group.label}</span>
+            {group.frames.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTf === tab.id}
+                className={activeTf === tab.id ? 'active' : undefined}
+                disabled={loading && activeTf === tab.id}
+                onClick={() => setActiveTf(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         ))}
         <button
           type="button"

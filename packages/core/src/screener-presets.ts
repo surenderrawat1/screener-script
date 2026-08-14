@@ -33,6 +33,24 @@ export interface ScreenerFilters {
   death_cross_9_50?: boolean;
   bull_ma_stack?: boolean;
   bear_ma_stack?: boolean;
+  /** Fresh price↔MA cross lookback (1–5 bars). Default 3. */
+  fresh_cross_bars?: number;
+  cross_above_sma20?: boolean;
+  cross_below_sma20?: boolean;
+  cross_above_sma50?: boolean;
+  cross_below_sma50?: boolean;
+  cross_above_ema20?: boolean;
+  cross_below_ema20?: boolean;
+  cross_above_ema50?: boolean;
+  cross_below_ema50?: boolean;
+  hourly_cross_above_sma20?: boolean;
+  hourly_cross_below_sma20?: boolean;
+  hourly_cross_above_sma50?: boolean;
+  hourly_cross_below_sma50?: boolean;
+  hourly_cross_above_ema20?: boolean;
+  hourly_cross_below_ema20?: boolean;
+  hourly_cross_above_ema50?: boolean;
+  hourly_cross_below_ema50?: boolean;
 }
 
 /** Fundamental + moat filter map — PHP NseStockScreener::PRESETS parity (TA gates applied when enrichment ships). */
@@ -168,6 +186,66 @@ export const PRESET_FILTERS: Record<string, ScreenerFilters> = {
     min_rsi: 25,
     max_rsi: 55,
   },
+  ta_fresh_sma20_cross: {
+    min_roe: 10,
+    min_roce: 12,
+    max_pe: 50,
+    min_mcap_cr: 2000,
+    ta_preset: true,
+    show_ta: true,
+    cross_above_sma20: true,
+    fresh_cross_bars: 3,
+  },
+  ta_fresh_sma50_cross: {
+    min_roe: 10,
+    min_roce: 12,
+    max_pe: 50,
+    min_mcap_cr: 2000,
+    ta_preset: true,
+    show_ta: true,
+    cross_above_sma50: true,
+    fresh_cross_bars: 3,
+  },
+  ta_hourly_sma20_cross: {
+    min_roe: 10,
+    min_roce: 12,
+    max_pe: 50,
+    min_mcap_cr: 2000,
+    ta_preset: true,
+    show_ta: true,
+    hourly_cross_above_sma20: true,
+    fresh_cross_bars: 3,
+  },
+  ta_fresh_ema20_cross: {
+    min_roe: 10,
+    min_roce: 12,
+    max_pe: 50,
+    min_mcap_cr: 2000,
+    ta_preset: true,
+    show_ta: true,
+    cross_above_ema20: true,
+    fresh_cross_bars: 3,
+  },
+  ta_fresh_ema50_cross: {
+    min_roe: 10,
+    min_roce: 12,
+    max_pe: 50,
+    min_mcap_cr: 2000,
+    ta_preset: true,
+    show_ta: true,
+    cross_above_ema50: true,
+    fresh_cross_bars: 3,
+  },
+  ta_hourly_ema20_cross: {
+    min_roe: 10,
+    min_roce: 12,
+    max_pe: 50,
+    min_mcap_cr: 2000,
+    ta_preset: true,
+    show_ta: true,
+    hourly_cross_above_ema20: true,
+    fresh_cross_bars: 3,
+  },
 };
 
 export const PRESET_LABELS: Record<string, { label: string; description: string }> = {
@@ -193,6 +271,30 @@ export const PRESET_LABELS: Record<string, { label: string; description: string 
   cfa_moat_bottom: { label: 'Moat @ Bottom', description: 'Strong moat · MOS ≥ 8% · bottom-out TA' },
   cfa_moat_uptrend: { label: 'Moat Uptrend', description: 'Strong moat · bull MA stack · MACD+' },
   cfa_best_opportunity: { label: 'Best Opportunity', description: 'Moat + MOS + bottom-out · RSI recovery band' },
+  ta_fresh_sma20_cross: {
+    label: 'Fresh SMA-20 Cross ↑ (Daily)',
+    description: 'Price freshly crossed above SMA-20 on daily (within 3 bars)',
+  },
+  ta_fresh_sma50_cross: {
+    label: 'Fresh SMA-50 Cross ↑ (Daily)',
+    description: 'Price freshly crossed above SMA-50 on daily (within 3 bars)',
+  },
+  ta_hourly_sma20_cross: {
+    label: 'Fresh SMA-20 Cross ↑ (Hourly)',
+    description: 'Price freshly crossed above SMA-20 on hourly (within 3 bars)',
+  },
+  ta_fresh_ema20_cross: {
+    label: 'Fresh EMA-20 Cross ↑ (Daily)',
+    description: 'Price freshly crossed above EMA-20 on daily (within 3 bars)',
+  },
+  ta_fresh_ema50_cross: {
+    label: 'Fresh EMA-50 Cross ↑ (Daily)',
+    description: 'Price freshly crossed above EMA-50 on daily (within 3 bars)',
+  },
+  ta_hourly_ema20_cross: {
+    label: 'Fresh EMA-20 Cross ↑ (Hourly)',
+    description: 'Price freshly crossed above EMA-20 on hourly (within 3 bars)',
+  },
 };
 
 export const SCREENER_PRESET_KEYS = Object.keys(PRESET_FILTERS);

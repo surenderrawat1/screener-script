@@ -74,7 +74,7 @@ export function enrichStockMetrics(
 
   const sym = String(options.symbol ?? out.symbol ?? '').toUpperCase().replace(/\.(NS|BO)$/, '');
   const hint = sym ? lookupSectorHint(sym) : undefined;
-  if (hint && (!out.sector || out.sector === 'general')) {
+  if (hint) {
     out = { ...out, sector: hint };
   }
   if (!out.industry) {

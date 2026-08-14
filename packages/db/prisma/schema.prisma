@@ -50,6 +50,7 @@ model User {
   verificationRuns VerificationRun[]
   swingPositions   SwingPosition[]
   niftyIntradayPositions NiftyIntradayPosition[]
+  paperWallets     PaperWallet[]
 
   @@map("users")
 }
@@ -287,6 +288,18 @@ model ScreenerPreset {
   @@map("screener_presets")
 }
 
+model SwingRuleProfile {
+  id       String  @id @default(cuid())
+  userId   String? @map("user_id")
+  name     String
+  options  Json
+  isSystem Boolean @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@map("swing_rule_profiles")
+}
+
 model SwingAutoSnapshotArchive {
   id             String   @id @default(cuid())
   savedAt        DateTime @map("saved_at")
@@ -312,6 +325,191 @@ model AppSetting {
   @@map("app_settings")
 }
 
+/** Nightly / post-close catalog strategy runs for live data proof & improvement analysis. */
+model StrategyDailyRun {
+  id          String   @id @default(cuid())
+  runDate     String   @map("run_date")
+  strategyKey String   @map("strategy_key")
+  label       String
+  engine      String
+  universe    String   @default("")
+  status      String
+  scanned     Int      @default(0)
+  hitCount    Int      @default(0) @map("hit_count")
+  topSymbols  Json     @default("[]") @map("top_symbols")
+  summary     Json?
+  durationMs  Int      @default(0) @map("duration_ms")
+  error       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([runDate, strategyKey])
+  @@index([runDate])
+  @@index([strategyKey, runDate])
+  @@map("strategy_daily_runs")
+}
+
+enum PaperWalletStatus {
+  active
+  paused
+  closed
+}
+
+enum PaperLedgerType {
+  funding
+  buy
+  sell
+  fee
+  pnl_realize
+  adjustment
+}
+
+enum PaperOrderStatus {
+  pending
+  filled
+  rejected
+  cancelled
+}
+
+enum PaperPositionStatus {
+  open
+  closed
+}
+
+/// Test-environment paper cash account (SoT for INR wallet).
+model PaperWallet {
+  id             String            @id @default(cuid())
+  userId         String            @map("user_id")
+  currency       String            @default("INR")
+  openingBalance Float             @default(100000) @map("opening_balance")
+  cashBalance    Float             @default(0) @map("cash_balance")
+  reservedCash   Float             @default(0) @map("reserved_cash")
+  realizedPnl    Float             @default(0) @map("realized_pnl")
+  status         PaperWalletStatus @default(active)
+  autoArmed      Boolean           @default(false) @map("auto_armed")
+  lastTickAt     DateTime?         @map("last_tick_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ledger    PaperLedgerEntry[]
+  orders    PaperOrder[]
+  positions PaperPosition[]
+
+  @@unique([userId, currency])
+  @@index([status, autoArmed])
+  @@map("paper_wallets")
+}
+
+/// Append-only cash ledger — never UPDATE/DELETE rows in app code.
+model PaperLedgerEntry {
+  id           String          @id @default(cuid())
+  walletId     String          @map("wallet_id")
+  type         PaperLedgerType
+  amountInr    Float           @map("amount_inr")
+  balanceAfter Float           @map("balance_after")
+  refType      String?         @map("ref_type")
+  refId        String?         @map("ref_id")
+  meta         Json?
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  wallet PaperWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, createdAt])
+  @@index([refType, refId])
+  @@map("paper_ledger_entries")
+}
+
+model PaperOrder {
+  id            String           @id @default(cuid())
+  walletId      String           @map("wallet_id")
+  userId        String           @map("user_id")
+  clientOrderId String           @map("client_order_id")
+  instrumentId  String           @map("instrument_id")
+  symbol        String
+  side          String
+  quantity      Float
+  orderType     String           @default("market") @map("order_type")
+  status        PaperOrderStatus @default(pending)
+  intent        String           @default("open")
+  limitPrice    Float?           @map("limit_price")
+  fillPrice     Float?           @map("fill_price")
+  filledAt      DateTime?        @map("filled_at")
+  rejectReason  String?          @map("reject_reason")
+  evidence      Json?
+  positionId    String?          @map("position_id")
+  sessionDate   DateTime         @map("session_date") @db.Date
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  wallet   PaperWallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  fills    PaperFill[]
+  position PaperPosition? @relation(fields: [positionId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, clientOrderId])
+  @@index([walletId, status])
+  @@index([sessionDate])
+  @@map("paper_orders")
+}
+
+model PaperFill {
+  id        String   @id @default(cuid())
+  orderId   String   @map("order_id")
+  price     Float
+  quantity  Float
+  feesInr   Float    @default(0) @map("fees_inr")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  order PaperOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("paper_fills")
+}
+
+model PaperPosition {
+  id              String              @id @default(cuid())
+  walletId        String              @map("wallet_id")
+  userId          String              @map("user_id")
+  instrumentId    String              @map("instrument_id")
+  symbol          String
+  instrumentLabel String?             @map("instrument_label")
+  status          PaperPositionStatus @default(open)
+  side            String              @default("long")
+  timeframe       String              @default("15m")
+  quantity        Float
+  entryPrice      Float               @map("entry_price")
+  entryTime       DateTime            @map("entry_time")
+  sessionDate     DateTime            @map("session_date") @db.Date
+  stopLoss        Float?              @map("stop_loss")
+  effectiveStop   Float?              @map("effective_stop")
+  targetT1        Float?              @map("target_t1")
+  targetT2        Float?              @map("target_t2")
+  targetT3        Float?              @map("target_t3")
+  remainingPct    Int                 @default(100) @map("remaining_pct")
+  t1Booked        Boolean             @default(false) @map("t1_booked")
+  t2Booked        Boolean             @default(false) @map("t2_booked")
+  breakevenArmed  Boolean             @default(false) @map("breakeven_armed")
+  originalQty     Float?              @map("original_qty")
+  notionalInr     Float               @map("notional_inr")
+  reservedCash    Float               @default(0) @map("reserved_cash")
+  realizedPnl     Float?              @map("realized_pnl")
+  feesInr         Float               @default(0) @map("fees_inr")
+  closedAt        DateTime?           @map("closed_at")
+  closedPrice     Float?              @map("closed_price")
+  closedReason    String?             @map("closed_reason")
+  evidence        Json?
+  source          String              @default("paper_auto")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  wallet PaperWallet  @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  orders PaperOrder[]
+
+  @@index([userId, instrumentId, sessionDate, status])
+  @@index([walletId, status])
+  @@index([sessionDate])
+  @@map("paper_positions")
+}
+
 /// Admin-editable CFA glossary: definitions, formulas, and help text used across Verify / Screener UI.
 model CfaTerm {
   key         String   @id
@@ -330,4 +528,87 @@ model CfaTerm {
 
   @@index([category, sortOrder])
   @@map("cfa_terms")
+}
+
+/// Nightly / on-demand chart pattern scan batch metadata.
+model ChartPatternScanRun {
+  id             String   @id @default(cuid())
+  runDate        String   @map("run_date")
+  trigger        String   @default("daily_sync")
+  symbolsTotal   Int      @default(0) @map("symbols_total")
+  symbolsOk      Int      @default(0) @map("symbols_ok")
+  symbolsFailed  Int      @default(0) @map("symbols_failed")
+  patternsFound  Int      @default(0) @map("patterns_found")
+  durationMs     Int      @default(0) @map("duration_ms")
+  status         String   @default("done")
+  error          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([runDate, trigger])
+  @@index([runDate])
+  @@map("chart_pattern_scan_runs")
+}
+
+/// Per-symbol daily snapshot of MTF + backtest context for chart patterns.
+model ChartPatternSnapshot {
+  id           String   @id @default(cuid())
+  symbol       String
+  scanDate     String   @map("scan_date")
+  lastBarDate  String   @map("last_bar_date")
+  barCount     Int      @map("bar_count")
+  patternCount Int      @map("pattern_count")
+  swingHighs   Int      @default(0) @map("swing_highs")
+  swingLows    Int      @default(0) @map("swing_lows")
+  mtf          Json?
+  backtest     Json?
+  trigger      String   @default("on_demand")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  detections ChartPatternDetection[]
+
+  @@unique([symbol, scanDate])
+  @@index([scanDate])
+  @@index([symbol, scanDate])
+  @@map("chart_pattern_snapshots")
+}
+
+/// Normalized chart pattern rows — queryable across symbols and scan dates.
+model ChartPatternDetection {
+  id              String   @id @default(cuid())
+  snapshotId      String   @map("snapshot_id")
+  symbol          String
+  scanDate        String   @map("scan_date")
+  patternKey      String   @map("pattern_key")
+  pattern         String
+  kind            String
+  type            String
+  status          String
+  confidence      Float
+  timeframe       String
+  startDate       String   @map("start_date")
+  endDate         String   @map("end_date")
+  lastBarDate     String   @map("last_bar_date")
+  support         Float?
+  resistance      Float?
+  breakout        Float?
+  target          Float?
+  stopLoss        Float?   @map("stop_loss")
+  volumeConfirmed Boolean  @default(false) @map("volume_confirmed")
+  rsiConfirmed    Boolean  @default(false) @map("rsi_confirmed")
+  macdConfirmed   Boolean  @default(false) @map("macd_confirmed")
+  points          Json     @default("{}")
+  detail          String   @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  snapshot ChartPatternSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([symbol, scanDate, patternKey])
+  @@index([snapshotId])
+  @@index([symbol, scanDate])
+  @@index([kind, status])
+  @@index([scanDate, status])
+  @@index([symbol, kind])
+  @@map("chart_pattern_detections")
 }

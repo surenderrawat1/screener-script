@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeSymbol, calculateFairPe, grahamNumber, mosFromIntrinsic, mosZone } from '../src/valuation.js';
+import { analyzeSymbol, calculateFairPe, grahamNumber, mosFromIntrinsic, mosZone, normalizeSector } from '../src/valuation.js';
 import { screenSymbol } from '../src/screener.js';
 
 describe('valuation', () => {
@@ -20,6 +20,12 @@ describe('valuation', () => {
   it('mos zones', () => {
     expect(mosZone(30)).toBe('Buy');
     expect(mosZone(-5)).toBe('Expensive');
+  });
+
+  it('does not classify capital goods as IT', () => {
+    expect(normalizeSector('Capital Goods')).toBe('general');
+    expect(normalizeSector('Automobiles')).toBe('auto');
+    expect(normalizeSector('IT Services')).toBe('it');
   });
 });
 

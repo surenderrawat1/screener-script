@@ -14,10 +14,14 @@ All routes except `/login` require authentication.
 |-------|------|---------|
 | `/login` | LoginPage | Email/password login |
 | `/` | DashboardPage | Health status, quick links |
-| `/morning` | MorningPage | **Planned** — [MORNING-ROUTINE.md](MORNING-ROUTINE.md) |
-| `/presets` | PresetsPage | **Planned** — [TRADING-PRESETS.md](TRADING-PRESETS.md) |
-| `/strategies` | StrategiesPage | **Planned** — [TRADING-STRATEGIES.md](TRADING-STRATEGIES.md) |
+| `/morning` | MorningPage | Pre-market briefing cockpit — regime, alerts, Swing Auto, LTG Auto, checklist |
+| `/signals` | SignalsPage | Unified signals inbox (exits, HC entries, screener hits, verify history) |
+| `/compare` | ComparePage | Side-by-side memo compare (export via browser print/PDF) |
+| `/ltg/auto` | LtgAutoPage | LTG auto-screener tiers (fundamental preset + TA gate) |
+| `/presets` | PresetsPage | Trading presets hub — [TRADING-PRESETS.md](TRADING-PRESETS.md) |
+| `/strategies` | StrategiesPage | 22 system strategies + custom presets — [TRADING-STRATEGIES.md](TRADING-STRATEGIES.md) |
 | `/screener` | ScreenerPage | Run CFA screener on a universe |
+| `/screener/pit-backtest` | ScreenerPitBacktestPage | Screener point-in-time backtest (TA-only MVP) |
 | `/verify` | VerifyPage | One-click CFA verify + history |
 | `/verify/full` | VerifyFullPage | **Planned** — [FULL-VERIFY.md](FULL-VERIFY.md) |
 | `/watchlist` | WatchlistPage | Manage watched symbols |
@@ -44,22 +48,27 @@ All routes except `/login` require authentication.
 
 See **[MORNING-ROUTINE.md](MORNING-ROUTINE.md)** for aggregated briefing API, checklist, ETF book, and speed plan (MR-A–MR-F).
 
-- **Not implemented** — PHP equivalent: `morning-dashboard.php`
-- Planned: regime hero, 7-step checklist, swing/intraday alerts, Nifty 15m, ETF SETUP+, auto high conviction
+- Implemented: regime hero + checklist, swing/intraday alerts, Swing Auto tiers (with overnight diffs), and LTG Auto tier snapshot.
+- ETF SETUP+ panel and Nifty 15m card are also wired (see `MorningPage.tsx`).
 
 ### Trading Presets (`/presets`)
 
-See **[TRADING-PRESETS.md](TRADING-PRESETS.md)** for three system profiles, URL encoding, deep links, and speed plan (TP-A–TP-F).
+See **[TRADING-PRESETS.md](TRADING-PRESETS.md)** for four system profiles, URL encoding, deep links, and speed plan (TP-A–TP-F).
 
-- **Not implemented** — PHP equivalent: `trading-presets.php`
-- Planned: conservative swing, ETF rotation, intraday session cards + morning chips
-
+- Hub cards: conservative swing, ETF rotation, intraday session, 20 MA Stratzy
+- NSE session banner + accuracy tips
+- Primary/secondary deep links with `?preset=` + `?autorun=1` on `/swing`, `/swing/auto`, `/intraday`
+- Morning + Dashboard chips; Copy link for bookmarkable hub URLs
+- API: `GET /api/v1/trading/presets` (+ `/:id`)
 ### Trading Strategies (`/strategies`)
 
-See **[TRADING-STRATEGIES.md](TRADING-STRATEGIES.md)** for the 21-strategy catalog, three engines (swing / screener / hybrid), background jobs, and speed plan (TS-A–TS-F).
+See **[TRADING-STRATEGIES.md](TRADING-STRATEGIES.md)** for the 22-strategy catalog, three engines (swing / screener / hybrid), background jobs, and speed plan (TS-A–TS-F).
 
-- **Not implemented** — PHP equivalent: `strategies.php`
-- Planned: style tabs, strategy select, universe + max scan, job progress, engine-specific results tables
+- Style tabs (All / Swing / Positional / Hybrid) with `GET /api/v1/strategies?style=…`
+- Strategy picker: 22 read-only system strategies from `StrategyRegistry` + user screener presets and swing rule profiles
+- Run form: universe, max scan, background job toggle; engine-specific results (swing hits, screener rows, hybrid)
+- Custom preset/profile CRUD (user-owned only; system strategies are read-only)
+- Background runs poll `GET /api/v1/strategies/jobs/:id` with progress bar
 
 ### Screener (`/screener`)
 
@@ -133,7 +142,7 @@ See **[INTRADAY.md](INTRADAY.md)** (5m/15m radar) and **[NIFTY-POSITIONS.md](NIF
 - 5m / 15m interval toggle
 - Direction, MTF confluence, live playbook steps
 - 60s auto-poll; manual refresh bypasses chart cache
-- **Not on this page:** candlestick chart, preset table, scalp gate, log-trade / positions (PHP `nifty-15m.php`, `intraday-app.php`)
+- Scalp gate banner (`scalp_setup`) with log-to-ledger link (`nifty_scalp_5m`)
 
 ### Admin (`/admin`)
 

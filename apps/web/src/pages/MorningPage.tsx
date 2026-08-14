@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { Page, PageHeader } from '../components/PageLayout';
+import { SignalCard } from '../components/research/SignalCard';
 
 interface RoutineStep {
   step: string;
@@ -48,6 +49,65 @@ interface MorningBriefing {
     }>;
     hit_count: number;
     saved_ago: string | null;
+    tier_changes?: {
+      high_conviction?: { added: string[]; removed: string[] };
+    } & Record<string, unknown>;
+  };
+  ltg_auto: {
+    available: boolean;
+    saved_at: string | null;
+    universe: string;
+    max_scan: number;
+    tiers: {
+      high_conviction: Array<{
+        symbol: string;
+        verdict: string;
+        strict_verdict: string;
+        decision_label: string;
+        decision_score: number;
+        price: number | null;
+        mos: number | null;
+        quality_score: number | null;
+        recommendation_basis?: string;
+        score_basis?: string;
+      }>;
+      strict_enter: Array<{
+        symbol: string;
+        verdict: string;
+        strict_verdict: string;
+        decision_label: string;
+        decision_score: number;
+        price: number | null;
+        mos: number | null;
+        quality_score: number | null;
+        recommendation_basis?: string;
+        score_basis?: string;
+      }>;
+      setup_radar: Array<{
+        symbol: string;
+        verdict: string;
+        strict_verdict: string;
+        decision_label: string;
+        decision_score: number;
+        price: number | null;
+        mos: number | null;
+        quality_score: number | null;
+        recommendation_basis?: string;
+        score_basis?: string;
+      }>;
+      breakout_surge: Array<{
+        symbol: string;
+        verdict: string;
+        strict_verdict: string;
+        decision_label: string;
+        decision_score: number;
+        price: number | null;
+        mos: number | null;
+        quality_score: number | null;
+        recommendation_basis?: string;
+        score_basis?: string;
+      }>;
+    };
   };
   swing: {
     open: number;
@@ -113,6 +173,56 @@ interface MorningBriefing {
     cached_ago: string | null;
     elapsed_sec: number | null;
     stale_count: number;
+  };
+  chart_patterns: {
+    available: boolean;
+    scan_date: string | null;
+    pattern_count: number;
+    breakout_count: number;
+    confirmed_count: number;
+    forming_count: number;
+    hits: Array<{
+      symbol: string;
+      pattern: string;
+      kind: string;
+      type: string;
+      status: string;
+      confidence: number;
+      timeframe: string;
+    }>;
+    href: string;
+  };
+  evening_gtt?: {
+    date_key: string | null;
+    order_count: number;
+    regime_key?: string | null;
+    built_at?: string;
+    orders: Array<{
+      symbol: string;
+      name: string;
+      tier: string;
+      qty: number;
+      trigger_price: number;
+      limit_price: number;
+      stop_loss: number | null;
+      profit_target: number | null;
+      copy_line: string;
+    }>;
+    href: string;
+  };
+  strategy_daily_proof?: {
+    days: number;
+    run_count: number;
+    scoreboard: Array<{
+      strategy_key: string;
+      label: string;
+      days: number;
+      ok_days: number;
+      avg_hits: number;
+      last_hits: number;
+      last_date: string;
+    }>;
+    href: string;
   };
   presets: Array<{
     id: string;
@@ -199,6 +309,19 @@ function morningActions(briefing: MorningBriefing): Array<{ label: string; detai
       tone: 'danger',
     });
   }
+  const signalCount =
+    briefing.swing.exit_count +
+    briefing.intraday.exit_count +
+    (briefing.auto.hit_count ?? 0) +
+    (briefing.chart_patterns.available ? briefing.chart_patterns.hits.length : 0);
+  if (signalCount > 0) {
+    actions.push({
+      label: 'Open signals inbox',
+      detail: `${signalCount} actionable item(s) across exits, HC radar, and chart patterns.`,
+      href: '/signals',
+      tone: briefing.swing.exit_count + briefing.intraday.exit_count > 0 ? 'danger' : 'ok',
+    });
+  }
   if (briefing.nifty.ok) {
     actions.push({
       label: 'Check intraday cockpit',
@@ -211,8 +334,37 @@ function morningActions(briefing: MorningBriefing): Array<{ label: string; detai
     actions.push({
       label: 'Review high-conviction swing ideas',
       detail: `${briefing.auto.hit_count} radar names available from latest snapshot.`,
-      href: '/swing/auto',
+      href: '/swing/auto?tier=high_conviction',
       tone: 'ok',
+    });
+  }
+  if ((briefing.evening_gtt?.order_count ?? 0) > 0) {
+    actions.push({
+      label: 'Place evening GTT orders',
+      detail: `${briefing.evening_gtt!.order_count} GTT line(s) from ${briefing.evening_gtt!.date_key ?? 'last close'} — copy on Signals.`,
+      href: briefing.evening_gtt!.href || '/signals',
+      tone: 'ok',
+    });
+  }
+  actions.push({
+    label: 'Run quality screener',
+    detail: 'Nifty 50 · quality compounders — verify top names before sizing.',
+    href: '/screener?preset=quality&universe=nifty50',
+    tone: 'info',
+  });
+  actions.push({
+    label: 'Scan EMA momentum setups',
+    detail: 'Daily fresh cross ↑ EMA-20 with quality gates.',
+    href: '/screener?preset=ta_fresh_ema20_cross&universe=nifty50&show_ta=1',
+    tone: 'info',
+  });
+  if (briefing.auto.available && briefing.auto.hits.length > 0) {
+    const top = briefing.auto.hits[0]?.symbol;
+    actions.push({
+      label: 'Verify top HC name',
+      detail: top ? `Quick CFA verify on ${top}.` : 'Quick verify on top high-conviction hit.',
+      href: top ? `/verify?symbol=${encodeURIComponent(top)}` : '/verify',
+      tone: 'info',
     });
   }
   if (briefing.etf.hit_count > 0) {
@@ -223,11 +375,19 @@ function morningActions(briefing: MorningBriefing): Array<{ label: string; detai
       tone: briefing.etf.stale_count > 0 ? 'warn' : 'info',
     });
   }
+  if (briefing.chart_patterns.available && briefing.chart_patterns.hits.length > 0) {
+    actions.push({
+      label: 'Review chart pattern feed',
+      detail: `${briefing.chart_patterns.breakout_count} breakout · ${briefing.chart_patterns.confirmed_count} confirmed · scan ${briefing.chart_patterns.scan_date ?? '—'}.`,
+      href: briefing.chart_patterns.href,
+      tone: briefing.chart_patterns.breakout_count > 0 ? 'ok' : 'info',
+    });
+  }
   if (actions.length === 0) {
     actions.push({
       label: 'Stand aside / maintain watchlist',
       detail: 'No urgent risk alerts or high-priority new setup in the current briefing.',
-      href: '/dashboard',
+      href: '/screener?preset=quality&universe=nifty50',
       tone: 'info',
     });
   }
@@ -286,6 +446,14 @@ function MorningCfaCockpit({ briefing }: { briefing: MorningBriefing }) {
           <span>ETF book</span>
           <strong>{briefing.etf.hit_count}</strong>
           <small>{briefing.etf.cached_ago ? `Cached ${briefing.etf.cached_ago}` : 'Latest available'}</small>
+        </div>
+        <div className="morning-cfa-tile">
+          <span>Patterns</span>
+          <strong>{briefing.chart_patterns.available ? briefing.chart_patterns.pattern_count : 0}</strong>
+          <small>
+            {briefing.chart_patterns.breakout_count} breakout · scan{' '}
+            {briefing.chart_patterns.scan_date ?? '—'}
+          </small>
         </div>
       </div>
 
@@ -388,6 +556,56 @@ export default function MorningPage() {
           </div>
 
           <MorningCfaCockpit briefing={briefing} />
+
+          <div className="morning-panels" style={{ marginBottom: 16 }}>
+            <section className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                <h2 style={{ marginTop: 0, marginBottom: 0 }}>Evening GTT · last digest</h2>
+                <Link to={briefing.evening_gtt?.href || '/signals'} className="btn btn-sm btn-secondary">
+                  Open Signals board
+                </Link>
+              </div>
+              <p className="muted" style={{ marginTop: 8, fontSize: 13 }}>
+                {briefing.evening_gtt?.date_key
+                  ? `${briefing.evening_gtt.date_key} · ${briefing.evening_gtt.order_count} order(s)${
+                      briefing.evening_gtt.regime_key ? ` · ${briefing.evening_gtt.regime_key}` : ''
+                    }`
+                  : 'No evening GTT digest yet — worker builds at 16:00 IST (HC + Strict ENTER).'}
+              </p>
+              {(briefing.evening_gtt?.orders?.length ?? 0) > 0 ? (
+                <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                  {briefing.evening_gtt!.orders.slice(0, 5).map((o) => (
+                    <li key={o.symbol} style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, marginBottom: 4 }}>
+                      {o.copy_line}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </section>
+
+            <section className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                <h2 style={{ marginTop: 0, marginBottom: 0 }}>Strategy daily proof</h2>
+                <Link to={briefing.strategy_daily_proof?.href || '/strategies'} className="btn btn-sm btn-secondary">
+                  Scoreboard
+                </Link>
+              </div>
+              <p className="muted" style={{ marginTop: 8, fontSize: 13 }}>
+                {(briefing.strategy_daily_proof?.run_count ?? 0) > 0
+                  ? `${briefing.strategy_daily_proof!.run_count} run row(s) in last ${briefing.strategy_daily_proof!.days} days`
+                  : 'No daily strategy proof rows yet — worker batch at 16:15 IST.'}
+              </p>
+              {(briefing.strategy_daily_proof?.scoreboard?.length ?? 0) > 0 ? (
+                <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 13 }}>
+                  {briefing.strategy_daily_proof!.scoreboard.slice(0, 4).map((row) => (
+                    <li key={row.strategy_key}>
+                      <strong>{row.label}</strong> · avg {row.avg_hits} hits · last {row.last_hits} ({row.last_date})
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </section>
+          </div>
 
           {briefing.presets.length > 0 && (
             <div className="morning-presets" aria-label="Trading presets">
@@ -683,7 +901,61 @@ export default function MorningPage() {
           </div>
 
           <div className="card">
-            <h2>7. Swing Auto · high conviction</h2>
+            <div className="morning-card-header">
+              <h2>7. Chart patterns (daily scan)</h2>
+              <Link to={briefing.chart_patterns.href} className="btn btn-secondary">
+                Full pattern feed
+              </Link>
+            </div>
+            {!briefing.chart_patterns.available ? (
+              <p className="muted">
+                No stored pattern scan yet — runs during daily sync or when you open Stock Details charts.
+              </p>
+            ) : (
+              <>
+                <p className="muted">
+                  Scan {briefing.chart_patterns.scan_date} · {briefing.chart_patterns.pattern_count} total ·{' '}
+                  {briefing.chart_patterns.breakout_count} breakout · {briefing.chart_patterns.confirmed_count}{' '}
+                  confirmed · {briefing.chart_patterns.forming_count} forming
+                </p>
+                {briefing.chart_patterns.hits.length === 0 ? (
+                  <p className="muted">No breakout/confirmed patterns above confidence threshold.</p>
+                ) : (
+                  <table className="data-table compact">
+                    <thead>
+                      <tr>
+                        <th>Symbol</th>
+                        <th>Pattern</th>
+                        <th>Status</th>
+                        <th>Bias</th>
+                        <th>Conf.</th>
+                        <th>TF</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {briefing.chart_patterns.hits.map((hit) => (
+                        <tr key={`${hit.symbol}-${hit.kind}-${hit.timeframe}`}>
+                          <td>
+                            <Link to={`/stock/${hit.symbol}`}>{hit.symbol}</Link>
+                          </td>
+                          <td>{hit.pattern}</td>
+                          <td>
+                            <span className={`pattern-status pattern-status-${hit.status}`}>{hit.status}</span>
+                          </td>
+                          <td>{hit.type}</td>
+                          <td>{hit.confidence}%</td>
+                          <td>{hit.timeframe}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="card">
+            <h2>8. Swing Auto · high conviction</h2>
             {!briefing.auto.available && (
               <p className="muted">
                 No snapshot yet —{' '}
@@ -695,33 +967,111 @@ export default function MorningPage() {
                 <p className="muted">
                   {briefing.auto.hit_count} names · saved {briefing.auto.saved_ago ?? '—'}
                 </p>
+                {briefing.auto.tier_changes?.high_conviction?.added?.length ? (
+                  <p className="muted" style={{ marginTop: '-0.25rem' }}>
+                    Overnight tier changes: +{briefing.auto.tier_changes.high_conviction.added.length} added HC ·{' '}
+                    -{briefing.auto.tier_changes.high_conviction.removed.length} removed
+                  </p>
+                ) : null}
                 {briefing.auto.hits.length === 0 ? (
                   <p className="muted">No high-conviction hits in latest snapshot.</p>
                 ) : (
-                  <table className="data-table compact">
-                    <thead>
-                      <tr>
-                        <th>Symbol</th>
-                        <th>Verdict</th>
-                        <th>Action</th>
-                        <th>Score</th>
-                        <th>Price</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {briefing.auto.hits.map((hit) => (
-                        <tr key={hit.symbol}>
-                          <td>
-                            <Link to={`/stock/${encodeURIComponent(hit.symbol)}`}>{hit.symbol}</Link>
-                          </td>
-                          <td>{hit.strict_verdict || hit.verdict}</td>
-                          <td>{hit.decision_label}</td>
-                          <td>{hit.decision_score}</td>
-                          <td>{fmtMoney(hit.price)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <div className="signal-card-grid">
+                    {briefing.auto.hits.map((hit) => (
+                      <SignalCard
+                        key={hit.symbol}
+                        variant="card"
+                        symbol={hit.symbol}
+                        verdict={hit.strict_verdict || hit.verdict}
+                        verdictClassName="badge badge-buy"
+                        decisionLabel={hit.decision_label}
+                        decisionScore={hit.decision_score}
+                        price={hit.price}
+                        highConviction
+                        recommendationBasis="screening_matrix"
+                        scoreBasis="quality_proxy"
+                        econStatus="unproven"
+                        actions={
+                          <>
+                            <Link
+                              to={`/verify?symbol=${encodeURIComponent(hit.symbol)}`}
+                              className="btn btn-secondary btn-sm"
+                            >
+                              Verify
+                            </Link>
+                            <Link
+                              to={`/swing/auto?tier=high_conviction`}
+                              className="btn btn-secondary btn-sm"
+                            >
+                              Auto Radar
+                            </Link>
+                          </>
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="card">
+            <h2>9. LTG Auto · high conviction</h2>
+            {!briefing.ltg_auto?.available ? (
+              <p className="muted">
+                No snapshot yet —{' '}
+                <Link to="/ltg/auto">run LTG auto scan</Link> to populate this panel.
+              </p>
+            ) : (
+              <>
+                <p className="muted">
+                  {briefing.ltg_auto.tiers.high_conviction.length} names · saved{' '}
+                  {briefing.ltg_auto.saved_at ? new Date(briefing.ltg_auto.saved_at).toLocaleString('en-IN') : '—'}
+                </p>
+                {briefing.ltg_auto.tiers.high_conviction.length === 0 ? (
+                  <p className="muted">No LTG high-conviction hits in latest snapshot.</p>
+                ) : (
+                  <div className="signal-card-grid">
+                    {briefing.ltg_auto.tiers.high_conviction.slice(0, 5).map((hit) => {
+                      const mos = hit.mos;
+                      const econStatus =
+                        mos == null ? 'missing' : mos >= 20 ? 'pass' : mos <= 0 ? 'fail' : 'unproven';
+                      return (
+                        <SignalCard
+                          key={hit.symbol}
+                          variant="card"
+                          symbol={hit.symbol}
+                          verdict={hit.strict_verdict || hit.verdict}
+                          verdictClassName="badge badge-buy"
+                          decisionLabel={hit.decision_label}
+                          decisionScore={hit.decision_score}
+                          price={hit.price}
+                          qualityScore={hit.quality_score}
+                          highConviction
+                          recommendationBasis={hit.recommendation_basis}
+                          scoreBasis={hit.score_basis}
+                          mos={hit.mos}
+                          econStatus={econStatus}
+                          actions={
+                            <>
+                              <Link
+                                to={`/verify?symbol=${encodeURIComponent(hit.symbol)}`}
+                                className="btn btn-secondary btn-sm"
+                              >
+                                Verify
+                              </Link>
+                              <Link
+                                to={`/ltg/auto`}
+                                className="btn btn-secondary btn-sm"
+                              >
+                                LTG Auto
+                              </Link>
+                            </>
+                          }
+                        />
+                      );
+                    })}
+                  </div>
                 )}
               </>
             )}

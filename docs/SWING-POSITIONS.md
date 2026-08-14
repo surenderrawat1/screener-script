@@ -267,15 +267,15 @@ On **Auto Radar**, `buildState` re-runs `evaluatePositionAction` with **hit matc
 
 | ID | Name | EXIT when |
 |----|------|-----------|
-| **X1** | Stop-loss | `price <= active_stop` (hard + breakeven + structural + trail floor) |
-| **X2** | Profit target | `price >= profit_target` (stored or computed 3R plan) |
-| **X3** | Trend break | Bear: below SMA-50; or EMA-21 break + weak momentum + gain ≥ 4% |
-| **X4** | RSI overbought | RSI > 65 and gain ≥ partial target threshold |
-| **X5** | MACD momentum | Advisory only (does not trigger EXIT in v2) |
-| **X6** | Trailing stop | `price <= trail_stop` after trail armed |
-| **X7** | Time stop | Sideways regime: ≥15 sessions flat + weak EMA |
-| **X8** | Price action | Bearish PA (LH/LL, engulfing) + gain ≥ 5% |
-| **X9** | Hourly EMA | Hourly EMA-9 < EMA-21 + partial gain (**inactive in v2** — no hourly data) |
+| **X1** | Stop-loss | `price <= base_active_stop` (hard + peak-armed breakeven + structural; trail is X6) |
+| **X2** | Profit target | Frozen 3R band (+7–25%) |
+| **X3** | Trend break | Bear SMA-50 break, or EMA-21 + weak momentum with gain |
+| **X4** | RSI overbought | RSI > 70 with gain ≥ 92% of target |
+| **X5** | MACD momentum | MACD hist fading + weak momentum + gain ≥ 4% |
+| **X6** | Trailing stop | Arms from **peak MFE** (not current gain); runner trail after 75% of target |
+| **X7** | Time stop | Sideways flat ≥15 sessions — **skipped** if peak already earned the trail |
+| **X8** | Price action | LH/LL or bearish engulfing near partial target |
+| **X9** | Hourly EMA | Hourly EMA-9 < EMA-21 with partial gain |
 
 **Verdict:** `EXIT` if any rule `passed === true`; else `HOLD`.
 
@@ -284,16 +284,21 @@ On **Auto Radar**, `buildState` re-runs `evaluatePositionAction` with **hit matc
 | Constant | Value |
 |----------|-------|
 | `DEFAULT_TRAIL_FROM_HIGH_PCT` | 2.5% |
+| `TRAIL_FROM_HIGH_RUNNER_PCT` | 3.5% (after peak ≥ 75% of target) |
 | `TRAIL_FROM_HIGH_BEAR_PCT` | 1.8% |
 | `TRAIL_FROM_HIGH_HIGH_VOL_PCT` | 3.2% |
-| `DEFAULT_TRAIL_ARM_PCT` | 2.0% |
-| `BREAKEVEN_ARM_PCT` | 2.0% |
-| `BREAKEVEN_BUFFER_PCT` | 0.35% |
-| `EXIT_RSI_OVERBOUGHT` | 65 |
+| `DEFAULT_TRAIL_ARM_PCT` | **2.5%** peak; trail floored at CTC / profit-lock |
+| `BREAKEVEN_ARM_PCT` | **1.0%** peak MFE → cost-to-cost |
+| `PROFIT_LOCK_ARM_PCT` / `FLOOR` | **3.0%** peak → lock **+1.5%** |
+| `SCRATCH_DEAD_SESSIONS` | **4** sessions, peak &lt;1%, still red → X7 scratch |
+| `BREAKEVEN_BUFFER_PCT` | 0.35% above entry |
+| `EXIT_RSI_OVERBOUGHT` | 70 |
+| `EXIT_PARTIAL_TARGET_FRACTION` | 0.92 |
 | `EXIT_RSI_MIN_GAIN_PCT` | 5.0% |
 | `MIN_R_MULTIPLE` | 3.0 |
-| `MIN_TARGET_PCT` / `MAX_TARGET_PCT` | 6% / 24% |
+| `MIN_TARGET_PCT` / `MAX_TARGET_PCT` | 7% / 25% |
 | `SIDEWAYS_TIME_STOP_DAYS` | 15 |
+| `ENGINE_VERSION` | `v3.17-quality-floor` |
 
 ---
 
@@ -326,11 +331,12 @@ Evaluated **after** `evaluateExit`. Priority order:
 
 ### Computation (`computeTrailStop`, `computeActiveStop`)
 
-1. **Breakeven** arms at `max(2%, 50% of target gain)` → stop lifts to entry + 0.35%
-2. **Trail** arms after `DEFAULT_TRAIL_ARM_PCT` (2%) gain
-3. **Trail distance** from high-water: 2.5% default, 1.8% bear, 3.2% high-vol regime
-4. **EMA-9 trail** considered after 50% of target gain
-5. **Active stop** = max(hard, breakeven, structural, trail floor)
+1. **Breakeven (cost-to-cost)** arms from **peak MFE ≥ +1%** → stop lifts to entry + 0.35%
+2. **Profit lock** arms from **peak MFE ≥ +3%** → stop lifts to entry + 1.5%
+3. **Trail** arms from **peak MFE ≥ +2%** (independent of target %)
+4. **Trail distance** from high-water: 2.5% default, 1.8% bear, 3.2% high-vol; **3.5% runner** after peak ≥ 75% of target
+5. **Scratch** dead trades via X7 after 4 sessions with peak &lt; +1% and still red
+6. **Active stop** = max(hard, CTC, profit-lock, structural); trail trigger is X6
 
 ### Persistence
 

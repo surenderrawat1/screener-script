@@ -21,6 +21,7 @@ cache_ttl:
   intraday_chart: 300    # 5 minutes during session
   morning_etf: 600       # 10 minutes — ETF setup panel
   morning_bundle: 60     # 1 minute — assembled morning briefing
+  intraday_state: 60     # 1 minute — radar playbook snapshot (I-A1)
 
 # Staleness warnings (admin UI)
 staleness:

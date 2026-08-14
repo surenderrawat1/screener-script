@@ -3,10 +3,12 @@ import {
   fnoSpecForInstrument,
   futuresSymbolLabel,
   nextExpiry,
+  nextMonthlyExpiry,
   optionSymbolLabel,
   type FnoExpiryInfo,
   type FnoUnderlyingSpec,
 } from './fno-specs.js';
+import { TIME_STOP_IST } from './session-clock.js';
 
 const PREMIUM_STOP_PCT = 35;
 const PREMIUM_TARGET_MULT = [0.5, 1.0, 1.5]; // vs risk premium
@@ -34,6 +36,8 @@ export function buildFnoTradePlans(
   }
 
   const expiry = nextExpiry(spec);
+  const monthlyExpiry =
+    spec.expiry_schedule === 'weekly' ? nextMonthlyExpiry(new Date(), spec.expiry_dow) : expiry;
   const confidence = Number(analysis.confidence ?? 0);
   const mtfDeploy = Number(mtf?.deploy_pct ?? 50);
 
@@ -43,9 +47,10 @@ export function buildFnoTradePlans(
       message: String(spotPlan?.message ?? 'No spot trade plan — F&O stand aside.'),
       underlying: spec.label,
       expiry,
+      monthly_expiry: monthlyExpiry,
       futures: null,
       options: null,
-      risk_notes: defaultRiskNotes(spec, expiry),
+      risk_notes: defaultRiskNotes(spec, expiry, monthlyExpiry),
     };
   }
 
@@ -61,9 +66,10 @@ export function buildFnoTradePlans(
       message: 'Invalid stop distance for F&O sizing.',
       underlying: spec.label,
       expiry,
+      monthly_expiry: monthlyExpiry,
       futures: null,
       options: null,
-      risk_notes: defaultRiskNotes(spec, expiry),
+      risk_notes: defaultRiskNotes(spec, expiry, monthlyExpiry),
     };
   }
 
@@ -76,6 +82,7 @@ export function buildFnoTradePlans(
     underlying: spec.label,
     instrument_id: instrumentId,
     expiry,
+    monthly_expiry: monthlyExpiry,
     bias: isLong ? 'long' : 'short',
     bias_label: isLong ? 'Bullish F&O' : 'Bearish F&O',
     spot_reference: Math.round(spot * 100) / 100,
@@ -83,7 +90,7 @@ export function buildFnoTradePlans(
     futures,
     options,
     risk_notes: [
-      ...defaultRiskNotes(spec, expiry),
+      ...defaultRiskNotes(spec, expiry, monthlyExpiry),
       spec.kind === 'stock'
         ? 'Stock F&O P&L uses lot size × price move (futures) or premium (options).'
         : 'Index F&O P&L uses lot size × index points (futures) or premium (options).',
@@ -144,7 +151,7 @@ function buildFuturesPlan(
     margin_inr_total_est: marginEst * lotsSuggested,
     targets,
     trail: spotPlan.trail ?? null,
-    time_stop_ist: spotPlan.time_stop_ist ?? '15:15',
+    time_stop_ist: spotPlan.time_stop_ist ?? TIME_STOP_IST,
     trigger: spotPlan.trigger ?? null,
     notes: [
       `1 lot = ${lot} units · ₹${riskInr.toLocaleString('en-IN')} risk per lot for ${Math.round(riskPts)} ${ptsLabel}`,
@@ -220,7 +227,7 @@ function buildOptionsPlan(
     spot_stop_ref: Math.round(stop * 100) / 100,
     spot_risk_pts: Math.round(riskPts * 100) / 100,
     targets,
-    time_stop_ist: spotPlan.time_stop_ist ?? '15:15',
+    time_stop_ist: spotPlan.time_stop_ist ?? TIME_STOP_IST,
     trigger: spotPlan.trigger ?? null,
     notes: [
       `${strikeStyle} ${optionType} for ${isLong ? 'bullish' : 'bearish'} intraday bias.`,
@@ -254,20 +261,32 @@ function suggestLots(mtfDeploy: number, confidence: number, capitalPerLot: numbe
   return Math.min(lots, isOption ? 2 : 3);
 }
 
-function defaultRiskNotes(spec: FnoUnderlyingSpec, expiry: FnoExpiryInfo): string[] {
+function defaultRiskNotes(
+  spec: FnoUnderlyingSpec,
+  expiry: FnoExpiryInfo,
+  monthlyExpiry?: FnoExpiryInfo,
+): string[] {
   const product = spec.kind === 'stock' ? 'Stock F&O' : 'Index F&O';
+  const shift = expiry.holiday_shifted ? ` (shifted from ${expiry.scheduled_date} holiday)` : '';
   const expiryLine =
     expiry.schedule === 'monthly'
       ? expiry.is_today
         ? 'Monthly expiry today — elevated gamma/theta; reduce size.'
-        : `Next monthly expiry: ${expiry.label}.`
+        : `Next monthly expiry: ${expiry.weekday} ${expiry.label}${shift}.`
       : expiry.is_today
         ? 'Weekly expiry today — elevated gamma/theta; reduce size.'
-        : `Next weekly expiry: ${expiry.label}.`;
+        : `Next weekly expiry: ${expiry.weekday} ${expiry.label}${shift}.`;
+  const monthlyLine =
+    spec.expiry_schedule === 'weekly' && monthlyExpiry && monthlyExpiry.date !== expiry.date
+      ? `Next monthly expiry: ${monthlyExpiry.weekday} ${monthlyExpiry.label}.`
+      : null;
 
   return [
-    `${product} — verify lot size and margin on NSE/broker before trading.`,
+    spec.id === 'sensex'
+      ? `${product} — BSE Sensex expires Thursday (weekly + last-Thursday monthly). Verify on BSE before trading.`
+      : `${product} — NSE expires Tuesday (weekly Nifty; monthly last Tuesday). Verify on NSE before trading.`,
     expiryLine,
+    monthlyLine,
     'This is not live option-chain data — strikes and premiums are modelled from spot plan.',
-  ];
+  ].filter(Boolean) as string[];
 }

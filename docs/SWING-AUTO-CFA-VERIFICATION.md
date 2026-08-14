@@ -278,6 +278,7 @@ packages/swing — full suite — 111+ tests PASS
 
 ## Related documents
 
+- [SWING-AUTO-RADAR-RULES-CFA-VERIFICATION.md](./SWING-AUTO-RADAR-RULES-CFA-VERIFICATION.md) — **Ch.93 rules compliance** (Add gate / deploy scale / E9 hourly) — Aug 2026
 - [SWING-AUTO.md](./SWING-AUTO.md) — architecture (update BT parity note)
 - [SWING-UNIVERSE-CFA-VERIFICATION.md](./SWING-UNIVERSE-CFA-VERIFICATION.md) — manual universe scan
 - [SWING-POSITIONS.md](./SWING-POSITIONS.md) — position ledger

@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState, Page, PageHeader } from '../components/PageLayout';
+import { EvidenceStrip } from '../components/research/EvidenceStrip';
 
 interface InvestmentMemo {
   grade: string;
@@ -212,6 +213,11 @@ export default function VerifyPage() {
                 {verdict?.grade ? ` · ${verdict.grade}` : ''}
               </p>
               <p className="cfa-headline">{memo.headline}</p>
+              <EvidenceStrip
+                recommendationBasis="screening_matrix"
+                scoreBasis={result.analysis.verify_score ? 'quality_proxy' : undefined}
+                compact
+              />
             </div>
             <div className="cfa-score-ring">
               <span className="num">{memo.quality.score}</span>

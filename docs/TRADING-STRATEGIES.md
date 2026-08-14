@@ -2,7 +2,7 @@
 
 **Trading Strategies** is the curated strategy runner: 21 registered filters across swing TA, CFA screener presets, and hybrid pipelines — with style tabs, universe selection, background jobs, and unified results tables.
 
-In **Script Screener v2 this does not exist.** Screener and swing scan are separate pages with manual forms. There is no `StrategyRegistry`, no hybrid screener→swing pipeline, and no strategy job API.
+In **Script Screener v2** the strategy hub is implemented: `StrategyRegistry` (22 entries), `/strategies` page, `GET/POST /api/v1/strategies`, and hybrid screener→swing via `runStrategy()`.
 
 > Educational only — strategies route to existing engines; verify on NSE before orders.
 
@@ -51,19 +51,18 @@ In **Script Screener v2 this does not exist.** Screener and swing scan are separ
 
 | Aspect | PHP (`stock-verifier`) | Script Screener (`stock-verifier-v2`) |
 |--------|------------------------|--------------------------------------|
-| **Page** | `strategies.php` (nav: Strategies) | **No route** |
-| **Planned route** | — | `/strategies` |
-| **Registry** | `StrategyRegistry` — 21 strategies | **Not ported** |
-| **Runner** | `StrategyRunner` — 3 engines | Screener + swing scan **separate** |
-| **Hybrid pipeline** | Screener → symbol list → swing scan | **Not implemented** |
-| **API** | `strategy-job.php` + cache jobs | BullMQ `sv-screener` / `sv-swing-scan` only |
-| **Style tabs** | 4 tabs (all/swing/positional/hybrid) | **None** |
-| **Screener presets in strategies** | 13 positional + 2 hybrid (30+ preset keys) | **7** presets in `PRESET_FILTERS` |
-| **Swing strategies** | 6 with zone/breakout filters | Manual `/swing` form only |
-| **TA-heavy screener presets** | `cfa_best_opportunity`, `ta_pullback`, etc. | **No TA enrichment** in screener |
-| **Background threshold** | Per-engine (swing 25, screener 400/80 TA) | Screener ≥400; swing ≥25 |
-| **User custom strategies** | Not on this page (future) | `screener_presets` table — no CRUD |
-| **vs Trading Presets** | Full strategy catalog | [TRADING-PRESETS.md](TRADING-PRESETS.md) — 3 URL shortcuts only |
+| **Page** | `strategies.php` (nav: Strategies) | `/strategies` |
+| **Registry** | `StrategyRegistry` — 21 strategies | `@sv/swing` — 22 strategies |
+| **Runner** | `StrategyRunner` — 3 engines | `runStrategy()` — swing / screener / hybrid |
+| **Hybrid pipeline** | Screener → symbol list → swing scan | ✓ staged progress |
+| **API** | `strategy-job.php` + cache jobs | `GET/POST /api/v1/strategies` + jobs |
+| **Style tabs** | 4 tabs (all/swing/positional/hybrid) | ✓ |
+| **Screener presets in strategies** | 13 positional + 2 hybrid | 28 presets in `PRESET_FILTERS` (TA + moat) |
+| **Swing strategies** | 6 with zone/breakout filters | ✓ + Tier-A defaults |
+| **TA-heavy screener presets** | `cfa_best_opportunity`, `ta_pullback`, etc. | ✓ with TA enrichment path |
+| **Background threshold** | Per-engine (swing 25, screener 400/80 TA) | Auto-background by engine size |
+| **User custom strategies** | Not on this page (future) | M11 custom presets + swing rule profiles |
+| **vs Trading Presets** | Full strategy catalog | [TRADING-PRESETS.md](TRADING-PRESETS.md) — daily URL shortcuts |
 
 ---
 
@@ -141,7 +140,7 @@ Default universe: `swing_tier_a` (12 names) for most; `nifty250` for watch_early
 
 Default universe: `nifty500` (most); `nifty250` for pullback.
 
-**v2 gap:** Only `quality`, `strong_buy`, `buy_picks`, `fair_mos`, `value`, `growth`, `cfa_top` exist in `PRESET_FILTERS` — **10+ positional presets missing**, especially TA/combined presets.
+**v2:** All 13 positional presets are ready (`moat_*`, `ta_*`, `cfa_*` included). Screener results show RSI / 52w% / bottom-out when TA enrichment runs.
 
 ### Hybrid (2) — engine `hybrid`
 
@@ -396,20 +395,21 @@ PHP `strategy_job` in file cache — lost on deploy. v2 `jobs` table already exi
 
 | Feature | PHP | v2 | Gap |
 |---------|-----|-----|-----|
-| `/strategies` page | ✓ | ✗ | **TS-A** |
-| 21 system strategies | ✓ | ✗ | **TS-A** |
-| Style tabs | ✓ | ✗ | **TS-A** |
-| StrategyRunner 3 engines | ✓ | ✗ | **TS-B** |
-| Hybrid screener→swing | ✓ | ✗ | **TS-C** |
-| Swing zone/breakout strategies | ✓ | partial API | **TS-B** |
-| 13 positional presets | ✓ | 7 basic | **TS-D** |
-| TA/combined screener presets | ✓ | ✗ | **TS-D** |
-| Background strategy jobs | ✓ | partial (separate queues) | **TS-E** |
-| Job progress UI | ✓ | WS done-only | **TS-E** |
-| Swing results + add position | ✓ | partial | **TS-F** |
-| Screener TA columns in results | ✓ | ✗ | **TS-D** |
-| `validate-logic` registry tests | ✓ | ✗ | **TS-F** |
-| User custom strategies | — | table only | **M11** |
+| `/strategies` page | ✓ | ✓ | — |
+| System strategies (22 in v2) | ✓ (21) | ✓ | — |
+| Style tabs | ✓ | ✓ | — |
+| StrategyRunner 3 engines | ✓ | ✓ | — |
+| Hybrid screener→swing | ✓ | ✓ | staged progress |
+| Swing zone/breakout strategies | ✓ | ✓ | — |
+| 13 positional presets | ✓ | ✓ | — |
+| TA/combined screener presets | ✓ | ✓ | — |
+| Background strategy jobs | ✓ | ✓ | — |
+| Job progress UI | ✓ | ✓ | staged screener→swing |
+| Swing results + add position | ✓ | ✓ | — |
+| Screener TA columns in results | ✓ | ✓ | — |
+| `validate-logic` registry tests | ✓ | ✓ | — |
+| User custom strategies | — | M11 CRUD | — |
+| Deep link autorun | ✓ | ✓ | `?strategy=&universe=&autorun=1` |
 
 ---
 
@@ -472,12 +472,15 @@ PHP `strategy_job` in file cache — lost on deploy. v2 `jobs` table already exi
 
 ### Acceptance criteria
 
-- [ ] All 21 system strategies listed with correct engine/style
-- [ ] `swing_strict_enter` on Tier-A returns hits inline < **30s** (warm)
-- [ ] `hybrid_quality_swing` on nifty500 runs as background job with progress
-- [ ] `pos_quality` uses screener preset matching PHP filters
-- [ ] Style tab filters work; unknown strategy returns 400
-- [ ] vitest registry + runner rejection tests pass
+- [x] All 22 system strategies listed with correct engine/style
+- [x] `swing_strict_enter` on Tier-A returns hits inline (warm)
+- [x] `hybrid_quality_swing` on nifty500 runs as background job with progress
+- [x] Hybrid results show stage-1 passer count + stage-2 swing hits
+- [x] Staged progress: `screener` → `swing` → `done`
+- [x] `pos_quality` uses screener preset matching PHP filters
+- [x] Style tab filters work; unknown strategy returns error
+- [x] vitest registry + runner rejection tests pass
+- [x] Deep link `/strategies?strategy=…&universe=…&autorun=1` runs once
 
 ---
 

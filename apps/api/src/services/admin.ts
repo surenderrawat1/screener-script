@@ -3,8 +3,10 @@ import {
   getIndexSyncStatus,
   syncAllIndicesFromDirectory,
   syncIndexFromUpload,
+  defaultIndicesDir,
+  patchAppSettings,
 } from '@sv/data-adapters';
-import { resolve } from 'node:path';
+import { getEtfCatalog, mergeEtfCatalog, parseEtfCsv } from '@sv/shared';
 
 export function parseCsvRows(content: string): string[][] {
   const lines = content.replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.trim());
@@ -150,13 +152,6 @@ export async function getAdminStats() {
   };
 }
 
-function defaultIndicesDir() {
-  return (
-    process.env.INDICES_DIR ??
-    resolve(process.cwd(), '../stock-verifier/data/indices')
-  );
-}
-
 export async function getIndexStatus() {
   return getIndexSyncStatus();
 }
@@ -174,10 +169,25 @@ export async function syncIndicesFromDisk(keys?: string[]) {
   };
 }
 
-export async function importIndexCsv(filename: string, csv: string) {
-  const result = await syncIndexFromUpload(filename, csv);
+export async function importIndexCsv(filename: string, csv: string, indexKey?: string) {
+  const result = await syncIndexFromUpload(filename, csv, indexKey);
   if (!result.ok) {
     return { success: false, error: result.error ?? 'Index sync failed', result };
   }
   return { success: true, ...result };
+}
+
+export async function importEtfCsv(csv: string, mode: 'merge' | 'replace' = 'merge') {
+  const incoming = parseEtfCsv(csv);
+  if (incoming.length === 0) {
+    return { success: false, imported: 0, error: 'No valid ETF rows found' };
+  }
+  const entries = mode === 'replace' ? incoming : mergeEtfCatalog(getEtfCatalog(), incoming);
+  await patchAppSettings({ etfs: { version: 1, entries } });
+  return {
+    success: true,
+    imported: incoming.length,
+    total: entries.length,
+    mode,
+  };
 }

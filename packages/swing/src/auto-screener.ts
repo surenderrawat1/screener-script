@@ -1,6 +1,7 @@
 import {
   ACTION_SKIP,
   categorizeHits,
+  computeTapeConfluence,
   enrichHit,
   evaluatePositionAction,
   overlayOpenPositionsOnTiers,
@@ -11,15 +12,76 @@ import {
   POS_TRAIL,
   regimeGuidance,
 } from './auto-decision.js';
+import {
+  MAX_DRAWDOWN_LIVE_PCT,
+  MIN_PROFIT_FACTOR_LIVE,
+  MIN_PROFITABLE_WIN_RATE_PCT,
+  economicEdgeGateReasons,
+  economicEdgeGateStatus,
+  winRateGateStatus,
+} from './auto-backtest-truth.js';
+import { navDeployScaleForEntry } from './evaluate-entry.js';
 import { tier } from './ranker.js';
 import {
   canOpenPosition,
   DEFAULT_PORTFOLIO_NAV,
   portfolioHeatPct,
+  resolvePositionSector,
   suggestedShares,
 } from './portfolio-risk.js';
 import { computeTradePnl, summarizeOpenTradePnl } from './trade-pnl.js';
 import { FULL_SCAN_INTERVAL_SEC } from './incremental-scan.js';
+import { evaluateScanSla } from './scan-sla.js';
+
+/** Live-order gate — same discipline as symbol-mode SwingAddPositionForm. */
+export function liveAddGateReasons(hit: Record<string, unknown>): string[] {
+  const reasons: string[] = [];
+  if (hit.already_held) reasons.push('already held');
+  if (hit.incremental_stale) reasons.push('stale carried data');
+  if (String(hit.decision_action ?? '') === ACTION_SKIP) reasons.push('decision is SKIP');
+  if (String(hit.strict_verdict ?? '') !== 'ENTER') reasons.push('strict verdict is not ENTER');
+  if (hit.strict_enter_ready === false) reasons.push('strict gate is not ready');
+  if (hit.r_multiple_ok !== true) reasons.push('R multiple is below minimum');
+  if (hit.net_edge_ok === false) reasons.push('net edge is below floor');
+  if (hit.fundamental_quality_ok === false) {
+    reasons.push(String(hit.fundamental_quality_summary ?? 'ROE & ROCE must both be ≥ 15%'));
+  } else if (hit.fundamental_quality_ok == null && (hit.roe != null || hit.roce != null)) {
+    // Metrics present but quality not evaluated yet — still enforce floors.
+    const roe = Number(hit.roe ?? 0);
+    const roce = Number(hit.roce ?? 0);
+    if (roe > 0 && roce > 0 && (roe < 15 || roce < 15)) {
+      reasons.push(`ROE ${roe}% / ROCE ${roce}% — need both ≥ 15%`);
+    }
+  }
+
+  const truth = (hit.backtest_truth as Record<string, unknown> | undefined) ?? null;
+  const edgeReasons = economicEdgeGateReasons(
+    truth
+      ? {
+          trades_closed: Number(truth.trades_closed ?? 0),
+          profit_factor: Number(truth.profit_factor ?? 0),
+          compounded_return_pct: Number(truth.compounded_return_pct ?? 0),
+          max_drawdown_pct: Number(truth.max_drawdown_pct ?? 0),
+          expectancy_pct: Number(truth.expectancy_pct ?? 0),
+          win_rate_pct: Number(truth.win_rate_pct ?? 0),
+          avg_win_pct: Number(truth.avg_win_pct ?? 0),
+          avg_loss_pct: Number(truth.avg_loss_pct ?? 0),
+        }
+      : null,
+  );
+  reasons.push(...edgeReasons);
+  return reasons;
+}
+
+export function isLiveAddAllowed(hit: Record<string, unknown>): boolean {
+  return liveAddGateReasons(hit).length === 0;
+}
+
+/** Research-only journal (SETUP / breakout) — heat/regime still apply server-side. */
+export function isResearchAddAllowed(hit: Record<string, unknown>): boolean {
+  if (hit.already_held || hit.incremental_stale) return false;
+  return String(hit.decision_action ?? '') !== ACTION_SKIP;
+}
 
 export { FULL_SCAN_INTERVAL_SEC };
 export const UNIVERSE = 'nifty250';
@@ -52,11 +114,22 @@ export function profile() {
   };
 }
 
-export function serializeHit(hit: Record<string, unknown>) {
+export function serializeHit(
+  hit: Record<string, unknown>,
+  regime?: Record<string, unknown> | null,
+  options: { deploy_pct?: number; portfolio_nav?: number } = {},
+) {
   const discovery = String(hit.verdict ?? 'AVOID');
   const strict = String(hit.strict_verdict ?? discovery);
   const pct = num(hit.ta_pct_52w);
   const truth = (hit.backtest_truth ?? {}) as Record<string, unknown>;
+  const guidance = regimeGuidance(regime);
+  const deployPct = options.deploy_pct ?? guidance.deploy_pct;
+  const liveOk = hit.add_allowed === false ? false : isLiveAddAllowed(hit);
+  const researchOk = hit.add_allowed === false ? false : isResearchAddAllowed(hit);
+  const deployScale =
+    num(hit.deploy_scale) ??
+    navDeployScaleForEntry(regime, (hit.dynamic as Record<string, unknown> | undefined) ?? null);
 
   return {
     symbol: String(hit.symbol ?? ''),
@@ -65,6 +138,11 @@ export function serializeHit(hit: Record<string, unknown>) {
     entry_score: Number(hit.entry_score ?? 0),
     discovery,
     strict,
+    strict_enter_ready: hit.strict_enter_ready !== false && String(hit.strict_verdict ?? '') === 'ENTER',
+    net_edge_ok: hit.net_edge_ok !== false,
+    r_multiple_ok: hit.r_multiple_ok === true,
+    deploy_scale: Math.round(deployScale * 100) / 100,
+    deploy_pct: deployPct,
     decision_score: Number(hit.decision_score ?? 0),
     decision_action: String(hit.decision_action ?? ACTION_SKIP),
     decision_label: String(hit.decision_label ?? ''),
@@ -75,11 +153,41 @@ export function serializeHit(hit: Record<string, unknown>) {
       num(hit.held_stop_distance_pct) !== null ? Math.round(Number(hit.held_stop_distance_pct) * 10) / 10 : null,
     high_conviction: Boolean(hit.high_conviction),
     risk_flags: Array.isArray(hit.risk_flags) ? hit.risk_flags : [],
+    tape_confluence:
+      hit.tape_confluence && typeof hit.tape_confluence === 'object'
+        ? hit.tape_confluence
+        : computeTapeConfluence(hit, regime),
+    sleeve: String(hit.sleeve ?? 'research'),
+    sleeve_label: String(hit.sleeve_label ?? ''),
+    sleeve_summary: String(hit.sleeve_summary ?? ''),
+    sleeve_eligible: hit.sleeve_eligible === true,
+    sleeve_blocks_swing_paper: hit.sleeve_blocks_swing_paper === true,
+    sleeve_policy:
+      hit.sleeve_policy && typeof hit.sleeve_policy === 'object' ? hit.sleeve_policy : null,
+    sleeve_hold:
+      hit.sleeve_hold && typeof hit.sleeve_hold === 'object' ? hit.sleeve_hold : null,
+    add_block_reasons: liveAddGateReasons(hit),
     backtest_grade: String(truth.grade ?? ''),
     backtest_label: String(truth.grade_label ?? ''),
     backtest_pf: num(truth.profit_factor) !== null ? Math.round(Number(truth.profit_factor) * 100) / 100 : null,
     backtest_win_rate_pct:
       num(truth.win_rate_pct) !== null ? Math.round(Number(truth.win_rate_pct) * 10) / 10 : null,
+    backtest_win_rate_ok: truth.win_rate_ok === true || winRateGateStatus({
+      trades_closed: Number(truth.trades_closed ?? 0),
+      win_rate_pct: Number(truth.win_rate_pct ?? 0),
+    }) === 'pass',
+    backtest_economic_edge_ok:
+      truth.economic_edge_ok === true ||
+      economicEdgeGateStatus({
+        trades_closed: Number(truth.trades_closed ?? 0),
+        profit_factor: Number(truth.profit_factor ?? 0),
+        compounded_return_pct: Number(truth.compounded_return_pct ?? 0),
+        max_drawdown_pct: Number(truth.max_drawdown_pct ?? 0),
+        expectancy_pct: Number(truth.expectancy_pct ?? 0),
+        win_rate_pct: Number(truth.win_rate_pct ?? 0),
+        avg_win_pct: Number(truth.avg_win_pct ?? 0),
+        avg_loss_pct: Number(truth.avg_loss_pct ?? 0),
+      }) === 'pass',
     backtest_trades: Number(truth.trades_closed ?? 0),
     backtest_expectancy_pct:
       num(truth.expectancy_pct) !== null ? Math.round(Number(truth.expectancy_pct) * 100) / 100 : null,
@@ -90,6 +198,10 @@ export function serializeHit(hit: Record<string, unknown>) {
     incremental_stale: Boolean(hit.incremental_stale),
     rules_passed: Number(hit.rules_passed ?? 0),
     rules_scored: Number(hit.rules_scored ?? 0),
+    rules_hard_passed: Number(hit.rules_hard_passed ?? 0),
+    rules_hard_total: Number(hit.rules_hard_total ?? 8),
+    rules_soft_passed: Number(hit.rules_soft_passed ?? 0),
+    rules_soft_total: Number(hit.rules_soft_total ?? 4),
     rules_failed: failedRuleIds(hit),
     entry_rules: (hit.entry_rules ?? hit.rules ?? []) as unknown[],
     price: Math.round(Number(hit.price ?? 0) * 100) / 100,
@@ -101,12 +213,26 @@ export function serializeHit(hit: Record<string, unknown>) {
     ta_52w_chart_zone: String(hit.ta_52w_chart_zone ?? ''),
     ta_volume_ratio: num(hit.ta_volume_ratio) !== null ? Math.round(Number(hit.ta_volume_ratio) * 100) / 100 : null,
     broke_swing_high: Boolean(hit.broke_swing_high),
+    roe: num(hit.roe) !== null ? Math.round(Number(hit.roe) * 10) / 10 : null,
+    roce: num(hit.roce) !== null ? Math.round(Number(hit.roce) * 10) / 10 : null,
+    sector: hit.sector ? String(hit.sector) : null,
+    industry: hit.industry ? String(hit.industry) : null,
+    fundamental_quality_ok:
+      hit.fundamental_quality_ok == null ? null : hit.fundamental_quality_ok === true,
+    fundamental_quality_status: hit.fundamental_quality_status
+      ? String(hit.fundamental_quality_status)
+      : null,
+    fundamental_quality_summary: hit.fundamental_quality_summary
+      ? String(hit.fundamental_quality_summary)
+      : null,
+    fundamental_roce_waived: hit.fundamental_roce_waived === true,
     as_of_date: String(hit.as_of_date ?? ''),
-    suggested_shares: suggestedSharesForHit(hit),
-    add_allowed:
-      hit.add_allowed === false || hit.already_held
-        ? false
-        : !['SKIP'].includes(String(hit.decision_action ?? '')),
+    suggested_shares: suggestedSharesForHit(hit, regime, {
+      deploy_pct: deployPct,
+      portfolio_nav: options.portfolio_nav,
+    }),
+    add_allowed: liveOk,
+    research_add_allowed: researchOk,
   };
 }
 
@@ -322,6 +448,7 @@ export function summarizeScan(
     strict_enter: tiers.strict_enter.length,
     setup_radar: tiers.setup_radar.length,
     breakout_surge: tiers.breakout_surge.length,
+    compounder_sleeve: tiers.compounder_sleeve.length,
     elapsed_sec: Number(scanResult.elapsed_sec ?? 0),
     engine_version: String(scanResult.engine_version ?? ''),
   };
@@ -334,6 +461,7 @@ export function actionableScanHits(hits: Record<string, unknown>[]) {
 export interface BuildStateOptions {
   includeCarried?: boolean;
   backtestAttached?: number;
+  portfolioNav?: number;
 }
 
 export function buildScanTransparency(
@@ -344,6 +472,12 @@ export function buildScanTransparency(
 ) {
   const staleCarried = allHits.length - freshHits.length;
   const regime = (scanResult?.regime as Record<string, unknown> | undefined) ?? null;
+  const elapsedSec = Number(scanResult?.elapsed_sec ?? 0);
+  const scanned = Number(scanResult?.scanned ?? scanResult?.incremental_refreshed ?? 0);
+  const sla =
+    scanResult?.sla && typeof scanResult.sla === 'object'
+      ? scanResult.sla
+      : evaluateScanSla(String(scanResult?.scan_mode ?? ''), elapsedSec, scanned);
 
   return {
     engine_version: String(scanResult?.engine_version ?? ''),
@@ -357,13 +491,20 @@ export function buildScanTransparency(
     incremental_carried: Number(scanResult?.incremental_carried ?? staleCarried),
     tiers_source: options.includeCarried ? 'all_hits_including_stale' : 'fresh_hits_only',
     filter_stats: scanResult?.filter_stats ?? null,
-    elapsed_sec: Number(scanResult?.elapsed_sec ?? 0),
+    elapsed_sec: elapsedSec,
+    scan_elapsed_sec: Number(scanResult?.scan_elapsed_sec ?? elapsedSec),
+    sla,
     backtest_truth_preload: options.backtestAttached ?? 0,
-    backtest_method: 'walk_forward_2y',
+    backtest_method: 'walk_forward_3y',
     regime_blocks_strict_enter: Boolean(regime?.blocks_strict_enter),
     regime_key: String(regime?.key ?? regime?.label ?? ''),
     accuracy_note:
-      'Default tiers exclude stale incremental hits. Toggle “Show carried” to include them (PHP parity). BT 2y grades top 40 hits by rank.',
+      `Default tiers exclude stale incremental hits. Live Add requires strict ENTER + R≥3 + net edge + ROE≥15% & ROCE≥15% (ROE-only for banks/NBFCs/insurance) + proven BT economic edge (expectancy>0, PF≥${MIN_PROFIT_FACTOR_LIVE}, compound≥0, max DD≤${MAX_DRAWDOWN_LIVE_PCT}%). Soft WR floor ${MIN_PROFITABLE_WIN_RATE_PCT}% is diagnostic only. Toggle research_add=1 for SETUP journal only. BT 3y grades top 40 hits by rank.`,
+    hourly_on_scan: scanResult?.hourly_on_scan === true || scanResult?.include_hourly === true,
+    min_profitable_win_rate_pct: MIN_PROFITABLE_WIN_RATE_PCT,
+    min_profit_factor_live: MIN_PROFIT_FACTOR_LIVE,
+    max_drawdown_live_pct: MAX_DRAWDOWN_LIVE_PCT,
+    primary_gate: 'economic_edge',
   };
 }
 
@@ -392,19 +533,26 @@ export function buildState(
     : { hits: [], hit_count: 0, fresh_hit_count: 0, scanned: 0, incremental_carried: 0 };
 
   const transparency = buildScanTransparency(scanResult, allHits, freshHits, options);
+  const guidance = regimeGuidance(regime);
+  const serialize = (h: Record<string, unknown>) =>
+    serializeHit(h, regime, {
+      deploy_pct: guidance.deploy_pct,
+      portfolio_nav: options.portfolioNav,
+    });
 
   return {
     ok: true,
     profile: profile(),
     regime: regime ?? null,
-    guidance: regimeGuidance(regime),
+    guidance,
     scan,
     transparency,
     tiers: {
-      high_conviction: tiers.high_conviction.map(serializeHit),
-      strict_enter: tiers.strict_enter.map(serializeHit),
-      setup_radar: tiers.setup_radar.map(serializeHit),
-      breakout_surge: tiers.breakout_surge.map(serializeHit),
+      high_conviction: tiers.high_conviction.map(serialize),
+      strict_enter: tiers.strict_enter.map(serialize),
+      setup_radar: tiers.setup_radar.map(serialize),
+      breakout_surge: tiers.breakout_surge.map(serialize),
+      compounder_sleeve: tiers.compounder_sleeve.map(serialize),
     },
     positions: positionsBlock,
     server_time: new Date().toISOString(),
@@ -421,7 +569,18 @@ export function checkAddPosition(
   let stopLoss = num(input.stop_loss) ?? 0;
   if (stopLoss <= 0 && entryPrice > 0) stopLoss = Math.round(entryPrice * 0.95 * 100) / 100;
 
-  const shares = num(input.shares) ?? suggestedSharesForHit({ price: entryPrice, stop_loss: stopLoss });
+  const researchAdd = Boolean(input.research_add);
+  const gateHit: Record<string, unknown> = {
+    symbol,
+    already_held: false,
+    incremental_stale: Boolean(input.incremental_stale),
+    decision_action: String(input.decision_action ?? 'BUY'),
+    strict_verdict: String(input.strict_verdict ?? input.strict ?? ''),
+    strict_enter_ready: input.strict_enter_ready,
+    r_multiple_ok: input.r_multiple_ok,
+    net_edge_ok: input.net_edge_ok,
+    backtest_truth: input.backtest_truth ?? null,
+  };
 
   if (!symbol || entryPrice <= 0) {
     return { ok: false, error: 'Symbol and entry price are required.' };
@@ -441,11 +600,50 @@ export function checkAddPosition(
     };
   }
 
-  const gate = canOpenPosition(openPositions, entryPrice, stopLoss, DEFAULT_PORTFOLIO_NAV, shares);
-  const suggested = suggestedSharesForHit({ price: entryPrice, stop_loss: stopLoss });
+  if (!researchAdd) {
+    const liveReasons = liveAddGateReasons(gateHit);
+    if (liveReasons.length > 0) {
+      return {
+        ok: false,
+        error: `Ch.93 live gate blocked: ${liveReasons.join(' · ')}.`,
+        add_block_reasons: liveReasons,
+        requires_strict_enter: true,
+      };
+    }
+  } else if (String(input.decision_action ?? '') === ACTION_SKIP) {
+    return { ok: false, error: 'Research add blocked — decision is SKIP.', research_add: true };
+  }
+
+  const guidance = regimeGuidance(regime);
+  const deployPct = num(input.deploy_pct) ?? guidance.deploy_pct;
+  const portfolioNav = num(input.portfolio_nav) ?? DEFAULT_PORTFOLIO_NAV;
+  const shares =
+    num(input.shares) ??
+    suggestedSharesForHit(
+      {
+        price: entryPrice,
+        stop_loss: stopLoss,
+        deploy_scale: input.deploy_scale,
+        dynamic: input.dynamic,
+      },
+      regime,
+      { deploy_pct: deployPct, portfolio_nav: portfolioNav },
+    );
+
+  const gate = canOpenPosition(openPositions, entryPrice, stopLoss, portfolioNav, shares, {
+    sector: resolvePositionSector({
+      symbol,
+      sector: input.sector ?? input.sector_key,
+    }),
+  });
+  const suggested = suggestedSharesForHit(
+    { price: entryPrice, stop_loss: stopLoss, deploy_scale: input.deploy_scale, dynamic: input.dynamic },
+    regime,
+    { deploy_pct: deployPct, portfolio_nav: portfolioNav },
+  );
   const newRiskPct =
     gate.ok && entryPrice > stopLoss
-      ? (((entryPrice - stopLoss) * shares) / DEFAULT_PORTFOLIO_NAV) * 100
+      ? (((entryPrice - stopLoss) * shares) / portfolioNav) * 100
       : 0;
   const heatAfter = gate.ok ? Math.round((gate.heat_pct + newRiskPct) * 100) / 100 : gate.heat_pct;
 
@@ -460,16 +658,33 @@ export function checkAddPosition(
     heat_pct: gate.heat_pct,
     heat_after_pct: heatAfter,
     open_count: gate.open_count,
+    sector: gate.sector,
+    sector_pct: gate.sector_pct,
+    sector_after_pct: gate.sector_after_pct,
     max_heat: 4.0,
+    research_add: researchAdd,
+    deploy_pct: deployPct,
+    portfolio_nav: portfolioNav,
   };
 }
 
-export function suggestedSharesForHit(hit: Record<string, unknown>): number {
+export function suggestedSharesForHit(
+  hit: Record<string, unknown>,
+  regime?: Record<string, unknown> | null,
+  options: { deploy_pct?: number; portfolio_nav?: number } = {},
+): number {
   const entry = Number(hit.price ?? 0);
   let stop = Number(hit.stop_loss ?? 0);
   if (entry <= 0) return 0;
   if (stop <= 0 || stop >= entry) stop = Math.round(entry * 0.95 * 100) / 100;
-  return suggestedShares(entry, stop);
+  const nav = options.portfolio_nav ?? DEFAULT_PORTFOLIO_NAV;
+  const base = suggestedShares(entry, stop, nav);
+  const scale =
+    num(hit.deploy_scale) ??
+    navDeployScaleForEntry(regime, (hit.dynamic as Record<string, unknown> | undefined) ?? null);
+  const deployPct = (options.deploy_pct ?? regimeGuidance(regime).deploy_pct) / 100;
+  const sized = Math.floor(base * Math.max(0.1, scale) * Math.max(0.1, deployPct));
+  return Math.max(1, sized);
 }
 
 function findHitMatch(hits: Record<string, unknown>[], symbol: string, regime?: Record<string, unknown> | null) {

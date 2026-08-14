@@ -20,6 +20,8 @@ export async function executeScreenerJob(
       total: progress.total,
       processed: progress.processed,
       passed: progress.passed,
+      recent_symbols: progress.recent_symbols,
+      recent_passed_symbols: progress.recent_passed_symbols,
     };
     await setJobProgress(jobId, snapshot);
     if (progress.processed % 5 === 0 || progress.processed === progress.total) {

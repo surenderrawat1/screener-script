@@ -4,6 +4,7 @@ import { classify, currentSessionBars } from './session-regime.js';
 import { entryWindow, barMinutesIst, DEFAULT_MIN_ENTRY_MIN } from './session-clock.js';
 import { grade as gradeSetup } from './signal-quality.js';
 import { fromAnalysis as ema50FromAnalysis } from './ema50-bias.js';
+import { fromAnalysis as sma20FromAnalysis } from './sma20-bias.js';
 import { fromAnalysis as gc9FromAnalysis } from './gc9-dc9.js';
 
 export const INDEX_LABEL = 'Nifty 50';
@@ -62,6 +63,7 @@ export function analyze(chart: IntradayChart | null | undefined, interval = '15m
   const ema21 = ema(closes, 21);
   const ema50 = iv === '5m' ? ema(closes, 50) : null;
   const sma9 = iv === '5m' ? sma(closes, 9) : null;
+  const sma20 = sma(closes, 20);
   const sma50 = iv === '5m' ? sma(closes, 50) : null;
   const crossMetrics = iv === '5m' ? maCrossoverMetrics(bars as Parameters<typeof maCrossoverMetrics>[0], 12) : {};
   const rsi14 = rsi(closes);
@@ -122,6 +124,16 @@ export function analyze(chart: IntradayChart | null | undefined, interval = '15m
     }
   }
 
+  if (sma20 !== null && sma20 > 0) {
+    if (price > sma20) {
+      bull += 10;
+      signals.push({ key: 'sma20_bull', label: `${iv} above SMA-20 — Stratzy long bias`, side: 'bull' });
+    } else if (price < sma20) {
+      bear += 10;
+      signals.push({ key: 'sma20_bear', label: `${iv} below SMA-20 — Stratzy short bias`, side: 'bear' });
+    }
+  }
+
   if (n >= 5) {
     const slice = closes.slice(-4);
     const first = slice[0] ?? price;
@@ -173,6 +185,7 @@ export function analyze(chart: IntradayChart | null | undefined, interval = '15m
     ema21: ema21 !== null ? Math.round(ema21 * 100) / 100 : null,
     ema50: ema50 !== null ? Math.round(ema50 * 100) / 100 : null,
     sma9: sma9 !== null ? Math.round(sma9 * 100) / 100 : null,
+    sma20: sma20 !== null ? Math.round(sma20 * 100) / 100 : null,
     sma50: sma50 !== null ? Math.round(sma50 * 100) / 100 : null,
     gc9_active: Boolean(crossMetrics.ta_golden_cross_9_50),
     dc9_active: Boolean(crossMetrics.ta_death_cross_9_50),
@@ -199,6 +212,7 @@ export function analyze(chart: IntradayChart | null | undefined, interval = '15m
   if (iv === '5m') {
     base.ema50_bias = ema50FromAnalysis(base);
     base.gc9_dc9_bias = gc9FromAnalysis(base);
+    base.sma20_bias = sma20FromAnalysis(base);
   }
   return base;
 }

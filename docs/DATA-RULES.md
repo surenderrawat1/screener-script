@@ -86,6 +86,7 @@ Store here. Update via admin upload, daily sync, or user CRUD — **not** on eve
 | Data | Table / model | How it changes | Current v2 |
 |------|---------------|----------------|------------|
 | Index constituents | `index_constituents`, `universe_symbols` | CSV import, `sync:indices`, daily job | ✅ Manual CLI + Admin |
+| Index registry | `config/indices.yaml, `config/etfs.yaml`` (+ Admin DB override) | Dynamic keys / CSV patterns / bounds | ✅ Admin → Data & indices |
 | NSE full equity list | `nse_equity_list` | `EQUITY_L.csv` upload, daily job | ✅ Admin upload |
 | Promoter holdings | `promoter_holdings` | CSV upload, daily job | ✅ Admin upload |
 | Universe definitions | `universes` | Seed + custom user universes | ✅ |
@@ -94,7 +95,7 @@ Store here. Update via admin upload, daily sync, or user CRUD — **not** on eve
 | User watchlists / positions | `watchlist_*`, `swing_positions` | User actions | ✅ |
 | Verify history | `verification_runs` | Per-run persist | ✅ |
 | Job audit trail | `jobs` | Worker creates on enqueue | ✅ |
-| App settings overrides | `app_settings` (planned) | Admin Settings UI | 🔲 Planned |
+| App settings overrides | `app_settings` | Admin → Features (schedules, alerts, data policy, indices) | ✅ |
 
 **Rule:** If removing Redis would still let you reconstruct “who is in Nifty 50” or “what symbols exist on NSE”, that data belongs in PostgreSQL.
 
@@ -208,7 +209,9 @@ Location: **`config/`** at repo root (see checked-in examples).
 | File | Purpose |
 |------|---------|
 | `data-policy.yaml` | TTLs, prefetch universes, stale thresholds |
-| `schedules.yaml` | Daily 6 AM job definition and sub-task order |
+| `schedules.yaml` | Cron times / enable flags for daily + intraday jobs |
+| `alerts.yaml` | Evening GTT, exit alerts, email feature toggles |
+| `strategy-daily-proof.yaml` | Daily strategy proof allowlist + max_scan |
 | `presets/screener.yaml` | System screener filter definitions (seed → DB) |
 | `presets/strategies.yaml` | System strategy registry (seed → DB) |
 
@@ -240,7 +243,7 @@ const policy = mergeDeep(
 ### Changing config safely
 
 1. Edit YAML in `config/` → commit → deploy.
-2. Restart API/worker **or** call `POST /api/v1/admin/config/reload` (planned) to hot-reload non-secret config.
+2. Restart API/worker **or** call `POST /api/v1/admin/config/reload` (Admin → Reload YAML config) to hot-reload non-secret config. Worker picks up the new generation within ~60s.
 3. For operator tweaks without deploy → use **Settings** UI (writes `app_settings`).
 
 ---
@@ -269,8 +272,9 @@ Extends today’s [Admin page](WEB-UI.md) (`/admin`) which handles uploads and i
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/api/v1/admin/settings` | Merged config (defaults + overrides) |
-| `PATCH` | `/api/v1/admin/settings` | Update `app_settings` keys (admin only) |
+| `GET` | `/api/v1/admin/settings` | Merged config (defaults + overrides) including alerts + strategy proof |
+| `POST` | `/api/v1/admin/config/reload` | Re-read `config/*.yaml` + `app_settings`; bump Redis generation for workers |
+| `PATCH` | `/api/v1/admin/settings` | Update `app_settings` keys (admin only): `dataPolicy`, `schedules`, `alerts`, `strategyDailyProof` |
 | `POST` | `/api/v1/admin/sync/daily` | Trigger daily sync immediately |
 | `GET` | `/api/v1/admin/sync/status` | Last run time, next scheduled, per-step status |
 
@@ -312,7 +316,7 @@ Audit changes in `audit_log` with `action: settings.update`.
 
 - [ ] Reference data (indices, NSE list, holdings) survives Redis flush
 - [ ] Daily job runs at configured IST time without user interaction
-- [ ] Changing sync time in Settings takes effect next day without redeploy
+- [x] Changing sync time / data policy in Admin Settings takes effect without redeploy (worker ~60s)
 - [ ] No screener/verify path fetches Screener.in on every request when cache is warm
 - [ ] Config files are the documented source for TTLs and schedules; code reads them
 

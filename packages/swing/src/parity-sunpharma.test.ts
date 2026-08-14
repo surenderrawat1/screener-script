@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { MOMENTUM_STRONG } from './dynamic-signals.js';
-import { computeTradePlan, evaluateEntry } from './evaluate-entry.js';
+import { computeTradePlan, evaluateEntry, MAX_TARGET_PCT, MIN_TARGET_PCT } from './evaluate-entry.js';
 import { entry52wBand } from './market-regime.js';
 
-/** PHP golden: SUNPHARMA @ 1904.80 EOD 2026-07-03 (bear regime). */
+/** SUNPHARMA @ 1904.80 EOD 2026-07-03 (bear regime). */
 const SUNPHARMA_PRICE = 1904.8;
 const SUNPHARMA_SMA50 = 1832.09;
 const SUNPHARMA_EMA21 = 1849.19;
@@ -19,7 +19,7 @@ const sunpharmaDynamic = {
 };
 
 describe('parity — SUNPHARMA trade plan', () => {
-  it('computeTradePlan matches PHP effective stop, boosted target, and R', () => {
+  it('computeTradePlan uses frozen 3R in the 7–25% band (no momentum boost)', () => {
     const plan = computeTradePlan(
       SUNPHARMA_PRICE,
       SUNPHARMA_SMA50,
@@ -28,13 +28,16 @@ describe('parity — SUNPHARMA trade plan', () => {
       sunpharmaDynamic,
     );
     expect(plan.effective_stop).toBeCloseTo(1852.42, 2);
-    expect(plan.profit_target).toBeCloseTo(2080.8, 2);
-    expect(plan.target_pct).toBeCloseTo(9.24, 2);
-    expect(plan.r_multiple).toBeCloseTo(3.36, 2);
+    expect(plan.target_pct).toBeCloseTo(8.25, 2);
+    expect(plan.profit_target).toBeCloseTo(2061.95, 2);
+    expect(plan.r_multiple).toBeCloseTo(3.0, 2);
     expect(plan.r_multiple_ok).toBe(true);
+    expect(plan.target_frozen).toBe(true);
+    expect(plan.target_pct).toBeGreaterThanOrEqual(MIN_TARGET_PCT);
+    expect(plan.target_pct).toBeLessThanOrEqual(MAX_TARGET_PCT);
   });
 
-  it('evaluateEntry applies momentum boost on bear-regime fixture', () => {
+  it('evaluateEntry keeps the frozen 3R target under strong momentum', () => {
     const bearRegime = { bear: true, label: 'Bear', key: 'bear' };
     const ta = {
       ta_price: SUNPHARMA_PRICE,
@@ -82,8 +85,8 @@ describe('parity — SUNPHARMA trade plan', () => {
     expect(entry.rules_passed).toBeGreaterThanOrEqual(6);
     expect(entry.deploy_scale).toBeCloseTo(0.8, 2);
     expect(entry.stop_loss).toBeCloseTo(1852.42, 2);
-    expect(entry.profit_target).toBeCloseTo(2080.8, 1);
-    expect(entry.r_multiple).toBeGreaterThanOrEqual(3.3);
+    expect(entry.profit_target).toBeCloseTo(2061.95, 1);
+    expect(entry.r_multiple).toBeCloseTo(3.0, 1);
   });
 });
 

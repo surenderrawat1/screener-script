@@ -37,7 +37,7 @@ export function SwingScanHitAddButton({
           entry_date: asOfDate ?? new Date().toISOString().slice(0, 10),
           stop_loss: stopLoss ?? undefined,
           profit_target: profitTarget ?? undefined,
-          notes: `${verdict} ${rulesPassed}/11`,
+          notes: `${verdict} ${rulesPassed}/12`,
           source: 'scanner',
         }),
       });

@@ -1,10 +1,16 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { EmptyState, Page, PageHeader } from '../components/PageLayout';
-import { StockDailyChart, type ChartPayload } from '../components/StockDailyChart';
-import { SwingEntryRulesTable, SwingVerdictBanner } from '../components/swing/SwingEntryRulesTable';
+import { EvidenceStrip } from '../components/research/EvidenceStrip';
+import { StockMemoLayout } from '../components/research/StockMemoLayout';
+import { printResearchMemo } from '../lib/memo-export';
+import { buildStockMemoView, normalizeSymbolInput } from '../lib/stock-memo-view';
+import { patternChartPriceLevels } from '../lib/pattern-chart-levels';
+import { mergePatternOverlays } from '../lib/pattern-chart-overlays';
+import { StockDailyChart, type ChartPayload, type ChartPriceLevel } from '../components/StockDailyChart';
+import { SwingRulesTable, SwingVerdictBanner } from '../components/swing/SwingRulesTable';
 
 interface StockSummary {
   symbol: string;
@@ -22,7 +28,27 @@ interface StockSummary {
     graham: number;
     method: string;
     verify_score: number;
+    score_basis?: 'quality_proxy' | 'full_scorecard';
+    recommendation_basis?: 'screening_matrix' | 'full_verify_matrix';
+    moat_tier?: string;
+    moat_count?: number;
   };
+  last_verify?: {
+    id: string;
+    mode: string;
+    created_at: string;
+    recommendation: string;
+    mos: number | null;
+    quality_score: number | null;
+    recommendation_basis?: string;
+    score_basis?: string;
+    memo?: {
+      headline?: string;
+      strengths?: string[];
+      risks?: string[];
+      investment_case?: string;
+    } | null;
+  } | null;
   sources?: string[];
   from_cache?: boolean;
   data_quality?: {
@@ -58,6 +84,64 @@ interface ChartResponse {
     phases: PhaseCard[];
     observations: string[];
     timing_note: string;
+  };
+  patterns?: {
+    ready: boolean;
+    timeframe: string;
+    patterns: Array<{
+      id: string;
+      pattern: string;
+      kind: string;
+      type: string;
+      status: string;
+      confidence: number;
+      start_date: string;
+      end_date: string;
+      support: number | null;
+      resistance: number | null;
+      breakout: number | null;
+      target: number | null;
+      stop_loss: number | null;
+      volume_confirmed: boolean;
+      rsi_confirmed?: boolean;
+      macd_confirmed?: boolean;
+      detail: string;
+      points?: Record<string, number | string>;
+    }>;
+    swing_count: { highs: number; lows: number };
+    disclaimer: string;
+    mtf?: {
+      overall_signal: string;
+      overall_confidence: number;
+      strength_label: string;
+      detail: string;
+      frames: Array<{
+        timeframe: string;
+        label: string;
+        pattern: string | null;
+        type: string;
+        status: string;
+        confidence: number;
+      }>;
+    };
+    backtest?: Array<{
+      kind: string;
+      label: string;
+      timeframe: string;
+      occurrences: number;
+      confirmed_breakouts: number;
+      target_hits: number;
+      stop_hits: number;
+      unresolved: number;
+      success_rate_pct: number | null;
+      avg_return_pct: number | null;
+      avg_mfe_pct: number | null;
+      avg_mae_pct: number | null;
+      avg_bars_to_outcome: number | null;
+      lookback_bars: number;
+      forward_horizon_bars: number;
+      disclaimer: string;
+    }>;
   };
 }
 
@@ -130,17 +214,6 @@ function fmtMoney(v: unknown): string {
   const n = typeof v === 'number' ? v : parseFloat(String(v));
   if (!Number.isFinite(n)) return '—';
   return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
-}
-
-function normalizeSymbolInput(value: string): string {
-  return value.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
-}
-
-function verdictClass(rec: string): string {
-  const r = rec.toLowerCase();
-  if (r.includes('strong') || r.includes('buy')) return 'badge badge-buy';
-  if (r.includes('hold') || r.includes('accumulate')) return 'badge badge-hold';
-  return 'badge badge-expensive';
 }
 
 function signalClass(signal: string): string {
@@ -256,6 +329,7 @@ export default function StockDetailsPage() {
   const [swingError, setSwingError] = useState('');
   const [swingEval, setSwingEval] = useState<Record<string, unknown> | null>(null);
   const [swingLoading, setSwingLoading] = useState(false);
+  const [overlayPatternIds, setOverlayPatternIds] = useState<Set<string>>(() => new Set());
 
   const canRefreshLive = user?.role === 'admin' || user?.role === 'analyst';
 
@@ -390,6 +464,42 @@ export default function StockDetailsPage() {
   const v = summary?.valuation;
   const ta = chartData?.ta ?? {};
   const phases = chartData?.phases;
+  const patterns = chartData?.patterns;
+
+  useEffect(() => {
+    const top = patterns?.patterns?.[0];
+    if (top) {
+      setOverlayPatternIds(new Set([top.id]));
+    } else {
+      setOverlayPatternIds(new Set());
+    }
+  }, [patterns?.patterns?.[0]?.id]);
+
+  const togglePatternOverlay = useCallback((patternId: string) => {
+    setOverlayPatternIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(patternId)) next.delete(patternId);
+      else next.add(patternId);
+      return next;
+    });
+  }, []);
+
+  const patternLevels = useMemo((): ChartPriceLevel[] => {
+    if (!patterns?.patterns?.length) return [];
+    return patterns.patterns
+      .filter((p) => overlayPatternIds.has(p.id))
+      .flatMap((p) => patternChartPriceLevels(p));
+  }, [patterns, overlayPatternIds]);
+
+  const patternOverlays = useMemo(() => {
+    const bars = chartData?.chart?.bars;
+    if (!patterns?.patterns?.length || !bars?.length) {
+      return { markers: [], segments: [] };
+    }
+    const barTimes = bars.map((b) => String(b.time));
+    const enabled = patterns.patterns.filter((p) => overlayPatternIds.has(p.id));
+    return mergePatternOverlays(enabled, barTimes);
+  }, [patterns, overlayPatternIds, chartData?.chart?.bars]);
   const expenditureItems = (profile?.expenditures?.items ?? []).filter(
     (item) => item.latest_cr !== null && item.latest_cr !== undefined && Number.isFinite(Number(item.latest_cr)),
   );
@@ -456,49 +566,85 @@ export default function StockDetailsPage() {
 
       {summary && v && (
         <>
-          <div className="card">
-            <h2 style={{ marginBottom: '0.25rem' }}>
-              {summary.symbol}
-              <span className="muted" style={{ fontWeight: 400, marginLeft: '0.5rem' }}>
-                {summary.name}
-              </span>
-            </h2>
-            <p style={{ margin: '0.25rem 0 0.75rem' }}>
-              <span className={verdictClass(v.final_rating)}>{v.final_rating}</span>
-              <span className="muted" style={{ marginLeft: '0.75rem' }}>
-                {fmtMoney(m.price)} · MOS {v.mos !== null ? `${v.mos}%` : '—'} · {v.zone}
-              </span>
-            </p>
-            {summary.sources && summary.sources.length > 0 && (
-              <p className="muted">
-                Sources: {summary.sources.join(' · ')}
-                {summary.from_cache ? ' (cached)' : ''}
-              </p>
-            )}
-            {summary.data_quality && summary.data_quality.level !== 'reported' ? (
-              <div className={`data-quality-banner data-quality-${summary.data_quality.level}`} role="alert">
-                <strong>{summary.data_quality.label}</strong>
-                <span>{summary.data_quality.message}</span>
-              </div>
-            ) : null}
-            <div className="stock-details-actions stock-details-hero-actions">
-              <Link className="btn btn-secondary" to={`/verify/full?symbol=${encodeURIComponent(summary.symbol)}`}>
-                Full verify
-              </Link>
-              <Link className="btn btn-secondary" to={`/verify?symbol=${encodeURIComponent(summary.symbol)}`}>
-                CFA verify
-              </Link>
-              <Link className="btn btn-secondary" to={`/swing?symbol=${encodeURIComponent(summary.symbol)}`}>
-                Swing scan
-              </Link>
-              <Link className="btn btn-secondary" to={`/strategies`}>
-                Strategies
-              </Link>
-              <Link className="btn btn-secondary" to={`/watchlist`}>
-                Watchlist
-              </Link>
+          {summary.data_quality && summary.data_quality.level !== 'reported' ? (
+            <div className={`data-quality-banner data-quality-${summary.data_quality.level}`} role="alert">
+              <strong>{summary.data_quality.label}</strong>
+              <span>{summary.data_quality.message}</span>
             </div>
-          </div>
+          ) : null}
+
+          {(() => {
+            const memo = buildStockMemoView(summary, ta);
+
+            return (
+              <div id="stock-memo-print" className="research-print-root">
+                <StockMemoLayout
+                  hero={{
+                    ...memo.hero,
+                    actions: (
+                      <div className="stock-details-actions stock-details-hero-actions no-print">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() =>
+                            printResearchMemo(`${summary.symbol} — ${summary.name} research memo`)
+                          }
+                        >
+                          Export PDF
+                        </button>
+                        <Link
+                          className="btn btn-secondary"
+                          to={`/compare?a=${encodeURIComponent(summary.symbol)}&b=INFY`}
+                        >
+                          Compare
+                        </Link>
+                        <Link className="btn btn-secondary" to={`/verify/full?symbol=${encodeURIComponent(summary.symbol)}`}>
+                          Full verify
+                        </Link>
+                        <Link className="btn btn-secondary" to={`/verify?symbol=${encodeURIComponent(summary.symbol)}`}>
+                          CFA verify
+                        </Link>
+                        <Link className="btn btn-secondary" to={`/swing?symbol=${encodeURIComponent(summary.symbol)}`}>
+                          Swing scan
+                        </Link>
+                        <Link className="btn btn-secondary" to={`/screener?universe=nifty50&preset=quality&show_ta=1`}>
+                          Screener
+                        </Link>
+                        <Link className="btn btn-secondary" to={`/watchlist`}>
+                          Watchlist
+                        </Link>
+                      </div>
+                    ),
+                  }}
+                  pillars={memo.pillars}
+                  investmentCase={memo.investmentCase}
+                  strengths={memo.strengths}
+                  risks={memo.risks}
+                  metrics={
+                    <div className="cfa-metrics-grid">
+                      {memo.metricTiles.map((tile) => (
+                        <div key={tile.label} className="metric-box">
+                          <div className="lbl">{tile.label}</div>
+                          <div className="val">{tile.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  }
+                />
+              </div>
+            );
+          })()}
+
+          {summary.last_verify ? (
+            <p className="muted stock-last-verify">
+              Last verify ({summary.last_verify.mode}) · {new Date(summary.last_verify.created_at).toLocaleString()} ·{' '}
+              <EvidenceStrip
+                recommendationBasis={summary.last_verify.recommendation_basis}
+                scoreBasis={summary.last_verify.score_basis}
+                compact
+              />
+            </p>
+          ) : null}
 
           {summary.iv_drift?.iv_drift_warn ? (
             <div className="card iv-drift-card" role="alert">
@@ -567,7 +713,14 @@ export default function StockDetailsPage() {
             <h2>Daily chart (2y)</h2>
             {chartLoading && <p className="muted">Loading chart…</p>}
             {chartError && !chartLoading && <p className="error">{chartError}</p>}
-            {!chartLoading && <StockDailyChart chart={chartData?.chart ?? null} />}
+            {!chartLoading && (
+              <StockDailyChart
+                chart={chartData?.chart ?? null}
+                priceLevels={patternLevels}
+                overlayMarkers={patternOverlays.markers}
+                overlaySegments={patternOverlays.segments}
+              />
+            )}
           </div>
 
           {phases?.ready && (
@@ -594,6 +747,166 @@ export default function StockDetailsPage() {
                 </ul>
               )}
               <p className="muted">{phases.timing_note}</p>
+            </div>
+          )}
+
+          {patterns?.ready && (
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '1rem' }}>
+                <h2 style={{ margin: 0 }}>Chart patterns</h2>
+                <Link to={`/patterns?symbol=${encodeURIComponent(routeSymbol ?? '')}`} className="btn btn-secondary btn-sm">
+                  Pattern feed
+                </Link>
+              </div>
+              <p className="muted" style={{ marginTop: 0 }}>
+                Daily ({patterns.timeframe}) · swings {patterns.swing_count.highs}H /{' '}
+                {patterns.swing_count.lows}L · reversals, triangles, flags, cup/rounding, rectangle/channel
+              </p>
+              {patternLevels.length > 0 ? (
+                <p className="muted">
+                  {overlayPatternIds.size} pattern{overlayPatternIds.size === 1 ? '' : 's'} on chart — levels,
+                  swing markers, and necklines/boundaries. Toggle per card below.
+                </p>
+              ) : patterns.patterns.length > 0 ? (
+                <p className="muted">Enable chart overlay on a pattern card to draw levels on the chart above.</p>
+              ) : null}
+              {patterns.patterns.length === 0 ? (
+                <p className="muted">No classic patterns detected in the current window.</p>
+              ) : (
+                <div className="pattern-grid">
+                  {patterns.patterns.map((p) => (
+                    <article
+                      key={p.id}
+                      className={`pattern-card signal-${p.type === 'bullish' ? 'bull' : p.type === 'bearish' ? 'bear' : 'watch'}`}
+                    >
+                      <div className="pattern-card-head">
+                        <strong>{p.pattern}</strong>
+                        <span className={`pattern-status pattern-status-${p.status}`}>{p.status}</span>
+                      </div>
+                      <label className="pattern-overlay-toggle">
+                        <input
+                          type="checkbox"
+                          checked={overlayPatternIds.has(p.id)}
+                          onChange={() => togglePatternOverlay(p.id)}
+                        />
+                        Show on chart
+                      </label>
+                      <div className="pattern-meta">
+                        <span>{p.type}</span>
+                        <span>confidence {p.confidence}</span>
+                        {p.volume_confirmed ? <span>volume ✓</span> : null}
+                        {p.rsi_confirmed ? <span>RSI ✓</span> : null}
+                        {p.macd_confirmed ? <span>MACD ✓</span> : null}
+                      </div>
+                      <p className="pattern-detail">{p.detail}</p>
+                      <dl className="pattern-levels">
+                        <div>
+                          <dt>Breakout</dt>
+                          <dd>{fmtMoney(p.breakout)}</dd>
+                        </div>
+                        <div>
+                          <dt>Target</dt>
+                          <dd>{fmtMoney(p.target)}</dd>
+                        </div>
+                        <div>
+                          <dt>Stop</dt>
+                          <dd>{fmtMoney(p.stop_loss)}</dd>
+                        </div>
+                        <div>
+                          <dt>Window</dt>
+                          <dd>
+                            {p.start_date} → {p.end_date}
+                          </dd>
+                        </div>
+                      </dl>
+                    </article>
+                  ))}
+                </div>
+              )}
+              {patterns.mtf && (
+                <div className="pattern-mtf">
+                  <h3 className="admin-subhead">Multi-timeframe</h3>
+                  <p className={`phase-headline phase-bias-${patterns.mtf.overall_signal}`}>
+                    Overall {patterns.mtf.overall_signal} · {patterns.mtf.strength_label} ·{' '}
+                    {patterns.mtf.overall_confidence}%
+                  </p>
+                  <ul className="pattern-mtf-frames">
+                    {patterns.mtf.frames.map((f) => (
+                      <li key={f.timeframe}>
+                        <strong>{f.timeframe}</strong> — {f.label}
+                        <span className="muted">
+                          {' '}
+                          · {f.type} · {f.confidence}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="muted" style={{ marginBottom: 0 }}>
+                    {patterns.mtf.detail}
+                  </p>
+                </div>
+              )}
+              {patterns.backtest && patterns.backtest.length > 0 && (
+                <div className="pattern-backtest">
+                  <h3 className="admin-subhead">Historical pattern stats</h3>
+                  <p className="muted" style={{ marginTop: 0 }}>
+                    Walk-forward on this symbol (no look-ahead). Top pattern kinds only.
+                  </p>
+                  <div className="pattern-backtest-grid">
+                    {patterns.backtest.map((bt) => (
+                      <article key={bt.kind} className="pattern-backtest-card">
+                        <div className="pattern-backtest-head">
+                          <strong>{bt.label}</strong>
+                          <span className="muted">{bt.timeframe}</span>
+                        </div>
+                        <dl className="pattern-backtest-stats">
+                          <div>
+                            <dt>Detected</dt>
+                            <dd>{bt.occurrences}</dd>
+                          </div>
+                          <div>
+                            <dt>Breakouts</dt>
+                            <dd>{bt.confirmed_breakouts}</dd>
+                          </div>
+                          <div>
+                            <dt>Target hit</dt>
+                            <dd>{bt.target_hits}</dd>
+                          </div>
+                          <div>
+                            <dt>Stop hit</dt>
+                            <dd>{bt.stop_hits}</dd>
+                          </div>
+                          <div>
+                            <dt>Success rate</dt>
+                            <dd>{bt.success_rate_pct != null ? `${bt.success_rate_pct}%` : '—'}</dd>
+                          </div>
+                          <div>
+                            <dt>Avg return</dt>
+                            <dd>
+                              {bt.avg_return_pct != null
+                                ? `${bt.avg_return_pct > 0 ? '+' : ''}${bt.avg_return_pct}%`
+                                : '—'}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Avg MFE</dt>
+                            <dd>{bt.avg_mfe_pct != null ? `${bt.avg_mfe_pct}%` : '—'}</dd>
+                          </div>
+                          <div>
+                            <dt>Avg MAE</dt>
+                            <dd>{bt.avg_mae_pct != null ? `${bt.avg_mae_pct}%` : '—'}</dd>
+                          </div>
+                        </dl>
+                        <p className="muted" style={{ marginBottom: 0, fontSize: '0.85rem' }}>
+                          {bt.lookback_bars} bars · {bt.forward_horizon_bars}d forward horizon
+                          {bt.unresolved > 0 ? ` · ${bt.unresolved} unresolved` : ''}
+                        </p>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p className="muted">{patterns.disclaimer}</p>
             </div>
           )}
 
@@ -673,7 +986,7 @@ export default function StockDetailsPage() {
 
           <div className="card">
             <div className="sd-section-head">
-              <h2>Swing entry rules (E1–E11)</h2>
+              <h2>Swing entry rules (E1–E8 hard · E9–E12 soft)</h2>
               <Link to={`/swing?symbol=${summary.symbol}&mode=symbol`} className="btn btn-secondary btn-xs">
                 Full swing analysis →
               </Link>
@@ -687,6 +1000,14 @@ export default function StockDetailsPage() {
                   strict={String((swingEval.entry as Record<string, unknown>).strict_verdict ?? 'AVOID')}
                   rulesPassed={Number((swingEval.entry as Record<string, unknown>).rules_passed ?? 0)}
                   entryScore={Number((swingEval.entry as Record<string, unknown>).entry_score ?? 0)}
+                  rules={((swingEval.entry as Record<string, unknown>).rules as Array<{
+                    id: string;
+                    name: string;
+                    criterion: string;
+                    passed: boolean | null;
+                    detail: string;
+                  }>) ?? []}
+                  engineVersion={String((swingEval.entry as Record<string, unknown>).engine_version ?? '')}
                 />
                 <p className="muted">
                   Stop {fmtMoney((swingEval.entry as Record<string, unknown>).stop_loss)} · Target{' '}
@@ -695,7 +1016,8 @@ export default function StockDetailsPage() {
                   {' · '}
                   <Link to={`/swing/backtest?symbol=${summary.symbol}&autorun=1`}>Backtest</Link>
                 </p>
-                <SwingEntryRulesTable
+                <SwingRulesTable
+                  showTiers
                   rules={((swingEval.entry as Record<string, unknown>).rules as Array<{
                     id: string;
                     name: string;
@@ -703,6 +1025,7 @@ export default function StockDetailsPage() {
                     passed: boolean | null;
                     detail: string;
                   }>) ?? []}
+                  emptyLabel="Entry rules not available."
                 />
               </>
             ) : !swingLoading ? (

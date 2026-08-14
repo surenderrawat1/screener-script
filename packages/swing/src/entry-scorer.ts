@@ -49,19 +49,24 @@ function trendScore(rules: { id?: string; passed?: boolean | null }[]) {
   const e1 = rulePassed(rules, 'E1');
   const e7 = rulePassed(rules, 'E7');
   let score = 0;
-  if (e1) score += 12;
-  if (e7) score += 13;
-  if (rulePassed(rules, 'E11')) score += 5;
-  if (e1 && e7) score = Math.min(25, score);
-  else if (e1 || e7) score = Math.min(18, score);
-  return score;
+  // Primary trend (E1) carries the bucket; E7 confirms — avoid equal double-pay.
+  if (e1 && e7) score = 25;
+  else if (e1) score = 20;
+  else if (e7) score = 14;
+  else {
+    if (rulePassed(rules, 'E11')) score += 3;
+    if (rulePassed(rules, 'E12')) score += 2;
+  }
+  return Math.min(25, score);
 }
 
 function momentumScore(rules: { id?: string; passed?: boolean | null }[], entry: { price_action?: Record<string, unknown> }) {
   let score = 0;
   if (rulePassed(rules, 'E3')) score += 12;
-  if (rulePassed(rules, 'E11')) score += 6;
+  if (rulePassed(rules, 'E11')) score += 4;
+  if (rulePassed(rules, 'E12')) score += 2;
   if (rulePassed(rules, 'E2')) score += 8;
+  if (rulePassed(rules, 'E9')) score += 3;
   if (entry.price_action?.higher_low) score += 4;
   return Math.min(20, score);
 }

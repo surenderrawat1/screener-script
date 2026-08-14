@@ -1,6 +1,7 @@
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
 import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import type { OhlcBar } from '@sv/swing';
+import { chartCloseMatchesInstrument } from '@sv/intraday';
 import { httpGet } from './http.js';
 
 const YAHOO_SYMBOLS = ['^NSEI', 'NIFTYBEES.NS'];
@@ -31,6 +32,7 @@ export type IntradayChartPayload = {
   sma20: IntradayChartSmaPoint[];
   sma50: IntradayChartSmaPoint[];
   sma200: IntradayChartSmaPoint[];
+  rsi14: IntradayChartSmaPoint[];
   ma_labels: {
     sma9: 'EMA-9';
     sma20: 'EMA-21';
@@ -39,6 +41,24 @@ export type IntradayChartPayload = {
   fetched_at: string;
   intraday: true;
 };
+
+/** RSI-14 (simple average, matches swing engine) over intraday closes. */
+function intradayRsi(bars: IntradayBar[], period = 14): IntradayChartSmaPoint[] {
+  if (period < 1 || bars.length < period + 1) return [];
+  const out: IntradayChartSmaPoint[] = [];
+  for (let end = period; end < bars.length; end++) {
+    let gains = 0;
+    let losses = 0;
+    for (let i = end - period + 1; i <= end; i++) {
+      const diff = bars[i].close - bars[i - 1].close;
+      if (diff >= 0) gains += diff;
+      else losses -= diff;
+    }
+    const value = losses === 0 ? 100 : Math.round((100 - 100 / (1 + gains / losses)) * 10) / 10;
+    out.push({ time: bars[end].time, value });
+  }
+  return out;
+}
 
 /** Exponential moving average over intraday closes, keyed by each bar's unix time. */
 function intradayEma(bars: IntradayBar[], period: number): IntradayChartSmaPoint[] {
@@ -78,6 +98,7 @@ export function buildIntradayChartPayload(chart: IntradayChart): IntradayChartPa
     sma20: intradayEma(chart.bars, 21),
     sma50: intradayEma(chart.bars, 50),
     sma200: [],
+    rsi14: intradayRsi(chart.bars, 14),
     ma_labels: { sma9: 'EMA-9', sma20: 'EMA-21', sma50: 'EMA-50' },
     fetched_at: chart.fetched_at,
     intraday: true,
@@ -114,7 +135,10 @@ export async function fetchInstrumentIntradayChart(
   const cacheKeyStr = cacheKey(CACHE_PREFIX.TA, `intraday:${normalizedKey}:${interval}:${range}`);
   if (!refresh) {
     const cached = await cacheGetJson<IntradayChart>(cacheKeyStr);
-    if (cached?.bars?.length) return cached;
+    const cachedClose = cached?.bars?.[cached.bars.length - 1]?.close ?? 0;
+    if (cached?.bars?.length && chartCloseMatchesInstrument(instrumentCacheKey, cachedClose)) {
+      return cached;
+    }
   }
 
   for (const yahooSymbol of yahooSymbols) {
@@ -155,12 +179,14 @@ export async function fetchInstrumentIntradayChart(
 
       const minBars = interval === '5m' ? 30 : 20;
       if (bars.length < minBars) continue;
+      const lastClose = bars[bars.length - 1]?.close ?? 0;
+      if (!chartCloseMatchesInstrument(instrumentCacheKey, lastClose)) continue;
 
       const chart: IntradayChart = {
         symbol: displaySymbol,
         yahoo: yahooSymbol,
         interval,
-        range: '5d',
+        range,
         bars,
         closes,
         fetched_at: new Date().toISOString(),

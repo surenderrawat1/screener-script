@@ -41,9 +41,22 @@ const HI: Record<string, string> = {
   'results.verdict': 'निर्णय',
 
   'eps.basis': 'EPS आधार (वार्षिक रिपोर्ट)',
-  'eps.consolidated': 'Consolidated',
-  'eps.standalone': 'Standalone',
-  'eps.hint': 'verify पर valuation पुनर्गणना होगी',
+  'eps.consolidated': 'समेकित (Consolidated)',
+  'eps.standalone': 'स्टैंडअलोन (Standalone)',
+  'eps.hint': 'सत्यापन पर मूल्यांकन पुनर्गणना होगी',
+
+  'sector.active': 'सक्रिय सेक्टर',
+  'sector.change': 'सेक्टर बदलें →',
+  'sector.block': 'सेक्टर ब्लॉक',
+
+  'draft.saved': 'ड्राफ्ट सहेजा गया',
+  'draft.loaded': 'ड्राफ्ट लोड हुआ',
+  'watchlist.saved': 'वॉचलिस्ट में सहेजा गया',
+
+  'gate.attestation': 'मैंने व्यक्तिगत रूप से गेट्स की पुष्टि की है',
+  'results.red_flags': 'लाल झंडे',
+  'results.position': 'स्थिति आकार',
+  'results.dq': 'डेटा गुणवत्ता',
 };
 
 export function translateVerify(lang: VerifyLang, key: string, fallback: string): string {

@@ -1,5 +1,17 @@
 import { CACHE_TTL } from './constants.js';
 import { deepMerge, readYamlFile, resolveConfigRoot } from './config-loader.js';
+import {
+  bindIndexDefinitionsGetter,
+  DEFAULT_INDEX_DEFINITIONS,
+  normalizeIndexDefinitions,
+  type IndicesFileConfig,
+} from './indices.js';
+import {
+  bindEtfCatalogGetter,
+  DEFAULT_ETFS_FILE,
+  normalizeEtfCatalog,
+  type EtfsFileConfig,
+} from './etfs.js';
 
 export interface DataPolicyConfig {
   version: number;
@@ -50,7 +62,84 @@ export interface SchedulesConfig {
       cron: string;
       timezone: string;
     };
+    paper_auto_trade?: {
+      enabled: boolean;
+      interval_sec: number;
+      max_notional_inr?: number;
+      max_open_positions?: number;
+      skip_accuracy_gate?: boolean;
+    };
+    swing_paper_auto_trade?: {
+      enabled: boolean;
+      interval_sec: number;
+    };
+    evening_gtt?: {
+      enabled: boolean;
+      cron: string;
+      timezone: string;
+      tiers?: string[];
+      max_orders?: number;
+      limit_premium_pct?: number;
+      send_email?: boolean;
+    };
+    strategy_daily_proof?: {
+      enabled: boolean;
+      cron: string;
+      timezone: string;
+      strategies?: string[];
+      max_scan?: number;
+      skip_weekends?: boolean;
+    };
+    exit_alerts?: {
+      enabled: boolean;
+      cron: string;
+      timezone: string;
+      skip_weekends?: boolean;
+      include_swing?: boolean;
+      include_intraday?: boolean;
+      max_positions_per_book?: number;
+    };
   };
+}
+
+/** Product knobs for emails / GTT / exit alerts — `config/alerts.yaml`. */
+export interface AlertsConfig {
+  version: number;
+  email?: {
+    evening_gtt?: boolean;
+    exit_alerts?: boolean;
+    swing_radar?: boolean;
+    morning_exits?: boolean;
+    pattern_alerts?: boolean;
+  };
+  /** WhatsApp channel flags (env credentials still required; WHATSAPP_ALERTS=0 hard-off). */
+  whatsapp?: {
+    swing_radar?: boolean;
+    evening_gtt?: boolean;
+    exit_alerts?: boolean;
+    pattern_alerts?: boolean;
+  };
+  evening_gtt?: {
+    tiers?: string[];
+    max_orders?: number;
+    limit_premium_pct?: number;
+    send_email?: boolean;
+  };
+  exit_alerts?: {
+    include_swing?: boolean;
+    include_intraday?: boolean;
+    skip_weekends?: boolean;
+    max_positions_per_book?: number;
+  };
+}
+
+/** Daily strategy proof allowlist — `config/strategy-daily-proof.yaml`. */
+export interface StrategyDailyProofFileConfig {
+  version: number;
+  enabled?: boolean;
+  skip_weekends?: boolean;
+  max_scan?: number;
+  strategies?: string[];
 }
 
 export interface ScreenerPresetsFile {
@@ -70,6 +159,10 @@ export interface AppConfig {
   configRoot: string;
   dataPolicy: DataPolicyConfig;
   schedules: SchedulesConfig;
+  alerts: AlertsConfig;
+  strategyDailyProof: StrategyDailyProofFileConfig;
+  indices: IndicesFileConfig;
+  etfs: EtfsFileConfig;
   screenerPresets: ScreenerPresetsFile | null;
   settingsOverrides: Record<string, unknown>;
 }
@@ -85,6 +178,7 @@ export interface CacheTtlMap {
   yahoo: number;
   job_progress: number;
   intraday: number;
+  intraday_state: number;
   swing_auto_snapshot: number;
   regime: number;
   morning_etf: number;
@@ -107,6 +201,7 @@ const DEFAULT_DATA_POLICY: DataPolicyConfig = {
     intraday_chart: CACHE_TTL.intraday,
     morning_etf: CACHE_TTL.morning_etf,
     morning_bundle: CACHE_TTL.morning_bundle,
+    intraday_state: CACHE_TTL.intraday_state,
   },
   staleness: {
     index_max_age_days: 90,
@@ -145,7 +240,93 @@ const DEFAULT_SCHEDULES: SchedulesConfig = {
       cron: '45 8 * * *',
       timezone: 'Asia/Kolkata',
     },
+    paper_auto_trade: {
+      enabled: true,
+      interval_sec: 60,
+      max_notional_inr: 30_000,
+      max_open_positions: 10,
+      skip_accuracy_gate: true,
+    },
+    swing_paper_auto_trade: {
+      enabled: true,
+      interval_sec: 60,
+    },
+    evening_gtt: {
+      enabled: true,
+      cron: '0 16 * * *',
+      timezone: 'Asia/Kolkata',
+      tiers: ['high_conviction', 'strict_enter'],
+      max_orders: 15,
+      limit_premium_pct: 0.2,
+      send_email: true,
+    },
+    strategy_daily_proof: {
+      enabled: true,
+      cron: '15 16 * * *',
+      timezone: 'Asia/Kolkata',
+      strategies: [
+        'swing_strict_enter',
+        'swing_ma20_stratzy',
+        'swing_breakout_volume',
+        'swing_best_r',
+        'hybrid_quality_swing',
+      ],
+      max_scan: 60,
+      skip_weekends: true,
+    },
+    exit_alerts: {
+      enabled: true,
+      cron: '45 15 * * *',
+      timezone: 'Asia/Kolkata',
+      skip_weekends: true,
+      include_swing: true,
+      include_intraday: true,
+      max_positions_per_book: 50,
+    },
   },
+};
+
+const DEFAULT_ALERTS: AlertsConfig = {
+  version: 1,
+  email: {
+    evening_gtt: true,
+    exit_alerts: true,
+    swing_radar: true,
+    morning_exits: true,
+    pattern_alerts: true,
+  },
+  whatsapp: {
+    swing_radar: true,
+    evening_gtt: true,
+    exit_alerts: true,
+    pattern_alerts: true,
+  },
+  evening_gtt: {
+    tiers: ['high_conviction', 'strict_enter'],
+    max_orders: 15,
+    limit_premium_pct: 0.2,
+    send_email: true,
+  },
+  exit_alerts: {
+    include_swing: true,
+    include_intraday: true,
+    skip_weekends: true,
+    max_positions_per_book: 50,
+  },
+};
+
+const DEFAULT_STRATEGY_DAILY_PROOF: StrategyDailyProofFileConfig = {
+  version: 1,
+  enabled: true,
+  skip_weekends: true,
+  max_scan: 60,
+  strategies: [
+    'swing_strict_enter',
+    'swing_ma20_stratzy',
+    'swing_breakout_volume',
+    'swing_best_r',
+    'hybrid_quality_swing',
+  ],
 };
 
 let cached: AppConfig | null = null;
@@ -166,6 +347,7 @@ function mapYamlTtlToRuntime(yamlTtl: Record<string, number>): CacheTtlMap {
     regime: yamlTtl.regime ?? CACHE_TTL.regime,
     morning_etf: yamlTtl.morning_etf ?? CACHE_TTL.morning_etf,
     morning_bundle: yamlTtl.morning_bundle ?? CACHE_TTL.morning_bundle,
+    intraday_state: yamlTtl.intraday_state ?? CACHE_TTL.intraday_state,
   };
 }
 
@@ -175,6 +357,16 @@ export function buildAppConfig(
 ): AppConfig {
   const filePolicy = readYamlFile<Partial<DataPolicyConfig>>(configRoot, 'data-policy.yaml');
   const fileSchedules = readYamlFile<Partial<SchedulesConfig>>(configRoot, 'schedules.yaml');
+  const fileAlerts = readYamlFile<Partial<AlertsConfig>>(configRoot, 'alerts.yaml');
+  const fileStrategyProof = readYamlFile<Partial<StrategyDailyProofFileConfig>>(
+    configRoot,
+    'strategy-daily-proof.yaml',
+  );
+  const fileIndices = readYamlFile<Partial<IndicesFileConfig> & { definitions?: Record<string, unknown> }>(
+    configRoot,
+    'indices.yaml',
+  );
+  const fileEtfs = readYamlFile<Partial<EtfsFileConfig> & { entries?: unknown }>(configRoot, 'etfs.yaml');
   const screenerPresets = readYamlFile<ScreenerPresetsFile>(configRoot, 'presets/screener.yaml');
 
   const mergedPolicy = deepMerge(
@@ -185,7 +377,51 @@ export function buildAppConfig(
     },
   ) as unknown as DataPolicyConfig;
 
-  const mergedSchedules = deepMerge(
+  const mergedAlerts = deepMerge(
+    DEFAULT_ALERTS as unknown as Record<string, unknown>,
+    {
+      ...(fileAlerts ?? {}),
+      ...((settingsOverrides.alerts as Record<string, unknown> | undefined) ?? {}),
+    },
+  ) as unknown as AlertsConfig;
+
+  const mergedStrategyProof = deepMerge(
+    DEFAULT_STRATEGY_DAILY_PROOF as unknown as Record<string, unknown>,
+    {
+      ...(fileStrategyProof ?? {}),
+      ...((settingsOverrides.strategyDailyProof as Record<string, unknown> | undefined) ?? {}),
+    },
+  ) as unknown as StrategyDailyProofFileConfig;
+
+  const overrideIndices = settingsOverrides.indices as
+    | { version?: number; definitions?: Record<string, unknown> }
+    | undefined;
+  // Definitions replace (not deep-merge) when Admin saves a full registry.
+  const fileDefs = normalizeIndexDefinitions(
+    (fileIndices?.definitions as Record<string, unknown> | undefined) ??
+      (DEFAULT_INDEX_DEFINITIONS as unknown as Record<string, unknown>),
+  );
+  const effectiveDefs =
+    overrideIndices?.definitions != null
+      ? normalizeIndexDefinitions(overrideIndices.definitions)
+      : Object.keys(fileDefs).length > 0
+        ? fileDefs
+        : DEFAULT_INDEX_DEFINITIONS;
+  const mergedIndices: IndicesFileConfig = {
+    version: Number(overrideIndices?.version ?? fileIndices?.version ?? 1) || 1,
+    definitions: effectiveDefs,
+  };
+
+  const overrideEtfs = settingsOverrides.etfs as { version?: number; entries?: unknown } | undefined;
+  const fileEtfEntries = normalizeEtfCatalog(fileEtfs?.entries ?? DEFAULT_ETFS_FILE.entries);
+  const effectiveEtfs =
+    overrideEtfs?.entries != null ? normalizeEtfCatalog(overrideEtfs.entries) : fileEtfEntries;
+  const mergedEtfs: EtfsFileConfig = {
+    version: Number(overrideEtfs?.version ?? fileEtfs?.version ?? 1) || 1,
+    entries: effectiveEtfs.length > 0 ? effectiveEtfs : DEFAULT_ETFS_FILE.entries,
+  };
+
+  let mergedSchedules = deepMerge(
     DEFAULT_SCHEDULES as unknown as Record<string, unknown>,
     {
       ...(fileSchedules ?? {}),
@@ -193,10 +429,33 @@ export function buildAppConfig(
     },
   ) as unknown as SchedulesConfig;
 
+  // Overlay product knobs from alerts.yaml / strategy-daily-proof.yaml onto schedule blocks
+  // so existing getSchedules() callers pick up editable settings without code changes.
+  mergedSchedules = deepMerge(mergedSchedules as unknown as Record<string, unknown>, {
+    intraday: {
+      evening_gtt: {
+        ...(mergedAlerts.evening_gtt ?? {}),
+      },
+      exit_alerts: {
+        ...(mergedAlerts.exit_alerts ?? {}),
+      },
+      strategy_daily_proof: {
+        enabled: mergedStrategyProof.enabled,
+        skip_weekends: mergedStrategyProof.skip_weekends,
+        max_scan: mergedStrategyProof.max_scan,
+        strategies: mergedStrategyProof.strategies,
+      },
+    },
+  }) as unknown as SchedulesConfig;
+
   return {
     configRoot,
     dataPolicy: mergedPolicy,
     schedules: mergedSchedules,
+    alerts: mergedAlerts,
+    strategyDailyProof: mergedStrategyProof,
+    indices: mergedIndices,
+    etfs: mergedEtfs,
     screenerPresets,
     settingsOverrides,
   };
@@ -205,19 +464,29 @@ export function buildAppConfig(
 /** Load config from disk (and optional DB overrides). Safe to call multiple times. */
 export async function initAppConfig(settingsOverrides: Record<string, unknown> = {}): Promise<AppConfig> {
   cached = buildAppConfig(resolveConfigRoot(), settingsOverrides);
+  bindIndexDefinitionsGetter(() => cached!.indices.definitions);
+  bindEtfCatalogGetter(() => cached!.etfs.entries);
   return cached;
 }
 
 export function reloadAppConfig(settingsOverrides: Record<string, unknown> = {}): AppConfig {
   cached = buildAppConfig(resolveConfigRoot(), settingsOverrides);
+  bindIndexDefinitionsGetter(() => cached!.indices.definitions);
+  bindEtfCatalogGetter(() => cached!.etfs.entries);
   return cached;
 }
 
 export function getAppConfig(): AppConfig {
   if (!cached) {
     cached = buildAppConfig();
+    bindIndexDefinitionsGetter(() => cached!.indices.definitions);
+    bindEtfCatalogGetter(() => cached!.etfs.entries);
   }
   return cached;
+}
+
+export function getIndicesConfig(): IndicesFileConfig {
+  return getAppConfig().indices;
 }
 
 export function getDataPolicy(): DataPolicyConfig {
@@ -226,6 +495,14 @@ export function getDataPolicy(): DataPolicyConfig {
 
 export function getSchedules(): SchedulesConfig {
   return getAppConfig().schedules;
+}
+
+export function getAlertsConfig(): AlertsConfig {
+  return getAppConfig().alerts;
+}
+
+export function getStrategyDailyProofConfig(): StrategyDailyProofFileConfig {
+  return getAppConfig().strategyDailyProof;
 }
 
 /** Runtime TTL map — reads from config when loaded, else code defaults. */

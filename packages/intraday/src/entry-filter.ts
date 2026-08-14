@@ -1,12 +1,17 @@
 import { DEFAULT_LAST_ENTRY_MIN, DEFAULT_MIN_ENTRY_MIN, entryWindow, gateReasons as clockGateReasons } from './session-clock.js';
 import { gateReasons as ema50GateReasons, fromAnalysis as ema50FromAnalysis } from './ema50-bias.js';
 import { gateReasons as gc9GateReasons, fromAnalysis as gc9FromAnalysis } from './gc9-dc9.js';
+import { gateReasons as sma20GateReasons, fromAnalysis as sma20FromAnalysis } from './sma20-bias.js';
 import { gateReasons as regimeGateReasons } from './session-regime.js';
 import { gateReasons as qualityGateReasons } from './signal-quality.js';
+import { entryFilterOverrides, pickLiveRecommendedPreset } from './instruments.js';
+
+const INSTRUMENT_FLOOR_KEYS = ['min_confidence', 'min_mtf_deploy', 'min_net_score', 'min_confluence', 'min_setup_score'] as const;
 
 const DEFAULT_OPTIONS = {
   require_5m_ema50_bias: true,
   require_5m_gc9_dc9: true,
+  require_5m_sma20_bias: false,
 };
 
 export const PRESETS: Record<string, { label: string; description: string; options: Record<string, unknown> }> = {
@@ -158,7 +163,7 @@ export const PRESETS: Record<string, { label: string; description: string; optio
     options: {
       skip_range: true,
       min_entry_min_ist: 10 * 60 + 30,
-      last_entry_min_ist: 14 * 60 + 30,
+      last_entry_min_ist: 14 * 60,
       skip_warming_regime: true,
       skip_regime_keys: ['unknown', 'range'],
       regime_long_keys: ['mixed', 'lean_up', 'trend_up'],
@@ -171,6 +176,36 @@ export const PRESETS: Record<string, { label: string; description: string; optio
       max_trades_per_session: 1,
       cooldown_bars: 6,
       exit_profile: 'cfa_precision',
+    },
+  },
+  ma20_stratzy: {
+    label: '20 MA Stratzy',
+    description:
+      'SMA-20 bias · pullback (≤0.30% from MA) · EMA stack · grade≥B · MTF ≥65% · conf≥58 · 10:15–13:30 · 1/day · Stratzy 70/20/10 @0.6R T1',
+    options: {
+      skip_range: true,
+      require_5m_ema50_bias: false,
+      require_5m_gc9_dc9: false,
+      require_5m_sma20_bias: true,
+      require_15m_sma20_bias: true,
+      require_ema_stack: true,
+      require_strong_direction: true,
+      min_setup_grade: 'B',
+      max_sma20_extension_pct: 0.3,
+      min_entry_min_ist: DEFAULT_MIN_ENTRY_MIN,
+      // 13:30 last entry: runway to 14:30 time stop for 0.6R T1 on 15m index paper book.
+      last_entry_min_ist: 13 * 60 + 30,
+      skip_warming_regime: true,
+      skip_range_regime: true,
+      skip_chop: true,
+      require_mtf: true,
+      min_mtf_deploy: 65,
+      require_actionable_trigger: true,
+      min_confidence: 58,
+      min_net_score: 18,
+      cooldown_bars: 10,
+      max_trades_per_session: 1,
+      exit_profile: 'stratzy_trend',
     },
   },
 };
@@ -188,8 +223,19 @@ export function presetOptions(id: string): Record<string, unknown> {
   return { ...DEFAULT_OPTIONS, ...(p?.options ?? {}) };
 }
 
-export function presetOptionsForInstrument(id: string, _instrument?: Record<string, unknown> | null) {
-  return presetOptions(id);
+type InstrumentLike = { id?: string; kind?: string } | null | undefined;
+
+export function presetOptionsForInstrument(id: string, instrument?: InstrumentLike) {
+  const opts: Record<string, unknown> = { ...presetOptions(id) };
+  if (!instrument) return opts;
+  const over: Record<string, unknown> = { ...entryFilterOverrides(instrument) };
+  for (const key of INSTRUMENT_FLOOR_KEYS) {
+    if (key in over && key in opts) {
+      opts[key] = Math.max(Number(opts[key] ?? 0), Number(over[key] ?? 0));
+      delete over[key];
+    }
+  }
+  return { ...opts, ...over };
 }
 
 export function passes(
@@ -207,6 +253,17 @@ export function passes(
   const skipRange = !('skip_range' in options) || Boolean(options.skip_range);
   if (skipRange && bias === 'range') reasons.push('Range-bound session — stand aside');
   if (!['long', 'short'].includes(bias)) reasons.push(`Bias is not directional (${bias})`);
+
+  const stopMeta = (plan.stop_loss as Record<string, unknown> | undefined) ?? {};
+  const minStopPct = Number(options.min_stop_pct ?? 0);
+  if (minStopPct > 0) {
+    const stopPct = Number(stopMeta.pct ?? 0);
+    if (!(stopPct >= minStopPct)) {
+      reasons.push(
+        `Stop ${stopPct || 0}% too tight vs min ${minStopPct}% (cost floor would crush expectancy)`,
+      );
+    }
+  }
 
   const barMin = Number(analysis.bar_minutes_ist ?? 0);
   if (barMin > 0) {
@@ -227,6 +284,16 @@ export function passes(
     if (dir === 'sideways') reasons.push('Sideways / chop — no trend edge');
     if (bias === 'long' && dir === 'lean_bear') reasons.push('Long plan vs lean-bear direction');
     if (bias === 'short' && dir === 'lean_bull') reasons.push('Short plan vs lean-bull direction');
+  }
+
+  if (options.require_strong_direction) {
+    const dir = String(analysis.direction ?? '');
+    if (bias === 'long' && dir !== 'bullish') {
+      reasons.push(`Long requires strong bullish direction (got ${dir || 'unknown'})`);
+    }
+    if (bias === 'short' && dir !== 'bearish') {
+      reasons.push(`Short requires strong bearish direction (got ${dir || 'unknown'})`);
+    }
   }
 
   if (options.require_actionable_trigger) {
@@ -269,6 +336,23 @@ export function passes(
     const analysis5 = options.analysis_5m as Record<string, unknown> | undefined;
     reasons.push(...gc9GateReasons(analysis5, bias));
   }
+  if (options.require_5m_sma20_bias) {
+    const analysis5 = options.analysis_5m as Record<string, unknown> | undefined;
+    reasons.push(
+      ...sma20GateReasons(analysis5, bias, {
+        max_sma20_extension_pct: Number(options.max_sma20_extension_pct ?? 0),
+      }),
+    );
+  }
+  if (options.require_15m_sma20_bias) {
+    const analysis15 = options.analysis_15m as Record<string, unknown> | undefined;
+    reasons.push(
+      ...sma20GateReasons(analysis15, bias, {
+        // 15m only needs side agreement — extension check stays on 5m.
+        max_sma20_extension_pct: 0,
+      }),
+    );
+  }
 
   return { pass: reasons.length === 0, reasons };
 }
@@ -281,10 +365,15 @@ export function preflightChecklist(
   presetId: string,
   activeTf: string,
   instrument?: Record<string, unknown> | null,
+  analysis15?: Record<string, unknown> | null,
 ) {
   const meta = preset(presetId);
   const label = meta?.label ?? presetId;
-  const opts: Record<string, unknown> = { ...presetOptionsForInstrument(presetId, instrument), analysis_5m: analysis5 };
+  const opts: Record<string, unknown> = {
+    ...presetOptionsForInstrument(presetId, instrument),
+    analysis_5m: analysis5,
+    analysis_15m: analysis15 ?? undefined,
+  };
   const details: string[] = [];
 
   const barMin = Number(analysis.bar_minutes_ist ?? 0);
@@ -308,6 +397,20 @@ export function preflightChecklist(
     const state = gc9FromAnalysis(analysis5);
     const gcOk = gc9GateReasons(analysis5, String(plan.bias ?? '')).length === 0;
     details.push(`${gcOk ? '✓' : '✗'} ${state.label}`);
+  }
+  if (opts.require_5m_sma20_bias) {
+    const state = sma20FromAnalysis(analysis5);
+    const smaOk =
+      sma20GateReasons(analysis5, String(plan.bias ?? ''), {
+        max_sma20_extension_pct: Number(opts.max_sma20_extension_pct ?? 0),
+      }).length === 0;
+    details.push(`${smaOk ? '✓' : '✗'} ${state.label}`);
+  }
+  if (opts.require_15m_sma20_bias) {
+    const analysis15 = (opts.analysis_15m as Record<string, unknown> | undefined) ?? {};
+    const state15 = sma20FromAnalysis(analysis15);
+    const sma15Ok = sma20GateReasons(analysis15, String(plan.bias ?? '')).length === 0;
+    details.push(`${sma15Ok ? '✓' : '✗'} 15m ${state15.label}`);
   }
   if (opts.require_mtf || Number(opts.min_mtf_deploy ?? 0) > 0) {
     if (mtf?.ok) {
@@ -353,24 +456,33 @@ export function evaluatePresets(
   analysis5: Record<string, unknown>,
   analysis15: Record<string, unknown>,
   mtf: Record<string, unknown>,
+  instrument?: InstrumentLike,
+  interval: '5m' | '15m' = '15m',
 ) {
+  const instId = String(instrument?.id ?? 'nifty50');
   const out: Record<string, unknown>[] = [];
   for (const [id, meta] of Object.entries(PRESETS)) {
     const plan5 = (analysis5.trade_plan as Record<string, unknown>) ?? {};
     const plan15 = (analysis15.trade_plan as Record<string, unknown>) ?? {};
-    const opts = { ...presetOptions(id), analysis_5m: analysis5 };
+    const opts = {
+      ...presetOptionsForInstrument(id, instrument),
+      analysis_5m: analysis5,
+      analysis_15m: analysis15,
+    };
     const pass5 = passes(analysis5, plan5, mtf, opts);
     const pass15 = passes(analysis15, plan15, mtf, opts);
     out.push({
       id,
       label: meta.label,
       description: meta.description,
-      recommended: id === 'production',
+      recommended: false,
       pass_5m: pass5.pass,
       pass_15m: pass15.pass,
       reasons_5m: pass5.reasons,
       reasons_15m: pass15.reasons,
     });
   }
+  const rec = pickLiveRecommendedPreset(instId, interval, out);
+  for (const row of out) row.recommended = row.id === rec;
   return out;
 }

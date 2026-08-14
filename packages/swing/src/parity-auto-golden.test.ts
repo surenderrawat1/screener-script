@@ -8,7 +8,7 @@ const GOLDEN_BT = compactFromStats(
   {
     trades_closed: 12,
     profit_factor: 1.45,
-    win_rate_pct: 58,
+    win_rate_pct: 72,
     avg_win_pct: 4.2,
     avg_loss_pct: -2.1,
     compounded_return_pct: 18.5,
@@ -29,6 +29,8 @@ const GOLDEN_RAW = {
   profit_target: 4400,
   r_multiple: 2,
   r_multiple_ok: true,
+  net_edge_ok: true,
+  deploy_scale: 1,
   ta_avg_value_cr: 30,
   volume_surge: true,
   ta_rsi14: 55,
@@ -61,7 +63,11 @@ describe('parity-auto-golden', () => {
     expect(row.as_of_date).toBe('2026-07-07');
     expect(row.suggested_shares).toBeGreaterThan(0);
     expect(row.add_allowed).toBe(true);
+    expect(row.research_add_allowed).toBe(true);
     expect(row.already_held).toBe(false);
+    expect(row.deploy_scale).toBe(1);
+    expect(row.net_edge_ok).toBe(true);
+    expect(row.r_multiple_ok).toBe(true);
   });
 
   it('serializeHit preserves held overlay fields', () => {

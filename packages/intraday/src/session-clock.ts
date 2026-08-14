@@ -1,7 +1,8 @@
 export const MARKET_OPEN_MIN = 9 * 60 + 15;
 export const DEFAULT_MIN_ENTRY_MIN = 10 * 60 + 15;
-export const DEFAULT_LAST_ENTRY_MIN = 14 * 60 + 45;
-export const TIME_STOP_MIN = 15 * 60 + 15;
+export const DEFAULT_LAST_ENTRY_MIN = 14 * 60;
+export const TIME_STOP_MIN = 14 * 60 + 30;
+export const TIME_STOP_IST = formatMinutes(TIME_STOP_MIN);
 
 export function formatMinutes(minutes: number): string {
   const h = Math.floor(minutes / 60);

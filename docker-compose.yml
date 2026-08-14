@@ -7,14 +7,22 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
+      NODE_ENV: production
       DATABASE_URL: postgresql://platform:platform@shared_postgres:5432/stock_verifier
       REDIS_URL: redis://shared_redis:6379/1
       API_PORT: 3100
-      CORS_ORIGIN: http://localhost:5173
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      INDICES_DIR: /app/data/indices
     ports:
       - '3100:3100'
     networks:
       - shared_network
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3100/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
     command: sh -c "pnpm db:push && pnpm db:seed && node apps/api/dist/server.js"
 
   sv-worker:
@@ -25,12 +33,15 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
+      NODE_ENV: production
       DATABASE_URL: postgresql://platform:platform@shared_postgres:5432/stock_verifier
       REDIS_URL: redis://shared_redis:6379/1
+      INDICES_DIR: /app/data/indices
     networks:
       - shared_network
     depends_on:
-      - sv-api
+      sv-api:
+        condition: service_healthy
 
   sv-web:
     build:
@@ -43,7 +54,8 @@ services:
     networks:
       - shared_network
     depends_on:
-      - sv-api
+      sv-api:
+        condition: service_healthy
 
 networks:
   shared_network:

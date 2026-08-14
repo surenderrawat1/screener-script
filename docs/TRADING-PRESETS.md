@@ -2,7 +2,7 @@
 
 **Trading Presets** are one-click trading profiles: bookmarkable URLs that open the right swing scan, ETF rotation, or intraday radar with filters pre-set. Three system presets ship in PHP — conservative swing, ETF rotation, and intraday session.
 
-In **Script Screener v2 this feature does not exist.** Swing and intraday engines support the underlying filters (`gc9_only`, `min_verdict`, intraday `trend_scalp_5m`), but there is no preset registry, hub page, or deep-link wiring.
+In **Script Screener v2 this feature is implemented** — registry in `@sv/swing/trading-presets`, hub at `/presets`, API `GET /api/v1/trading/presets`, and morning chips.
 
 > Presets are starting points, not orders — adjust on the target page before sizing.
 
@@ -49,18 +49,18 @@ In **Script Screener v2 this feature does not exist.** Swing and intraday engine
 
 | Aspect | PHP (`stock-verifier`) | Script Screener (`stock-verifier-v2`) |
 |--------|------------------------|--------------------------------------|
-| **Hub page** | `trading-presets.php` (nav: Trading Presets) | **No route** |
-| **Planned route** | — | `/presets` |
-| **Registry** | `TradingPreset.php` (3 presets) | **Not ported** |
-| **API** | SSR only | **No** `GET /api/v1/trading/presets` |
-| **Morning chips** | On `morning-dashboard.php` | **Not implemented** |
-| **Conservative swing URL** | `swing-trading.php` + Tier-A + ENTER + GC9 | `/swing` — manual form, no `swing_tier_a` universe |
-| **ETF rotation URL** | `swing-trading.php?mode=etf` | **No ETF mode / universe** |
-| **Intraday URL** | `nifty-15m.php`, `intraday-app.php` | `/intraday` — no preset deep link |
-| **Swing Auto strict** | `?tier=strict_enter` | `/swing/auto` — tiers exist, **no URL param** |
-| **Backtest link** | `nifty-intraday-backtest.php` | **Not ported** |
-| **Tests** | `validate-logic.php` `testTradingPresets()` | **None** |
-| **User custom presets** | `strategies.php` (separate) | M11 `screener_presets` (planned) |
+| **Hub page** | `trading-presets.php` (nav: Trading Presets) | `/presets` |
+| **Planned route** | — | `/presets` ✓ |
+| **Registry** | `TradingPreset.php` (3 presets) | `@sv/swing/trading-presets` (4 presets) |
+| **API** | SSR only | `GET /api/v1/trading/presets` |
+| **Morning chips** | On `morning-dashboard.php` | Wired on `/morning` + Dashboard |
+| **Conservative swing URL** | `swing-trading.php` + Tier-A + ENTER + GC9 | `/swing?preset=conservative_swing&autorun=1` |
+| **ETF rotation URL** | `swing-trading.php?mode=etf` | `/swing?preset=etf_rotation&autorun=1` |
+| **Intraday URL** | `nifty-15m.php`, `intraday-app.php` | `/intraday?preset=intraday_session&interval=5m` |
+| **Swing Auto strict** | `?tier=strict_enter` | `/swing/auto?tier=strict_enter` |
+| **Backtest link** | `nifty-intraday-backtest.php` | `/intraday/backtest` |
+| **Tests** | `validate-logic.php` `testTradingPresets()` | `trading-presets.test.ts` |
+| **User custom presets** | `strategies.php` (separate) | M11 `screener_presets` + swing rule profiles |
 
 **Distinction:** Trading Presets are **fixed system profiles** with encoded URLs. [Trading Strategies](TRADING-STRATEGIES.md) is the **21-strategy research catalog** (swing / screener / hybrid runner). M11 Strategy Builder is for **user-defined** saved strategies — different feature.
 
@@ -261,7 +261,7 @@ export function buildSwingScanBody(presetId: string): object | null;
 | Regime NIFTYBEES | symbol mode swing | `/swing/evaluate?symbol=NIFTYBEES` | Evaluate API exists |
 | 5m trend scalp | `nifty-15m.php?tf=5m` | `/intraday?interval=5m` | Page exists; no preset param |
 | 15m CFA precision | `nifty-15m.php?tf=15m` | `/intraday?interval=15m` | Same |
-| Intraday app (PWA) | `intraday-app.php` | `/intraday` mobile layout | **Not built** (I-D in INTRADAY.md) |
+| Intraday app (PWA) | `intraday-app.php` | `/intraday/app` + lite API | **Shipped** (I-D1/I-D3) |
 | Nifty positions | `nifty-positions.php` | `/nifty/positions` | **Not built** |
 | 60d backtest | `nifty-intraday-backtest.php` | — | Phase 12 |
 | Swing positions | `swing-positions.php` | `/positions` | ✅ |
@@ -403,20 +403,20 @@ GET /api/v1/intraday/nifty/state?interval=5m&preset=trend_scalp_5m
 
 | Feature | PHP | v2 | Gap |
 |---------|-----|-----|-----|
-| Hub page `/presets` | ✓ | ✗ | **TP-A** |
-| 3 system presets | ✓ | ✗ | **TP-A** |
-| ID aliases (`swing`, `etf`, `scalp`) | ✓ | ✗ | **TP-A** |
-| Bookmarkable scan URLs | ✓ | ✗ | **TP-B** |
-| Conservative → Tier-A + ENTER + GC9 | ✓ | partial | **TP-C** |
-| ETF rotation → SETUP+ ETF scan | ✓ | ✗ | **TP-D** (ETF universe) |
-| Intraday → 5m/15m links | ✓ | partial | **TP-B** |
-| Swing Auto strict ENTER link | ✓ | partial | **TP-B** |
-| Morning preset chips | ✓ | ✗ | **TP-E** |
-| NSE session on hub | ✓ | ✗ | **TP-A** |
-| `validate-logic` preset tests | ✓ | ✗ | **TP-F** |
+| Hub page `/presets` | ✓ | ✓ | — |
+| System presets (4 in v2) | ✓ (3) | ✓ | — |
+| ID aliases (`swing`, `etf`, `scalp`) | ✓ | ✓ | — |
+| Bookmarkable scan URLs | ✓ | ✓ | — |
+| Conservative → Tier-A + ENTER + GC9 | ✓ | ✓ | — |
+| ETF rotation → SETUP+ ETF scan | ✓ | ✓ | — |
+| Intraday → 5m/15m links | ✓ | ✓ | — |
+| Swing Auto strict ENTER link | ✓ | ✓ | — |
+| Morning preset chips | ✓ | ✓ | — |
+| NSE session on hub | ✓ | ✓ | — |
+| `validate-logic` preset tests | ✓ | ✓ | — |
 | User custom strategies | M11 CRUD | M11 | separate track |
-| Full strategy catalog | `strategies.php` | — | [TRADING-STRATEGIES.md](TRADING-STRATEGIES.md) |
-| REST JSON API | ✗ | planned | v2 improvement |
+| Full strategy catalog | `strategies.php` | `/strategies` | [TRADING-STRATEGIES.md](TRADING-STRATEGIES.md) |
+| REST JSON API | ✗ | ✓ | — |
 
 ---
 
@@ -478,13 +478,13 @@ GET /api/v1/intraday/nifty/state?interval=5m&preset=trend_scalp_5m
 
 ### Acceptance criteria
 
-- [ ] `/presets` shows 3 cards matching PHP labels, rules, and link count
-- [ ] `?preset=conservative_swing` highlights active card
-- [ ] Conservative autorun uses ENTER + gc9_only + swing_tier_a
-- [ ] ETF preset disabled with clear message until ETF universe ships
-- [ ] Intraday preset opens `/intraday?interval=5m` with trend_scalp filter applied
-- [ ] Morning page shows 3 chips + "All presets"
-- [ ] vitest preset URL parity tests pass
+- [x] `/presets` shows cards matching PHP labels, rules, and link count
+- [x] `?preset=conservative_swing` highlights active card
+- [x] Conservative autorun uses ENTER + gc9_only + swing_tier_a
+- [x] ETF preset ready when ETF universe catalog is non-empty
+- [x] Intraday preset opens `/intraday?interval=5m` with trend_scalp filter applied
+- [x] Morning page shows chips + "All presets"
+- [x] vitest preset URL parity tests pass
 
 ---
 

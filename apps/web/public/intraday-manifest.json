@@ -1,0 +1,19 @@
+{
+  "name": "Script Screener Intraday",
+  "short_name": "Intraday",
+  "description": "5/15m scalp gate, live positions, session journal, 14:30 IST flatten",
+  "start_url": "/intraday/app",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/intraday-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

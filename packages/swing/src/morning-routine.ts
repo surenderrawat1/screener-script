@@ -56,6 +56,15 @@ export interface AutoPanelStub {
   saved_ago?: string | null;
 }
 
+export interface ChartPatternsPanelStub {
+  available?: boolean;
+  scan_date?: string | null;
+  pattern_count?: number;
+  breakout_count?: number;
+  confirmed_count?: number;
+  hits?: unknown[];
+}
+
 export interface NiftyPanelStub {
   ok?: boolean;
   label?: string;
@@ -278,6 +287,7 @@ export function routineSteps(
   etf: EtfPanelStub,
   auto: AutoPanelStub,
   nifty: NiftyPanelStub = {},
+  patterns: ChartPatternsPanelStub = {},
 ): RoutineStep[] {
   const swingOpen = Number(swing.open ?? 0);
   const swingExit = Number(swing.exit_count ?? 0);
@@ -285,6 +295,9 @@ export function routineSteps(
   const intraExit = Number(intraday.exit_count ?? 0);
   const etfHits = Array.isArray(etf.hits) ? etf.hits : [];
   const autoHits = Array.isArray(auto.hits) ? auto.hits : [];
+  const patternHits = Array.isArray(patterns.hits) ? patterns.hits : [];
+  const topHcHit = autoHits[0] as { symbol?: string } | undefined;
+  const topHc = topHcHit?.symbol ? String(topHcHit.symbol) : '';
 
   return [
     {
@@ -292,6 +305,18 @@ export function routineSteps(
       detail: `${session.label} · ${session.message}`,
       href: '/morning',
       status: session.phase === NSE_PHASE.OPEN ? 'ok' : 'info',
+    },
+    {
+      step: 'Run quality screener',
+      detail: 'Nifty 50 · quality compounders — verify before sizing',
+      href: '/screener?preset=quality&universe=nifty50',
+      status: 'info',
+    },
+    {
+      step: 'Scan EMA momentum setups',
+      detail: 'Daily fresh cross ↑ EMA-20 with quality gates',
+      href: '/screener?preset=ta_fresh_ema20_cross&universe=nifty50&show_ta=1',
+      status: 'info',
     },
     {
       step: 'Swing regime (NIFTYBEES)',
@@ -333,8 +358,27 @@ export function routineSteps(
       detail: auto.available
         ? `${autoHits.length} names · saved ${auto.saved_ago ?? '—'}`
         : 'No snapshot — open Swing Auto to scan',
-      href: '/swing/auto',
+      href: '/swing/auto?tier=high_conviction',
       status: auto.available && autoHits.length > 0 ? 'ok' : 'muted',
+    },
+    {
+      step: 'Chart pattern feed',
+      detail: patterns.available
+        ? `${patternHits.length} actionable · scan ${patterns.scan_date ?? '—'} · ${Number(patterns.breakout_count ?? 0)} breakout`
+        : 'No daily scan yet — patterns populate after sync',
+      href: '/patterns?min_confidence=60',
+      status:
+        Number(patterns.breakout_count ?? 0) > 0 || Number(patterns.confirmed_count ?? 0) > 0
+          ? 'ok'
+          : patterns.available
+            ? 'info'
+            : 'muted',
+    },
+    {
+      step: 'Verify top HC name',
+      detail: topHc ? `Quick CFA verify on ${topHc}` : 'After HC radar populates',
+      href: topHc ? `/verify?symbol=${encodeURIComponent(topHc)}` : '/verify',
+      status: topHc ? 'ok' : 'muted',
     },
   ];
 }
@@ -381,4 +425,64 @@ export function autoRadarPanel(snapshot: {
     saved_ago: savedAgo,
     summary: (snapshot.summary ?? {}) as Record<string, unknown>,
   };
+}
+
+export type AutoTierKey = 'high_conviction' | 'strict_enter' | 'setup_radar' | 'breakout_surge';
+
+export interface OvernightTierChange {
+  tier: AutoTierKey;
+  added: string[];
+  removed: string[];
+}
+
+export interface OvernightTierChanges {
+  high_conviction?: OvernightTierChange;
+  strict_enter?: OvernightTierChange;
+  setup_radar?: OvernightTierChange;
+  breakout_surge?: OvernightTierChange;
+}
+
+function symbolsFromTier(tierHits: unknown): string[] {
+  if (!Array.isArray(tierHits)) return [];
+  const out: string[] = [];
+  for (const hit of tierHits) {
+    if (!hit || typeof hit !== 'object') continue;
+    const symbol = String((hit as Record<string, unknown>).symbol ?? '').trim();
+    if (symbol) out.push(symbol);
+  }
+  return out;
+}
+
+/** Diff Swing Auto tiers between two snapshot reads (typically "last snapshot" vs "previous snapshot"). */
+export function overnightTierChangesFromSnapshots(
+  latestSnapshot: { tiers?: Record<string, unknown> } | null,
+  previousSnapshot: { tiers?: Record<string, unknown> } | null,
+): OvernightTierChanges {
+  if (!latestSnapshot?.tiers || !previousSnapshot?.tiers) return {};
+
+  const latestTiers = latestSnapshot.tiers;
+  const previousTiers = previousSnapshot.tiers;
+
+  const keys: AutoTierKey[] = ['high_conviction', 'strict_enter', 'setup_radar', 'breakout_surge'];
+  const out: OvernightTierChanges = {};
+
+  for (const key of keys) {
+    const latestSyms = new Set(symbolsFromTier(latestTiers[key]));
+    const prevSyms = new Set(symbolsFromTier(previousTiers[key]));
+
+    const added: string[] = [];
+    const removed: string[] = [];
+    for (const s of latestSyms) if (!prevSyms.has(s)) added.push(s);
+    for (const s of prevSyms) if (!latestSyms.has(s)) removed.push(s);
+
+    if (added.length === 0 && removed.length === 0) continue;
+
+    out[key] = {
+      tier: key,
+      added: added.slice(0, 10),
+      removed: removed.slice(0, 10),
+    };
+  }
+
+  return out;
 }

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   badgeClass,
   downloadPitchCsv,
@@ -10,6 +9,14 @@ import {
   type SortKey,
 } from '../../lib/screener-export';
 import { ResearchRowActions } from '../ResearchRowActions';
+import { SignalCard } from '../research/SignalCard';
+import { ActiveFilterStrip } from './ActiveFilterStrip';
+import type { ScreenerCustomFilters, ScreenerTechFilters } from '../../lib/screener-filters';
+
+function crossCell(active: boolean | null | undefined, bars: number | null | undefined): string {
+  if (!active) return '—';
+  return bars != null ? `✓@${bars}` : '✓';
+}
 
 export function ScreenerResults({
   rows,
@@ -18,6 +25,9 @@ export function ScreenerResults({
   restrictedSkipped,
   cacheHits,
   exchangeListAsOf,
+  filterStrip,
+  showEmaColumns = false,
+  showHourlyEmaColumns = false,
 }: {
   rows: ScreenerRow[];
   scanned?: number;
@@ -25,6 +35,16 @@ export function ScreenerResults({
   restrictedSkipped?: number;
   cacheHits?: number;
   exchangeListAsOf?: string;
+  filterStrip?: {
+    universeName?: string;
+    presetLabel?: string;
+    custom?: ScreenerCustomFilters;
+    tech?: ScreenerTechFilters;
+    showTa?: boolean;
+    excludeRestricted?: boolean;
+  };
+  showEmaColumns?: boolean;
+  showHourlyEmaColumns?: boolean;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>('mos');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -87,6 +107,8 @@ export function ScreenerResults({
 
       {actionMsg ? <p className="flash success">{actionMsg}</p> : null}
 
+      {filterStrip ? <ActiveFilterStrip {...filterStrip} /> : null}
+
       <div className="table-scroll">
         <table className="data-table screener-table">
           <thead>
@@ -130,6 +152,20 @@ export function ScreenerResults({
                   <th>RSI</th>
                   <th>52w%</th>
                   <th>SMA50</th>
+                  <th>↑SMA20</th>
+                  <th>↑SMA50</th>
+                  {showEmaColumns ? (
+                    <>
+                      <th>↑EMA20</th>
+                      <th>↑EMA50</th>
+                    </>
+                  ) : null}
+                  {showHourlyEmaColumns ? (
+                    <>
+                      <th>H↑EMA20</th>
+                      <th>H↑EMA50</th>
+                    </>
+                  ) : null}
                   <th>MACD</th>
                   <th>Bottom</th>
                 </>
@@ -141,11 +177,16 @@ export function ScreenerResults({
             {sorted.map((r) => (
               <tr key={r.symbol}>
                 <td>
-                  <Link to={`/stock/${encodeURIComponent(r.symbol)}`}>
-                    <strong>{r.symbol}</strong>
-                  </Link>
-                  <br />
-                  <span className="muted">{r.name}</span>
+                  <SignalCard
+                    variant="inline"
+                    symbol={r.symbol}
+                    subtitle={r.name}
+                    mos={r.mos}
+                    qualityScore={r.composite_score}
+                    zone={r.zone}
+                    recommendationBasis={r.recommendation_basis}
+                    scoreBasis={r.score_basis}
+                  />
                 </td>
                 <td>{fmtNum(r.price, 2)}</td>
                 <td>{fmtNum(r.pe, 1)}</td>
@@ -161,17 +202,40 @@ export function ScreenerResults({
                 <td>
                   <span className={badgeClass(r.zone)}>{r.zone}</span>
                 </td>
-                <td
-                  className="screener-verdict"
-                  title={r.recommendation_basis === 'screening_matrix' ? 'Screening matrix from quality proxy and MOS. Confirm with Full Verify before sizing.' : undefined}
-                >
-                  {r.recommendation}
+                <td className="screener-verdict">
+                  <div>{r.recommendation}</div>
                 </td>
                 {showTa ? (
                   <>
                     <td>{r.ta_rsi14 != null ? fmtNum(r.ta_rsi14, 1) : '—'}</td>
                     <td>{r.ta_pct_52w != null ? `${fmtNum(r.ta_pct_52w, 0)}%` : '—'}</td>
                     <td>{r.ta_above_sma50 ? '✓' : '—'}</td>
+                    <td title={r.ta_cross_above_sma20_bars != null ? `${r.ta_cross_above_sma20_bars} bars ago` : undefined}>
+                      {r.ta_cross_above_sma20 ? '✓' : '—'}
+                    </td>
+                    <td title={r.ta_cross_above_sma50_bars != null ? `${r.ta_cross_above_sma50_bars} bars ago` : undefined}>
+                      {r.ta_cross_above_sma50 ? '✓' : '—'}
+                    </td>
+                    {showEmaColumns ? (
+                      <>
+                        <td title={r.ta_cross_above_ema20_bars != null ? `${r.ta_cross_above_ema20_bars} bars ago` : undefined}>
+                          {crossCell(r.ta_cross_above_ema20, r.ta_cross_above_ema20_bars)}
+                        </td>
+                        <td title={r.ta_cross_above_ema50_bars != null ? `${r.ta_cross_above_ema50_bars} bars ago` : undefined}>
+                          {crossCell(r.ta_cross_above_ema50, r.ta_cross_above_ema50_bars)}
+                        </td>
+                      </>
+                    ) : null}
+                    {showHourlyEmaColumns ? (
+                      <>
+                        <td title={r.ta_h_cross_above_ema20_bars != null ? `${r.ta_h_cross_above_ema20_bars} bars ago` : undefined}>
+                          {crossCell(r.ta_h_cross_above_ema20, r.ta_h_cross_above_ema20_bars)}
+                        </td>
+                        <td title={r.ta_h_cross_above_ema50_bars != null ? `${r.ta_h_cross_above_ema50_bars} bars ago` : undefined}>
+                          {crossCell(r.ta_h_cross_above_ema50, r.ta_h_cross_above_ema50_bars)}
+                        </td>
+                      </>
+                    ) : null}
                     <td>{r.ta_macd_hist != null ? fmtNum(r.ta_macd_hist, 2) : '—'}</td>
                     <td>{r.ta_bottom_out_hint ? '✓' : '—'}</td>
                   </>

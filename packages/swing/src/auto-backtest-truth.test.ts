@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTION_BUY, ACTION_STRONG_BUY, ACTION_WATCH, enrichHit } from './auto-decision.js';
+import { ACTION_BUY, ACTION_SKIP, ACTION_STRONG_BUY, ACTION_WATCH, enrichHit } from './auto-decision.js';
 import {
   GRADE_FAIL,
   GRADE_STRONG,
@@ -13,7 +13,7 @@ describe('auto-backtest-truth', () => {
     {
       trades_closed: 12,
       profit_factor: 1.45,
-      win_rate_pct: 58,
+      win_rate_pct: 72,
       avg_win_pct: 4.2,
       avg_loss_pct: -2.1,
       compounded_return_pct: 18.5,
@@ -46,9 +46,11 @@ describe('auto-backtest-truth', () => {
     'ABC',
   );
 
-  it('grades strong / fail / unproven like PHP', () => {
+  it('grades strong / fail / unproven by economic edge', () => {
     expect(strong.grade).toBe(GRADE_STRONG);
-    expect(strong.score_delta).toBe(10);
+    // grade delta (12) + expectancy/compound/DD/PF boost
+    expect(strong.score_delta).toBeGreaterThanOrEqual(12);
+    expect(strong.economic_edge_ok).toBe(true);
     expect(fail.grade).toBe(GRADE_FAIL);
     expect(fail.risk_flag).toBe('BACKTEST_FAIL');
     expect(unproven.grade).toBe(GRADE_UNPROVEN);
@@ -94,9 +96,12 @@ describe('auto-backtest-truth', () => {
     expect(serialized.backtest_grade).toBe(GRADE_STRONG);
     expect(serialized.backtest_pf).toBe(1.45);
     expect(serialized.backtest_trades).toBe(12);
+    expect(serialized.backtest_win_rate_pct).toBe(72);
+    expect(serialized.backtest_win_rate_ok).toBe(true);
+    expect(serialized.backtest_economic_edge_ok).toBe(true);
   });
 
-  it('FAIL grade downgrades action when score below 72', () => {
+  it('FAIL grade + edge fail skips or watches when score below 72', () => {
     const hit = enrichHit(
       {
         symbol: 'X',
@@ -109,7 +114,12 @@ describe('auto-backtest-truth', () => {
       },
       { bull: true },
     );
-    expect(hit.decision_action).toBe(ACTION_WATCH);
+    // Economic-edge primary: FAIL also flags BACKTEST_EDGE_FAIL → SKIP/WATCH
+    expect([ACTION_WATCH, ACTION_SKIP]).toContain(hit.decision_action);
+    expect(hit.decision_action).not.toBe(ACTION_BUY);
+    expect(hit.decision_action).not.toBe(ACTION_STRONG_BUY);
+    expect(hit.high_conviction).toBe(false);
+    expect(hit.risk_flags).toContain('BACKTEST_EDGE_FAIL');
   });
 
   it('WEAK grade skips when score below 62', () => {

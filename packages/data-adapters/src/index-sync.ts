@@ -4,10 +4,13 @@ import { prisma } from '@sv/db';
 import { cacheKey, cacheSetJson } from '@sv/cache';
 import {
   CACHE_PREFIX,
-  INDEX_DEFINITIONS,
   getCacheTtl,
+  getDataPolicy,
+  getIndexDefinition,
+  getIndexDefinitions,
   guessUniverseFromFilename,
   indexAgeDays,
+  listIndexKeys,
   parseIndexCsvContent,
   validateIndexSymbolCount,
 } from '@sv/shared';
@@ -27,7 +30,8 @@ export async function syncIndexUniverse(
   symbols: string[],
   sourceFile: string,
 ): Promise<IndexSyncResult> {
-  if (!INDEX_DEFINITIONS[indexKey]) {
+  const def = getIndexDefinition(indexKey);
+  if (!def) {
     return { ok: false, indexKey, count: 0, added: [], removed: [], sourceFile, error: 'Unknown index' };
   }
   if (symbols.length === 0) {
@@ -51,6 +55,12 @@ export async function syncIndexUniverse(
   const removed = [...prevSet].filter((s) => !nextSet.has(s));
 
   await prisma.$transaction(async (tx) => {
+    await tx.universe.upsert({
+      where: { key: indexKey },
+      create: { key: indexKey, name: def.label, type: 'builtin' },
+      update: { name: def.label },
+    });
+
     if (removed.length > 0) {
       await tx.indexConstituent.updateMany({
         where: { indexKey, symbol: { in: removed }, effectiveTo: null },
@@ -103,7 +113,7 @@ export async function syncIndexFromCsvFile(indexKey: string, filePath: string): 
 }
 
 export function resolveIndexCsvPath(indicesDir: string, indexKey: string): string | null {
-  const def = INDEX_DEFINITIONS[indexKey];
+  const def = getIndexDefinition(indexKey);
   if (!def) return null;
 
   const candidates: { path: string; mtime: number }[] = [];
@@ -143,7 +153,7 @@ export function resolveIndexCsvPath(indicesDir: string, indexKey: string): strin
 }
 
 export async function syncAllIndicesFromDirectory(indicesDir: string, keys?: string[]) {
-  const targetKeys = keys ?? Object.keys(INDEX_DEFINITIONS);
+  const targetKeys = keys?.length ? keys : listIndexKeys();
   const results: IndexSyncResult[] = [];
 
   for (const indexKey of targetKeys) {
@@ -166,8 +176,12 @@ export async function syncAllIndicesFromDirectory(indicesDir: string, keys?: str
   return results;
 }
 
-export async function syncIndexFromUpload(filename: string, csv: string): Promise<IndexSyncResult> {
-  const guessed = guessUniverseFromFilename(filename);
+export async function syncIndexFromUpload(
+  filename: string,
+  csv: string,
+  indexKeyOverride?: string,
+): Promise<IndexSyncResult> {
+  const guessed = indexKeyOverride?.trim() || guessUniverseFromFilename(filename);
   if (!guessed) {
     return {
       ok: false,
@@ -176,7 +190,18 @@ export async function syncIndexFromUpload(filename: string, csv: string): Promis
       added: [],
       removed: [],
       sourceFile: filename,
-      error: 'Could not detect index from filename',
+      error: 'Could not detect index from filename — pick an index key or add a registry entry',
+    };
+  }
+  if (!getIndexDefinition(guessed)) {
+    return {
+      ok: false,
+      indexKey: guessed,
+      count: 0,
+      added: [],
+      removed: [],
+      sourceFile: filename,
+      error: `Unknown index key "${guessed}" — add it in Admin index registry first`,
     };
   }
   const symbols = parseIndexCsvContent(csv);
@@ -184,6 +209,7 @@ export async function syncIndexFromUpload(filename: string, csv: string): Promis
 }
 
 export async function getIndexSyncStatus() {
+  const definitions = getIndexDefinitions();
   const rows = await prisma.indexConstituent.groupBy({
     by: ['indexKey'],
     where: { effectiveTo: null },
@@ -192,18 +218,25 @@ export async function getIndexSyncStatus() {
   });
 
   const byKey = new Map(rows.map((r) => [r.indexKey, r]));
+  const keys = new Set([...Object.keys(definitions), ...byKey.keys()]);
+  const staleDays = getDataPolicy().staleness?.index_max_age_days ?? 90;
 
-  return Object.entries(INDEX_DEFINITIONS).map(([key, def]) => {
+  return [...keys].sort().map((key) => {
+    const def = definitions[key];
     const row = byKey.get(key);
     const importedAt = row?._max.effectiveFrom ?? null;
     const ageDays = indexAgeDays(importedAt);
     return {
       key,
-      label: def.label,
+      label: def?.label ?? key,
+      csv: def?.csv ?? null,
+      mwPatterns: def?.mwPatterns ?? [],
+      bounds: def?.bounds ?? null,
+      registered: Boolean(def),
       count: row?._count.symbol ?? 0,
       importedAt: importedAt?.toISOString() ?? null,
       ageDays,
-      stale: ageDays !== null && ageDays > 120,
+      stale: ageDays !== null && ageDays > staleDays,
     };
   });
 }

@@ -1,4 +1,4 @@
-import { barMinutesIst, TIME_STOP_MIN } from './session-clock.js';
+import { barMinutesIst, formatMinutes, TIME_STOP_MIN } from './session-clock.js';
 import { normalizeInterval } from './nifty-direction.js';
 
 export type IntradayBar = {
@@ -6,9 +6,145 @@ export type IntradayBar = {
   high?: number;
   low?: number;
   time_label?: string;
+  /** Yahoo bar open (unix seconds) — used to filter bars since entry. */
+  time?: number;
 };
 
 export type IntradayPositionInput = Record<string, unknown>;
+
+function hitStop(bar: IntradayBar, stop: number, isLong: boolean): boolean {
+  if (stop <= 0) return false;
+  const high = Number(bar.high ?? bar.close);
+  const low = Number(bar.low ?? bar.close);
+  return isLong ? low <= stop : high >= stop;
+}
+
+function hitTarget(bar: IntradayBar, target: number, isLong: boolean): boolean {
+  if (target <= 0) return false;
+  const high = Number(bar.high ?? bar.close);
+  const low = Number(bar.low ?? bar.close);
+  return isLong ? high >= target : low <= target;
+}
+
+/** Bars from entry bar onward — matches backtest forward walk (not last-bar-only). */
+export function forwardBarsSinceEntry(
+  bars: IntradayBar[],
+  entryTime?: string | Date | null,
+): IntradayBar[] {
+  if (!entryTime || bars.length === 0) return bars;
+  const entryUnix = Math.floor(new Date(entryTime).getTime() / 1000);
+  const padSec = 15 * 60;
+  const filtered = bars.filter((bar) => {
+    if (bar.time != null) return bar.time >= entryUnix - padSec;
+    const barMin = barMinutesIst(bar);
+    const entryMin = barMinutesIst({ time_label: istLabelFromDate(entryTime) });
+    return barMin === 0 || entryMin === 0 || barMin >= entryMin;
+  });
+  return filtered.length > 0 ? filtered : bars;
+}
+
+function istLabelFromDate(value: string | Date): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(value));
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
+}
+
+/**
+ * Walk session bars since entry and return the next live action (partials, exit, hold).
+ * Aligns paper ticks with scaled-book backtest — a T1 touch on any prior bar is not missed.
+ */
+export function walkIntradayPositionActions(
+  position: IntradayPositionInput,
+  bars: IntradayBar[],
+): {
+  action: string;
+  verdict: string;
+  actionLabel: string;
+  triggers: string[];
+  simT1Booked: boolean;
+  simT2Booked: boolean;
+} {
+  const side = String(position.side ?? 'long').toLowerCase() === 'short' ? 'short' : 'long';
+  const isLong = side === 'long';
+  const entry = Number(position.entry_price ?? 0);
+  const stop = Number(position.effective_stop ?? position.stop_loss ?? 0);
+  const t1 = Number(position.target_t1 ?? 0);
+  const t2 = Number(position.target_t2 ?? 0);
+  const t3 = Number(position.target_t3 ?? 0);
+  const t1Pct = Number(position.t1_book_pct ?? 40);
+  const t2Pct = Number(position.t2_book_pct ?? 40);
+  const dbT1 = Boolean(position.t1_booked);
+  const dbT2 = Boolean(position.t2_booked);
+
+  let activeStop = stop;
+  let simT1 = dbT1;
+  let simT2 = dbT2;
+  let action = 'HOLD';
+  let verdict = 'HOLD';
+  let actionLabel = 'Hold — plan intact';
+  const triggers: string[] = [];
+
+  const forward = forwardBarsSinceEntry(bars, String(position.entry_time ?? '') || null);
+
+  for (const bar of forward) {
+    const barMin = barMinutesIst(bar);
+
+    if (activeStop > 0 && hitStop(bar, activeStop, isLong)) {
+      triggers.push(`Hard stop @ ₹${activeStop.toFixed(2)}`);
+      verdict = 'EXIT';
+      action = 'EXIT_NOW';
+      actionLabel = 'Exit now — stop hit';
+      break;
+    }
+
+    if (t1 > 0 && !simT1 && hitTarget(bar, t1, isLong)) {
+      simT1 = true;
+      activeStop = entry;
+      if (!dbT1) {
+        triggers.push(`T1 @ ₹${t1.toFixed(2)} — book ${t1Pct}%, move stop to BE`);
+        action = 'PARTIAL_T1';
+        actionLabel = `Book T1 ${t1Pct}% · move stop to breakeven`;
+        break;
+      }
+    }
+
+    if (t2 > 0 && simT1 && !simT2 && hitTarget(bar, t2, isLong)) {
+      simT2 = true;
+      if (!dbT2) {
+        triggers.push(`T2 @ ₹${t2.toFixed(2)} — book ${t2Pct}%, trail remainder`);
+        action = 'PARTIAL_T2';
+        actionLabel = `Book T2 ${t2Pct}% · trail runner`;
+        break;
+      }
+    }
+
+    if (t3 > 0 && simT2 && hitTarget(bar, t3, isLong)) {
+      triggers.push(`T3 @ ₹${t3.toFixed(2)} — final target (close remainder)`);
+      verdict = 'EXIT';
+      action = 'EXIT_TARGET';
+      actionLabel = 'Exit — T3 final target reached';
+      break;
+    }
+
+    if (barMin >= TIME_STOP_MIN) {
+      triggers.push(`Time stop ${formatMinutes(TIME_STOP_MIN)} IST`);
+      verdict = 'EXIT';
+      action = 'EXIT_TIME';
+      actionLabel = 'Exit — session time stop';
+      break;
+    }
+  }
+
+  return { action, verdict, actionLabel, triggers, simT1Booked: simT1, simT2Booked: simT2 };
+}
 
 const EXIT_ACTIONS = new Set(['EXIT_NOW', 'EXIT_TIME', 'EXIT_TARGET', 'CUT_LOSS']);
 
@@ -69,61 +205,16 @@ export function evaluateIntradayPosition(
   const t2 = Number(position.target_t2 ?? 0);
   const t3 = Number(position.target_t3 ?? 0);
   const remaining = Number(position.remaining_pct ?? 100);
-  const barMin = barMinutesIst(last);
 
   const gainPct = isLong ? ((price - entry) / entry) * 100 : ((entry - price) / entry) * 100;
   const qty = Number(position.quantity ?? 0);
   const pnl = qty > 0 ? Math.round((isLong ? price - entry : entry - price) * qty * 100) / 100 : null;
 
-  const triggers: string[] = [];
-  let verdict = 'HOLD';
-  let action = 'HOLD';
-  let actionLabel = 'Hold — plan intact';
-
-  if (stop > 0) {
-    const stopped = isLong ? price <= stop : price >= stop;
-    if (stopped) {
-      triggers.push(`Hard stop @ ₹${stop.toFixed(2)}`);
-      verdict = 'EXIT';
-      action = 'EXIT_NOW';
-      actionLabel = 'Exit now — stop hit';
-    }
-  }
-
-  if (verdict !== 'EXIT' && t1 > 0) {
-    const t1Hit = isLong ? price >= t1 : price <= t1;
-    if (t1Hit && !position.t1_booked) {
-      triggers.push(`T1 @ ₹${t1.toFixed(2)} — book 40%, move stop to BE`);
-      action = 'PARTIAL_T1';
-      actionLabel = 'Book T1 partial · move stop to breakeven';
-    }
-  }
-
-  if (verdict !== 'EXIT' && t2 > 0 && position.t1_booked) {
-    const t2Hit = isLong ? price >= t2 : price <= t2;
-    if (t2Hit && !position.t2_booked) {
-      triggers.push(`T2 @ ₹${t2.toFixed(2)} — book 40%, trail remainder`);
-      action = 'PARTIAL_T2';
-      actionLabel = 'Book T2 partial · trail runner';
-    }
-  }
-
-  if (verdict !== 'EXIT' && t3 > 0 && remaining > 0) {
-    const t3Hit = isLong ? price >= t3 : price <= t3;
-    if (t3Hit) {
-      triggers.push(`T3 @ ₹${t3.toFixed(2)} — final target`);
-      verdict = 'EXIT';
-      action = 'EXIT_TARGET';
-      actionLabel = 'Exit — final target reached';
-    }
-  }
-
-  if (verdict !== 'EXIT' && barMin >= TIME_STOP_MIN) {
-    triggers.push(`Time stop ${String(Math.floor(TIME_STOP_MIN / 60)).padStart(2, '0')}:${String(TIME_STOP_MIN % 60).padStart(2, '0')} IST`);
-    verdict = 'EXIT';
-    action = 'EXIT_TIME';
-    actionLabel = 'Exit — session time stop';
-  }
+  const walked = walkIntradayPositionActions(position, bars);
+  let verdict = walked.verdict;
+  let action = walked.action;
+  let actionLabel = walked.actionLabel;
+  const triggers = walked.triggers;
 
   if (verdict === 'HOLD' && action === 'HOLD' && stop > 0) {
     const initialStop = Number(position.stop_loss ?? stop);
@@ -259,6 +350,7 @@ export function closedTradeMetrics(pos: Record<string, unknown>) {
 
   return {
     net_pnl: Math.round(gross * 100) / 100,
+    net_pnl_pct: Math.round(((side === 'short' ? entry - exit : exit - entry) / entry) * 10000) / 100,
     r_multiple: rMultiple,
   };
 }

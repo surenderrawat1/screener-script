@@ -3,8 +3,11 @@ import { ETF_CATEGORY, etfSymbols, filterEtfCatalog } from './etf-universe.js';
 export const PRESET_CONSERVATIVE_SWING = 'conservative_swing';
 export const PRESET_ETF_ROTATION = 'etf_rotation';
 export const PRESET_INTRADAY_SESSION = 'intraday_session';
+export const PRESET_MA20_STRATZY = 'ma20_stratzy';
 
 export const SWING_TIER_A_UNIVERSE_ID = 'swing_tier_a';
+export const INTRADAY_FILTER_MA20_STRATZY = 'ma20_stratzy';
+export const SWING_STRATEGY_MA20_STRATZY = 'swing_ma20_stratzy';
 
 export const TIER_A_SYMBOLS = [
   'TCS',
@@ -57,7 +60,8 @@ export interface TradingPresetEnriched extends TradingPreset {
 export const PRESET_GUIDE_TIPS = [
   'Conservative swing: confirm NIFTYBEES regime before sizing Tier-A ENTER names.',
   'ETF rotation: prefer high-liquidity BeES; sector ETFs may diverge from Nifty regime.',
-  'Intraday: backtest 60d preset matrix before live size; flatten by 14:45–15:15 IST.',
+  'Intraday: backtest 60d preset matrix before live size; flatten by 14:00–14:30 IST.',
+  '20 MA Stratzy: trade with SMA-20 bias only — pullbacks toward the 20 DMA, not chase extensions.',
 ] as const;
 
 const PRESET_ALIASES: Record<string, string> = {
@@ -68,10 +72,16 @@ const PRESET_ALIASES: Record<string, string> = {
   rotation: PRESET_ETF_ROTATION,
   intraday: PRESET_INTRADAY_SESSION,
   scalp: PRESET_INTRADAY_SESSION,
+  stratzy: PRESET_MA20_STRATZY,
+  startazy: PRESET_MA20_STRATZY, // common misspelling
+  startzy: PRESET_MA20_STRATZY, // common misspelling
+  ma20: PRESET_MA20_STRATZY,
+  '20ma': PRESET_MA20_STRATZY,
+  sma20: PRESET_MA20_STRATZY,
 };
 
 export function tradingPresetIds(): string[] {
-  return [PRESET_CONSERVATIVE_SWING, PRESET_ETF_ROTATION, PRESET_INTRADAY_SESSION];
+  return [PRESET_CONSERVATIVE_SWING, PRESET_ETF_ROTATION, PRESET_INTRADAY_SESSION, PRESET_MA20_STRATZY];
 }
 
 export function normalizeTradingPresetId(id: string): string {
@@ -101,6 +111,18 @@ export function intradayRadarHref(interval: '5m' | '15m' = '5m'): string {
     preset: PRESET_INTRADAY_SESSION,
   });
   return `/intraday?${params.toString()}`;
+}
+
+export function ma20StratzyIntradayHref(interval: '5m' | '15m' = '15m'): string {
+  const params = new URLSearchParams({
+    interval,
+    preset: PRESET_MA20_STRATZY,
+  });
+  return `/intraday?${params.toString()}`;
+}
+
+export function ma20StratzySwingHref(): string {
+  return `/strategies?strategy=${SWING_STRATEGY_MA20_STRATZY}`;
 }
 
 function conservativeSwing(): TradingPreset {
@@ -183,7 +205,7 @@ function intradaySession(): TradingPreset {
     rules: [
       '5m: trend_scalp_5m gates (10:15 IST, trend day, skip chop) + 0.8/1.5/2.2R exits.',
       '15m: CFA precision preset — MTF, regime map, precision partials.',
-      'Log entries on Nifty Positions; flatten by time stop (14:45–15:15 IST).',
+      'Log entries on Nifty Positions; flatten by time stop (14:30 IST).',
       'Backtest 60d combo matrix before live size on your instrument.',
     ],
     primary_href: intradayRadarHref('5m'),
@@ -197,8 +219,37 @@ function intradaySession(): TradingPreset {
   };
 }
 
+function ma20Stratzy(): TradingPreset {
+  return {
+    id: PRESET_MA20_STRATZY,
+    label: '20 MA Stratzy',
+    icon: '20',
+    horizon: 'Intraday + swing',
+    tone: 'neutral',
+    description:
+      'SMA-20 bias filter · intraday after 10:15 · swing pullbacks toward the daily 20 DMA (E12).',
+    rules: [
+      'Intraday: ma20_stratzy preset — long only above 5m SMA-20, short only below; skip chop.',
+      'Swing: require E12 (price holds above SMA-20; prefer ≤2.5% pullback to 20 DMA).',
+      'Do not chase extensions far above the 20 MA — wait for reclaim / pullback.',
+      'Use paper wallet for live-session practice; no historical accuracy gate on paper.',
+    ],
+    primary_href: ma20StratzyIntradayHref('15m'),
+    links: [
+      { href: ma20StratzyIntradayHref('15m'), label: 'Intraday · 20 MA Stratzy', primary: true },
+      { href: ma20StratzyIntradayHref('5m'), label: '5m SMA-20 radar' },
+      { href: ma20StratzySwingHref(), label: 'Swing strategy · E12' },
+      {
+        href: `/swing?require_rules=E12&min_verdict=SETUP_PLUS&autorun=1`,
+        label: 'Scan with E12 required',
+      },
+      { href: '/intraday/positions', label: 'Paper wallet / ledger' },
+    ],
+  };
+}
+
 export function allTradingPresets(): TradingPreset[] {
-  return [conservativeSwing(), etfRotation(), intradaySession()];
+  return [conservativeSwing(), etfRotation(), intradaySession(), ma20Stratzy()];
 }
 
 export function getTradingPreset(id: string): TradingPreset | null {
@@ -223,6 +274,9 @@ export function tradingPresetReadiness(preset: TradingPreset): { ready: boolean;
   if (preset.id === PRESET_INTRADAY_SESSION) {
     return { ready: true };
   }
+  if (preset.id === PRESET_MA20_STRATZY) {
+    return { ready: true };
+  }
   return { ready: false, blocked_reason: 'Unknown preset' };
 }
 
@@ -231,9 +285,27 @@ export function enrichTradingPreset(preset: TradingPreset): TradingPresetEnriche
   return { ...preset, ready: gate.ready, blocked_reason: gate.blocked_reason };
 }
 
-/** Intraday entry-filter id to highlight when launched from intraday_session preset. */
+/** Intraday entry-filter id to highlight when launched from a hub preset. */
 export function intradaySessionFilterId(interval: '5m' | '15m'): string {
   return interval === '5m' ? 'trend_scalp_5m' : 'cfa_precision';
+}
+
+/** Map hub / URL preset aliases to the entry-filter row to highlight on /intraday. */
+export function resolveIntradayFilterHighlight(
+  presetParam: string | null | undefined,
+  interval: '5m' | '15m',
+): string | null {
+  if (!presetParam) return null;
+  const key = normalizeTradingPresetId(presetParam);
+  if (key === PRESET_MA20_STRATZY || key === INTRADAY_FILTER_MA20_STRATZY) {
+    return INTRADAY_FILTER_MA20_STRATZY;
+  }
+  if (key === PRESET_INTRADAY_SESSION || presetParam === 'intraday' || presetParam === 'scalp') {
+    return intradaySessionFilterId(interval);
+  }
+  // Direct entry-filter ids (e.g. ?preset=cfa_precision)
+  if (presetParam === INTRADAY_FILTER_MA20_STRATZY) return INTRADAY_FILTER_MA20_STRATZY;
+  return null;
 }
 
 export function tradingPresetChips() {

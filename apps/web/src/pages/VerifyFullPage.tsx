@@ -54,6 +54,11 @@ interface FetchResponse extends PrefillResponse {
   sources: string[];
   from_cache?: boolean;
   fetch_meta: FetchMeta;
+  cache_meta?: {
+    created_at: number;
+    expires_at?: number;
+    from_cache?: boolean;
+  };
 }
 
 interface RunResponse {
@@ -99,6 +104,11 @@ export default function VerifyFullPage() {
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
   const [fetchMeta, setFetchMeta] = useState<FetchMeta | null>(null);
+  const [cacheMeta, setCacheMeta] = useState<{
+    created_at: number;
+    expires_at?: number;
+    from_cache?: boolean;
+  } | null>(null);
   const [runResult, setRunResult] = useState<VerifyFullResultData | null>(null);
   const [watchlistSaved, setWatchlistSaved] = useState(false);
   const [running, setRunning] = useState(false);
@@ -226,12 +236,14 @@ export default function VerifyFullPage() {
       setInput(res.input);
       setAutoKeys(new Set(res.auto_keys));
       setFetchMeta(res.fetch_meta);
+      setCacheMeta(res.cache_meta ?? null);
       setSymbol(res.symbol);
       setActivePhase(0);
       setLoading(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fetch failed');
       setFetchMeta(null);
+      setCacheMeta(null);
     } finally {
       setFetching(false);
     }
@@ -263,7 +275,11 @@ export default function VerifyFullPage() {
     try {
       const res = await api<RunResponse>('/api/v1/verify/full/run', {
         method: 'POST',
-        body: JSON.stringify({ symbol: sym, input }),
+        body: JSON.stringify({
+          symbol: sym,
+          input,
+          ...(cacheMeta ? { cache_meta: cacheMeta } : {}),
+        }),
       });
       setRunResult(res.result);
       setSymbol(res.symbol);

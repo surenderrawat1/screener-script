@@ -38,7 +38,7 @@ export function SwingTechnicalContext({ ta }: Props) {
   return (
     <section className="card swing-tech-context">
       <h3>Technical context</h3>
-      <p className="swing-subsection-hint muted">Same 2Y daily series as entry rules — not the chart tab timeframe.</p>
+      <p className="swing-subsection-hint muted">Entry rules use 2Y daily — chart tabs can switch intraday/daily/weekly independently.</p>
       <dl className="swing-tech-grid">
         {metrics.map((m) => (
           <div key={m.label} className="swing-tech-tile">

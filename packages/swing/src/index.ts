@@ -1,16 +1,27 @@
+export * from './fundamental-quality.js';
 export * from './auto-backtest-truth.js';
 export * from './walkforward-truth.js';
 export * from './types.js';
 export * from './ta-helper.js';
 export * from './gc9-dc9.js';
+export {
+  fromTa as sma20StratzyFromTa,
+  gateReasons as sma20StratzyGateReasons,
+  SMA20_PULLBACK_PCT,
+  SMA20_HOLD_BUFFER,
+  type Sma20StratzyState,
+} from './sma20-stratzy.js';
 export * from './dynamic-signals.js';
 export { priceActionMetrics } from './price-action.js';
 export * from './entry-scorer.js';
+export * from './entry-rule-tiers.js';
 export * from './market-regime.js';
 export * from './evaluate-entry.js';
 export * from './evaluate-exit.js';
 export * from './portfolio-risk.js';
 export * from './auto-decision.js';
+export * from './compounder-sleeve.js';
+export * from './scan-sla.js';
 export * from './auto-screener.js';
 export * from './position-tracker.js';
 export * from './incremental-scan.js';
@@ -20,9 +31,14 @@ export * from './scanner.js';
 export * from './hit-normalizer.js';
 export * from './entry-filters.js';
 export * from './swing-backtest.js';
+export * from './auto-tier-replay.js';
 export * from './chart-timeframe.js';
 export * from './chart-series.js';
 export * from './chart-phase.js';
+export * from './chart-patterns.js';
+export * from './chart-pattern-backtest.js';
+export * from './chart-pattern-accuracy.js';
+export * from './chart-pattern-indicators.js';
 export * from './detail-ta.js';
 export * from './morning-routine.js';
 export * from './etf-universe.js';
@@ -30,5 +46,6 @@ export * from './etf-panel.js';
 export * from './trading-presets.js';
 export * from './strategy-registry.js';
 export * from './screener-ta.js';
+export * from './price-ma-cross.js';
 export * from './trade-pnl.js';
 export * from './swing-engine-meta.js';

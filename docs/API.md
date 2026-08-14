@@ -43,6 +43,19 @@ Returns **503** when Postgres or Redis is down. Worker failure is informational 
 
 ---
 
+### `GET /metrics`
+
+Prometheus scraping endpoint. No auth.
+
+`Content-Type: text/plain`
+
+Exposes:
+
+- `sv_job_queue_waiting_total{queue="sv-screener|sv-swing-scan|sv-verify-batch"}` — BullMQ waiting depth
+- `sv_worker_heartbeat_age_seconds` — max age of worker heartbeats in Redis
+
+---
+
 ## Authentication
 
 ### `POST /api/v1/auth/login`
@@ -56,8 +69,21 @@ Response:
 ```json
 {
   "accessToken": "eyJ...",
+  "refreshToken": "...",
   "user": { "id": "...", "email": "...", "role": "admin" }
 }
+```
+
+### `POST /api/v1/auth/refresh`
+
+```json
+{ "refreshToken": "..." }
+```
+
+Returns:
+
+```json
+{ "accessToken": "...", "refreshToken": "...", "user": { "id": "...", "email": "...", "role": "..." } }
 ```
 
 ### `GET /api/v1/auth/me`
@@ -108,6 +134,26 @@ Permission: `run_screener`
 - `exclude_restricted: true` (default) skips ASM/GSM/T2T symbols from `config/data/exchange/asm_gsm_manual.json`
 - Per-row analyze cache: `sv:screener:row:{preset}:{symbol}` (1 h TTL)
 
+### `POST /api/v1/screener/pit-backtest`
+
+Permission: `run_screener`
+
+MVP backtest that replays **TA gates** on historical daily bars.
+
+```json
+{
+  "universe": "nifty50",
+  "preset": "ta_pullback",
+  "filters": { "zone_52w": "any" },
+  "asOfDaysAgo": 180,
+  "forwardDays": 60,
+  "refresh": false,
+  "maxScan": 200
+}
+```
+
+Returns a small report with `rows[]` including `passed` and `forward_return_pct`.
+
 ### `GET /api/v1/screener/jobs/:id`
 
 Permission: `view_app`
@@ -150,6 +196,10 @@ Query: `?style=swing|positional|hybrid|all` (default `all`)
 
 Returns `{ strategies, style_labels, ready_count, total }`.
 
+Custom strategies (M11):
+- Screener custom preset key: `user_screener_preset:<id>`
+- Swing rule profile key: `user_swing_rule_profile:<id>`
+
 ### `GET /api/v1/strategies/:id`
 
 Permission: `view_app`
@@ -181,6 +231,38 @@ Same shape as screener jobs; `result` holds the strategy run payload.
 
 ---
 
+## Swing rule profiles (M11)
+
+Persisted swing scan option sets that plug into `/api/v1/strategies/run`.
+
+### `GET /api/v1/swing/rule-profiles`
+
+Permission: `view_app`
+
+### `POST /api/v1/swing/rule-profiles`
+
+Permission: `run_screener`
+
+Body:
+```json
+{ "name": "My swing profile", "options": { /* SwingScanOptions */ } }
+```
+
+### `PUT /api/v1/swing/rule-profiles/:id`
+
+Permission: `run_screener`
+
+Body:
+```json
+{ "name"?: "New name", "options"?: { /* SwingScanOptions */ } }
+```
+
+### `DELETE /api/v1/swing/rule-profiles/:id`
+
+Permission: `run_screener`
+
+---
+
 ## CFA Verify
 
 ### `POST /api/v1/verify/auto`
@@ -204,6 +286,43 @@ Query: `?limit=20&symbol=TCS`
 Permission: `view_app`
 
 Single verification run by ID.
+
+---
+
+### `POST /api/v1/verify/batch`
+
+Permission: `view_app`
+
+Enqueues a `JobType.verify_batch` worker job. Persists each symbol’s CFA snapshot to `verification_runs`.
+
+Accepts either `symbols[]` or `universe` + `maxScan`:
+
+```json
+{
+  "symbols": ["TCS", "INFY"],
+  "refresh": false
+}
+```
+
+```json
+{
+  "universe": "nifty50",
+  "maxScan": 200,
+  "refresh": false
+}
+```
+
+Returns:
+
+```json
+{ "jobId": "…", "background": true, "status": "pending" }
+```
+
+### `GET /api/v1/verify/batch/jobs/:id`
+
+Permission: `view_app`
+
+Fetches batch-job status + `progress` from the `jobs` table / job-progress cache.
 
 ---
 
@@ -289,13 +408,53 @@ Pre-market cockpit. See [Morning Routine](MORNING-ROUTINE.md).
 
 Permission: `view_app`
 
-Aggregates regime, ETF panel, watchlist movers, open swing/intraday positions.
+Aggregates regime, ETF panel, open swing/intraday positions, Swing Auto tiers (including overnight diffs), and LTG auto snapshot.
 
 ### `POST /api/v1/morning/refresh-etf`
 
 Permission: `view_app`
 
 Refreshes ETF universe quotes for morning panel.
+
+---
+
+## Signals inbox
+
+Unified actionable feed across books and your recent verification runs.
+
+### `GET /api/v1/signals`
+Permission: `view_app`
+
+Query:
+- `live=1|0` (default `1`) — when `0`, skips position live refresh
+- `books=swing,intraday,watchlist,screener,verify` — optional comma list
+- `limit=10..100` (default `50`)
+
+Returns:
+- `summary` (counts by side and book)
+- `signals` (card-friendly items with `source_href`, MOS, and evidence bases)
+- `disclaimer` string.
+
+---
+
+## LTG auto (fundamental + technical gate)
+
+Minimal viable LTG pipeline: runs a fundamental screener preset + applies TA gates, then partitions hits into LTG tiers.
+
+### `GET /api/v1/fundamental-auto/state`
+Permission: `view_app`
+
+Returns cached LTG auto snapshot state and tier partitions.
+
+### `POST /api/v1/fundamental-auto/start`
+Permission: `run_screener`
+
+Body:
+```json
+{ "universe": "nifty250", "maxScan": 250, "refresh": false }
+```
+
+Starts a new LTG auto scan and returns `{ snapshot }` when done.
 
 ---
 
@@ -474,9 +633,17 @@ Triggers manual auto-scan (same pipeline as worker scheduler).
 
 Permission: `view_app`
 
-Returns index and liquid stock tabs for the intraday radar: `indices`, `stocks`, and combined `instruments` with `fno_supported`, `recommended_preset_5m`, and `recommended_preset_15m`.
+Returns radar shortcuts: `indices`, `stocks`, high-liquidity `etfs`, and combined `instruments` with `fno_supported`, `recommended_preset_5m`, and `recommended_preset_15m`. Static 15m defaults are v2 (`cfa_precision` / `banknifty_tuned`). Live `GET /intraday/nifty/state` may fall back via `pickLiveRecommendedPreset` and expose `recommended_preset_static` + `recommended_preset_live`.
+
+### `GET /api/v1/intraday/nifty/lite`
+
+Compact PWA payload (I-D1). Query: `interval`/`tf` (`5m` default), `instrument`/`symbol`/`index`, `refresh=1`.
+
+Reuses the 60s state snapshot, then adds NSE session, 14:30 flatten flag, trimmed scalp gate, `log_plan`, live open positions, and session journal. Any stock/ETF/index — not Nifty-only.
 
 ### `GET /api/v1/intraday/nifty/state`
+
+Query: `instrument` (or `index` / `symbol`), `interval=5m|15m`, `refresh=1`. `symbol` wins. Any NSE/BSE ticker or ETF is accepted; unknown tokens return 404 (not silent Nifty 50). Successful payloads are cached 60s (`cached: true` on hit). `refresh=1` rebuilds live analysis from fresh session charts; the 60d accuracy gate is not refetched.
 
 Permission: `view_app`
 
@@ -488,7 +655,13 @@ Returns direction, MTF confluence, trade plan, live playbook, and F&O plans. `in
 
 Permission: `view_app`
 
-Query: `?status=open|closed`
+Query: `?status=open|closed`, `live=1`, `date_from`, `date_to`
+
+### `GET /api/v1/intraday/positions/export`
+
+Permission: `view_app`
+
+Closed-journal CSV (NP-C4 / PHP `nifty-positions-export.php`). Query: `limit` (1–500, default 100), `date_from`, `date_to`. Columns: instrument, symbol, source, side, timeframe, session_date, entry_time, entry_price, quantity, stop_loss, target_t1–t3, closed_at, closed_price, closed_reason, net_pnl, net_pnl_pct, r_multiple, notes.
 
 ### `POST /api/v1/intraday/positions`
 
@@ -542,7 +715,11 @@ Query: `?prefix=sv:ta` — delete all keys matching prefix. Use to clear TA char
 
 ### `GET /api/v1/admin/settings`
 
-Effective app settings (merged config files + `app_settings` DB overrides).
+Effective app settings (merged config files + `app_settings` DB overrides), including `alerts` and `strategyDailyProof`.
+
+### `POST /api/v1/admin/config/reload`
+
+Re-read `config/*.yaml` and `app_settings`, then bump a Redis generation so workers hot-reload within ~60s. Admin only (`manage_cache`).
 
 ### `PATCH /api/v1/admin/settings`
 

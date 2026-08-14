@@ -44,4 +44,23 @@ describe('passesTaFilters', () => {
       false,
     );
   });
+
+  it('treats zone_52w=low as chartZone=green', () => {
+    expect(passesTaFilters(baseTa, { zone_52w: 'low' })).toBe(true);
+    expect(passesTaFilters({ ...baseTa, ta_52w_chart_zone: 'red' }, { zone_52w: 'low' })).toBe(false);
+  });
+
+  it('treats zone_52w=high as chartZone=red', () => {
+    expect(passesTaFilters(baseTa, { zone_52w: 'high' })).toBe(false);
+    expect(
+      passesTaFilters({ ...baseTa, ta_52w_chart_zone: 'red' }, { zone_52w: 'high' }),
+    ).toBe(true);
+  });
+
+  it('treats zone_52w=mid as pct band (not chartZone)', () => {
+    expect(passesTaFilters({ ...baseTa, ta_pct_52w: 50, ta_52w_chart_zone: 'red' }, { zone_52w: 'mid' })).toBe(
+      true,
+    );
+    expect(passesTaFilters({ ...baseTa, ta_pct_52w: 10 }, { zone_52w: 'mid' })).toBe(false);
+  });
 });

@@ -1,0 +1,68 @@
+# Script Screener — NSE index universe registry
+# Add/edit indices here or via Admin → Data & indices (DB override).
+# CSV filenames / MW-NIFTY patterns drive sync-from-disk and upload detection.
+# See docs/DATA-RULES.md
+
+version: 1
+
+definitions:
+  nifty50:
+    label: Nifty 50
+    csv: ind_nifty50list.csv
+    mw_patterns:
+      - MW-NIFTY-50-
+      - MW-NIFTY50-
+    bounds:
+      min: 45
+      max: 55
+
+  nifty100:
+    label: Nifty 100
+    csv: ind_nifty100list.csv
+    mw_patterns:
+      - MW-NIFTY-100-
+      - MW-NIFTY100-
+    bounds:
+      min: 90
+      max: 110
+
+  nifty200:
+    label: Nifty 200
+    csv: ind_nifty200list.csv
+    mw_patterns:
+      - MW-NIFTY-200-
+      - MW-NIFTY200-
+    bounds:
+      min: 180
+      max: 220
+
+  nifty250:
+    label: Nifty LargeMidcap 250
+    csv: ind_niftylargemidcap250list.csv
+    mw_patterns:
+      - MW-NIFTY-LARGEMIDCAP-
+      - MW-NIFTY-250-
+      - MW-NIFTYLARGEMIDCAP250-
+    bounds:
+      min: 230
+      max: 270
+
+  nifty500:
+    label: Nifty 500
+    csv: ind_nifty500list.csv
+    mw_patterns:
+      - MW-NIFTY-500-
+      - MW-NIFTY500-
+    bounds:
+      min: 480
+      max: 520
+
+  smallcap250:
+    label: Nifty Smallcap 250
+    csv: ind_niftysmallcap250list.csv
+    mw_patterns:
+      - MW-NIFTY-SMALLCAP-250-
+      - MW-NIFTYSMALLCAP250-
+    bounds:
+      min: 230
+      max: 270

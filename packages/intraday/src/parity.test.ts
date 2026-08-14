@@ -8,7 +8,7 @@ import {
   presetIds,
   presetOptions,
 } from './entry-filter.js';
-import { entryWindow } from './session-clock.js';
+import { entryWindow, TIME_STOP_IST } from './session-clock.js';
 import { classify } from './session-regime.js';
 import { fromAnalysis as ema50FromAnalysis } from './ema50-bias.js';
 import { fromAnalysis as gc9FromAnalysis } from './gc9-dc9.js';
@@ -18,7 +18,7 @@ describe('nifty intraday parity', () => {
     ok: true,
     bias: 'long',
     bias_label: 'Long bias',
-    time_stop_ist: '15:15',
+    time_stop_ist: TIME_STOP_IST,
     entry: { type: 'market', price: 100, condition: 'Test entry' },
     stop_loss: { price: 99, pts: 1, pct: 1, label: 'Stop' },
     exits: [
@@ -38,7 +38,7 @@ describe('nifty intraday parity', () => {
     confidence: 62,
     net_score: 30,
     bar_minutes_ist: 11 * 60,
-    entry_window: { open: true, label: '10:15–14:45' },
+    entry_window: { open: true, label: '10:15–14:00' },
     setup_quality: { grade: 'A', score: 72 },
     session_regime: { key: 'lean_up', label: 'Mild up' },
     ema_stack_bull: true,
@@ -87,10 +87,12 @@ describe('nifty intraday parity', () => {
     expect(aside.ok).toBe(false);
   });
 
-  it('thirteen intraday entry presets', () => {
-    expect(presetIds()).toHaveLength(13);
+  it('fourteen intraday entry presets', () => {
+    expect(presetIds()).toHaveLength(14);
     expect(preset('trend_scalp_5m')).not.toBeNull();
+    expect(preset('ma20_stratzy')).not.toBeNull();
     expect(presetOptions('trend_scalp_5m').exit_profile).toBe('quick_scalp');
+    expect(presetOptions('ma20_stratzy').require_5m_sma20_bias).toBe(true);
   });
 
   it('baseline and strict MTF pass bullish long', () => {
@@ -119,7 +121,7 @@ describe('nifty intraday parity', () => {
       { ...analysis, trade_plan: plan },
       mtf,
     );
-    expect(eval15).toHaveLength(13);
+    expect(eval15).toHaveLength(14);
   });
 
   it('entry window IST gates', () => {
@@ -179,5 +181,62 @@ describe('nifty intraday parity', () => {
     expect(ema.bias).toBe('long');
     const gc = gc9FromAnalysis({ ok: true, sma9: 101, sma50: 100, gc9_active: true });
     expect(gc.bias).toBe('long');
+  });
+
+  it('ma20_stratzy requires SMA-20 bias and blocks SMA chase', () => {
+    const basePlan = {
+      ok: true,
+      bias: 'long',
+      trigger: { status: 'READY', actionable: true },
+      stop_loss: { price: 99.4, pct: 0.6, pts: 0.6 },
+    };
+    const baseMtf = { ok: true, aligned: true, conflict: false, deploy_pct: 70 };
+    const analysis = {
+      ok: true,
+      confidence: 60,
+      direction: 'bullish',
+      net_score: 28,
+      ema_stack_bull: true,
+      setup_quality: { grade: 'A', score: 72 },
+      bar_minutes_ist: 11 * 60,
+      session_regime: { key: 'lean_up', label: 'Mild up' },
+    };
+    const blocked = passes(analysis, basePlan, baseMtf, {
+      ...presetOptions('ma20_stratzy'),
+      analysis_5m: { ok: true, price: 99, sma20: 100 },
+      analysis_15m: { ok: true, price: 101, sma20: 100 },
+    });
+    expect(blocked.pass).toBe(false);
+
+    const chase = passes(analysis, basePlan, baseMtf, {
+      ...presetOptions('ma20_stratzy'),
+      analysis_5m: { ok: true, price: 101.2, sma20: 100 }, // 1.2% > 0.30%
+      analysis_15m: { ok: true, price: 101, sma20: 100 },
+    });
+    expect(chase.pass).toBe(false);
+    expect(chase.reasons.some((r) => /chase/i.test(r))).toBe(true);
+
+    const leanOnly = passes(
+      { ...analysis, direction: 'lean_bull' },
+      basePlan,
+      baseMtf,
+      {
+        ...presetOptions('ma20_stratzy'),
+        analysis_5m: { ok: true, price: 100.2, sma20: 100 },
+        analysis_15m: { ok: true, price: 100.2, sma20: 100 },
+      },
+    );
+    expect(leanOnly.pass).toBe(false);
+    expect(leanOnly.reasons.some((r) => /strong bullish/i.test(r))).toBe(true);
+
+    const ok = passes(analysis, basePlan, baseMtf, {
+      ...presetOptions('ma20_stratzy'),
+      analysis_5m: { ok: true, price: 100.2, sma20: 100 },
+      analysis_15m: { ok: true, price: 100.2, sma20: 100 },
+    });
+    expect(ok.pass).toBe(true);
+    expect(presetOptions('ma20_stratzy').exit_profile).toBe('stratzy_trend');
+    expect(presetOptions('ma20_stratzy').last_entry_min_ist).toBe(13 * 60 + 30);
+    expect(presetOptions('ma20_stratzy').min_mtf_deploy).toBe(65);
   });
 });

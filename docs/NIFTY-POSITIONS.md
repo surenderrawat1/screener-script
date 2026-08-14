@@ -183,7 +183,7 @@ Advisory only — user confirms close on `nifty-positions.php`.
 
 ### Scalp setup (`NiftyIntradayScalpSetup`)
 
-5m-only gate; logging source `nifty_scalp_5m`.
+5m-only gate; logging source `nifty_scalp_5m`. Ported as `buildScalpSetup()` — returned on `GET /api/v1/intraday/nifty/state` as `scalp_setup` and shown on `/intraday`.
 
 See [INTRADAY.md](INTRADAY.md) for analysis engine; positions are the **execution ledger** on top.
 
@@ -198,7 +198,7 @@ See [INTRADAY.md](INTRADAY.md) for analysis engine; positions are the **executio
 - Source: `nifty_intraday_app`
 - 60s refresh on positions block
 
-v2 has no `lite` endpoint or PWA.
+v2: `GET /api/v1/intraday/nifty/lite` + `/intraday/app` (any symbol, 14:30 flatten).
 
 ---
 
@@ -231,7 +231,9 @@ v2 has no `lite` endpoint or PWA.
 ### Export
 
 `nifty-positions-export.php` — closed trades CSV  
-`NiftyIntradayClosedTradeStats` — win rate, avg R, best/worst
+`NiftyIntradayClosedTradeStats` — win rate, avg R, best/worst  
+
+**v2:** `GET /api/v1/intraday/positions/export` (+ Export CSV on `/intraday/positions`). Journal stats ship on list + lite responses.
 
 ---
 
@@ -270,6 +272,7 @@ model NiftyIntradayPosition {
 | Method | Path |
 |--------|------|
 | `GET` | `/api/v1/intraday/positions?status=open&live=1` |
+| `GET` | `/api/v1/intraday/positions/export` | Closed journal CSV (NP-C4) |
 | `POST` | `/api/v1/intraday/positions` |
 | `POST` | `/api/v1/intraday/positions/:id/close` |
 | `GET` | `/api/v1/intraday/nifty/lite` | PWA payload |
@@ -321,8 +324,8 @@ apps/web/src/pages/IntradayAppPage.tsx      mobile layout (optional)
 |---|------|
 | NP-C1 | Log trade from `/intraday` playbook (POST positions) |
 | NP-C2 | Positions block on IntradayPage (60s poll) |
-| NP-C3 | `lite` API for mobile |
-| NP-C4 | Closed journal stats + CSV export |
+| NP-C3 | `lite` API for mobile | **Shipped** with I-D1 |
+| NP-C4 | Closed journal stats + CSV export | **Shipped** — `GET /api/v1/intraday/positions/export` + Export CSV on ledger |
 
 ### Acceptance criteria
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import { EmptyState } from '../PageLayout';
@@ -74,6 +74,7 @@ function sourceBadge(source: string | null | undefined): string | null {
   if (!source) return null;
   if (source.startsWith('fno_')) return source.replace('fno_', '').toUpperCase();
   if (source === 'auto_radar' || source === 'radar') return 'Radar';
+  if (source === 'nifty_scalp_5m') return 'Scalp 5m';
   return source;
 }
 
@@ -110,11 +111,68 @@ export function IntradayOpenPanel({
   onClosed?: () => void | Promise<void>;
 }) {
   const [closeBusy, setCloseBusy] = useState<string | null>(null);
+  const [editBusy, setEditBusy] = useState<string | null>(null);
   const [closeError, setCloseError] = useState('');
+  const [editError, setEditError] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    entry_price: '',
+    quantity: '',
+    stop_loss: '',
+    target_t1: '',
+    target_t2: '',
+    target_t3: '',
+    notes: '',
+    t1_booked: false,
+    t2_booked: false,
+  });
 
   const urgent = positions.filter((r) => URGENT_ACTIONS.has(r.position_action));
   const exitCount = portfolio?.exit_count ?? 0;
   const netPnl = portfolio?.net_pnl_inr;
+
+  function startEdit(p: IntradayPositionRow) {
+    setEditingId(p.id);
+    setEditError('');
+    setEditForm({
+      entry_price: String(p.entry_price),
+      quantity: p.quantity != null ? String(p.quantity) : '',
+      stop_loss: p.effective_stop != null ? String(p.effective_stop) : '',
+      target_t1: p.target_t1 != null ? String(p.target_t1) : '',
+      target_t2: p.target_t2 != null ? String(p.target_t2) : '',
+      target_t3: p.target_t3 != null ? String(p.target_t3) : '',
+      notes: p.notes ?? '',
+      t1_booked: Boolean(p.t1_booked),
+      t2_booked: Boolean(p.t2_booked),
+    });
+  }
+
+  async function saveEdit(p: IntradayPositionRow) {
+    setEditBusy(p.id);
+    setEditError('');
+    try {
+      await api(`/api/v1/intraday/positions/${p.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          entry_price: Number(editForm.entry_price),
+          quantity: editForm.quantity ? Number(editForm.quantity) : null,
+          stop_loss: editForm.stop_loss ? Number(editForm.stop_loss) : null,
+          target_t1: editForm.target_t1 ? Number(editForm.target_t1) : null,
+          target_t2: editForm.target_t2 ? Number(editForm.target_t2) : null,
+          target_t3: editForm.target_t3 ? Number(editForm.target_t3) : null,
+          notes: editForm.notes || null,
+          t1_booked: editForm.t1_booked,
+          t2_booked: editForm.t2_booked,
+        }),
+      });
+      setEditingId(null);
+      await onRefresh?.();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setEditBusy(null);
+    }
+  }
 
   async function closePosition(p: IntradayPositionRow) {
     const price = p.current_price;
@@ -151,6 +209,7 @@ export function IntradayOpenPanel({
       ) : null}
 
       {closeError && <p className="error">{closeError}</p>}
+      {editError && <p className="error">{editError}</p>}
 
       <div className="nip-kpi">
         <span>
@@ -192,78 +251,186 @@ export function IntradayOpenPanel({
             </thead>
             <tbody>
               {positions.map((p) => (
-                <tr key={p.id} className={actionClass(p.position_action)}>
-                  <td>
-                    <Link
-                      to={`/intraday?instrument=${encodeURIComponent(p.instrument_id)}&interval=${encodeURIComponent(p.timeframe)}`}
-                    >
-                      {p.instrument_label}
-                    </Link>
-                    {sourceBadge(p.source) ? (
-                      <span className="nip-source-badge">{sourceBadge(p.source)}</span>
-                    ) : null}
-                    {p.notes ? <div className="muted nip-notes">{p.notes}</div> : null}
-                  </td>
-                  <td>{p.side_label}</td>
-                  <td>{p.timeframe}</td>
-                  <td>
-                    {fmtRs(p.entry_price)}
-                    <div className="muted nip-time">{formatEntryTime(p.entry_time)}</div>
-                  </td>
-                  <td>
-                    {p.ok && p.current_price != null ? (
-                      <>
-                        {fmtRs(p.current_price)}
-                        {p.as_of ? <div className="muted nip-time">{String(p.as_of)}</div> : null}
-                      </>
-                    ) : (
-                      <span className="nip-pnl-neg">{p.error || 'No data'}</span>
-                    )}
-                  </td>
-                  <td>
-                    {p.gain_pct != null ? (
-                      <>
-                        <span className={pnlClass(p.gain_pct)}>{p.gain_pct >= 0 ? '+' : ''}{p.gain_pct}%</span>
-                        {p.pnl_inr != null ? (
-                          <div className={`nip-net-pnl ${pnlClass(p.pnl_inr)}`}>{fmtInr(p.pnl_inr)}</div>
-                        ) : null}
-                      </>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td>
-                    <span className={`nip-action-badge ${decisionClass(p.position_action)}`}>
-                      {p.action_label}
-                    </span>
-                    {p.exit_triggers.length > 0 ? (
-                      <ul className="nip-triggers">
-                        {p.exit_triggers.map((t) => (
-                          <li key={t}>{t}</li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </td>
-                  <td className="nip-levels">
-                    <div>Stop {fmtRs(p.effective_stop)}</div>
-                    <div>T1 {fmtRs(p.target_t1)}</div>
-                    <div>T3 {fmtRs(p.target_t3)}</div>
-                    {p.t1_booked ? <span className="nip-booked">T1 ✓</span> : null}
-                    {p.t2_booked ? <span className="nip-booked">T2 ✓</span> : null}
-                  </td>
-                  <td>
-                    {p.id && p.current_price != null ? (
+                <Fragment key={p.id}>
+                  <tr className={actionClass(p.position_action)}>
+                    <td>
+                      <Link
+                        to={`/intraday?instrument=${encodeURIComponent(p.instrument_id)}&interval=${encodeURIComponent(p.timeframe)}`}
+                      >
+                        {p.instrument_label}
+                      </Link>
+                      {sourceBadge(p.source) ? (
+                        <span className="nip-source-badge">{sourceBadge(p.source)}</span>
+                      ) : null}
+                      {p.notes ? <div className="muted nip-notes">{p.notes}</div> : null}
+                    </td>
+                    <td>{p.side_label}</td>
+                    <td>{p.timeframe}</td>
+                    <td>
+                      {fmtRs(p.entry_price)}
+                      <div className="muted nip-time">{formatEntryTime(p.entry_time)}</div>
+                    </td>
+                    <td>
+                      {p.ok && p.current_price != null ? (
+                        <>
+                          {fmtRs(p.current_price)}
+                          {p.as_of ? <div className="muted nip-time">{String(p.as_of)}</div> : null}
+                        </>
+                      ) : (
+                        <span className="nip-pnl-neg">{p.error || 'No data'}</span>
+                      )}
+                    </td>
+                    <td>
+                      {p.gain_pct != null ? (
+                        <>
+                          <span className={pnlClass(p.gain_pct)}>
+                            {p.gain_pct >= 0 ? '+' : ''}
+                            {p.gain_pct}%
+                          </span>
+                          {p.pnl_inr != null ? (
+                            <div className={`nip-net-pnl ${pnlClass(p.pnl_inr)}`}>{fmtInr(p.pnl_inr)}</div>
+                          ) : null}
+                        </>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td>
+                      <span className={`nip-action-badge ${decisionClass(p.position_action)}`}>
+                        {p.action_label}
+                      </span>
+                      {p.exit_triggers.length > 0 ? (
+                        <ul className="nip-triggers">
+                          {p.exit_triggers.map((t) => (
+                            <li key={t}>{t}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </td>
+                    <td className="nip-levels">
+                      <div>Stop {fmtRs(p.effective_stop)}</div>
+                      <div>T1 {fmtRs(p.target_t1)}</div>
+                      <div>T3 {fmtRs(p.target_t3)}</div>
+                      {p.t1_booked ? <span className="nip-booked">T1 ✓</span> : null}
+                      {p.t2_booked ? <span className="nip-booked">T2 ✓</span> : null}
+                    </td>
+                    <td className="nip-row-actions">
                       <button
                         type="button"
                         className="btn btn-secondary btn-sm"
-                        disabled={closeBusy === p.id}
-                        onClick={() => void closePosition(p)}
+                        onClick={() => (editingId === p.id ? setEditingId(null) : startEdit(p))}
                       >
-                        {closeBusy === p.id ? '…' : 'Close'}
+                        {editingId === p.id ? 'Cancel' : 'Edit'}
                       </button>
-                    ) : null}
-                  </td>
-                </tr>
+                      {p.id && p.current_price != null ? (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          disabled={closeBusy === p.id}
+                          onClick={() => void closePosition(p)}
+                        >
+                          {closeBusy === p.id ? '…' : 'Close'}
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                  {editingId === p.id ? (
+                    <tr className="nip-edit-row">
+                      <td colSpan={9}>
+                        <form
+                          className="nip-inline-edit"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            void saveEdit(p);
+                          }}
+                        >
+                          <label>
+                            Entry
+                            <input
+                              type="number"
+                              step="0.05"
+                              required
+                              value={editForm.entry_price}
+                              onChange={(e) => setEditForm((f) => ({ ...f, entry_price: e.target.value }))}
+                            />
+                          </label>
+                          <label>
+                            Qty
+                            <input
+                              type="number"
+                              min={1}
+                              value={editForm.quantity}
+                              onChange={(e) => setEditForm((f) => ({ ...f, quantity: e.target.value }))}
+                            />
+                          </label>
+                          <label>
+                            Stop
+                            <input
+                              type="number"
+                              step="0.05"
+                              value={editForm.stop_loss}
+                              onChange={(e) => setEditForm((f) => ({ ...f, stop_loss: e.target.value }))}
+                            />
+                          </label>
+                          <label>
+                            T1
+                            <input
+                              type="number"
+                              step="0.05"
+                              value={editForm.target_t1}
+                              onChange={(e) => setEditForm((f) => ({ ...f, target_t1: e.target.value }))}
+                            />
+                          </label>
+                          <label>
+                            T2
+                            <input
+                              type="number"
+                              step="0.05"
+                              value={editForm.target_t2}
+                              onChange={(e) => setEditForm((f) => ({ ...f, target_t2: e.target.value }))}
+                            />
+                          </label>
+                          <label>
+                            T3
+                            <input
+                              type="number"
+                              step="0.05"
+                              value={editForm.target_t3}
+                              onChange={(e) => setEditForm((f) => ({ ...f, target_t3: e.target.value }))}
+                            />
+                          </label>
+                          <label className="nip-inline-notes">
+                            Notes
+                            <input
+                              value={editForm.notes}
+                              onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
+                            />
+                          </label>
+                          <label className="nip-inline-check">
+                            <input
+                              type="checkbox"
+                              checked={editForm.t1_booked}
+                              onChange={(e) => setEditForm((f) => ({ ...f, t1_booked: e.target.checked }))}
+                            />
+                            T1 booked
+                          </label>
+                          <label className="nip-inline-check">
+                            <input
+                              type="checkbox"
+                              checked={editForm.t2_booked}
+                              onChange={(e) => setEditForm((f) => ({ ...f, t2_booked: e.target.checked }))}
+                            />
+                            T2 booked
+                          </label>
+                          <button type="submit" className="btn btn-sm" disabled={editBusy === p.id}>
+                            {editBusy === p.id ? 'Saving…' : 'Save'}
+                          </button>
+                          <span className="muted nip-inline-hint">Stop can only tighten (trail ratchet).</span>
+                        </form>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
               ))}
             </tbody>
           </table>

@@ -70,6 +70,47 @@ export function shouldRunSwingInBackground(symbolCount: number): boolean {
   return symbolCount >= SWING_BACKGROUND_THRESHOLD;
 }
 
+export interface VerifyBatchJobPayload {
+  jobId: string;
+  symbols: string[];
+  input: {
+    refresh?: boolean;
+  };
+  userId?: string;
+}
+
+let verifyBatchQueue: Queue<VerifyBatchJobPayload> | null = null;
+
+export function getVerifyBatchQueue(): Queue<VerifyBatchJobPayload> {
+  if (!verifyBatchQueue) {
+    verifyBatchQueue = new Queue<VerifyBatchJobPayload>(QUEUE_NAMES.VERIFY_BATCH, {
+      connection: getQueueConnection(),
+      defaultJobOptions: {
+        removeOnComplete: 100,
+        removeOnFail: 50,
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 5000 },
+      },
+    });
+  }
+  return verifyBatchQueue;
+}
+
+export async function enqueueVerifyBatchJob(payload: VerifyBatchJobPayload): Promise<string> {
+  const queue = getVerifyBatchQueue();
+  const bullJob = await queue.add('run', payload, { jobId: payload.jobId });
+  return bullJob.id ?? payload.jobId;
+}
+
+export type VerifyBatchWorkerHandler = (job: Job<VerifyBatchJobPayload>) => Promise<void>;
+
+export function createVerifyBatchWorker(handler: VerifyBatchWorkerHandler): Worker<VerifyBatchJobPayload> {
+  return new Worker<VerifyBatchJobPayload>(QUEUE_NAMES.VERIFY_BATCH, handler, {
+    connection: getQueueConnection(),
+    concurrency: 1,
+  });
+}
+
 export interface SwingScanJobPayload {
   jobId: string;
   input: SwingScanInput;

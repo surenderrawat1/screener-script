@@ -1,17 +1,21 @@
 import {
-  fetchDailyBars,
   fetchScreenerProfile,
   resolveStockMetrics,
   type ScreenerProfile,
+  detectSymbolChartPatterns,
+  persistChartPatternsAsync,
 } from '@sv/data-adapters';
 import { cacheClearSymbol } from '@sv/cache';
+import { prisma } from '@sv/db';
 import { screenSymbol, screeningScoreFromQuality } from '@sv/core';
 import {
   buildDailyChartPayload,
   chartPhaseAnalysis,
+  detectChartPatterns,
   enrichDetailTa,
   mergeTaFundamentalFallback,
   type ChartPhaseAnalysis,
+  type ChartPatternResult,
   type DailyChartPayload,
   type TaMetrics,
 } from '@sv/swing';
@@ -121,6 +125,61 @@ function valuationFromScreenerRow(row: ReturnType<typeof screenSymbol>) {
     final_rating: row.recommendation ?? '',
     graham: Number(row.graham ?? 0),
     method: row.method ?? '',
+    score_basis: row.score_basis ?? 'quality_proxy',
+    recommendation_basis: row.recommendation_basis ?? 'screening_matrix',
+    moat_tier: row.moat_tier ?? '',
+    moat_count: row.moat_count ?? 0,
+  };
+}
+
+async function lastVerifyForSymbol(symbol: string) {
+  const run = await prisma.verificationRun.findFirst({
+    where: { symbol },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, symbol: true, mode: true, createdAt: true, result: true },
+  });
+  if (!run) return null;
+
+  const result = run.result as Record<string, unknown>;
+  if (run.mode === 'full') {
+    const r = result as {
+      verdict?: { action?: string };
+      metrics?: { margin_of_safety?: number };
+      scorecard?: { total?: number };
+    };
+    return {
+      id: run.id,
+      mode: run.mode,
+      created_at: run.createdAt.toISOString(),
+      recommendation: r.verdict?.action ?? '',
+      mos: r.metrics?.margin_of_safety ?? null,
+      quality_score: r.scorecard?.total ?? null,
+      recommendation_basis: 'full_verify_matrix' as const,
+      score_basis: 'full_scorecard' as const,
+    };
+  }
+
+  const cfa = result as {
+    analysis?: { mos?: number | null; recommendation?: string; quality_score?: number };
+    memo?: { headline?: string; strengths?: string[]; risks?: string[]; investment_case?: string };
+  };
+  return {
+    id: run.id,
+    mode: run.mode,
+    created_at: run.createdAt.toISOString(),
+    recommendation: cfa.analysis?.recommendation ?? '',
+    mos: cfa.analysis?.mos ?? null,
+    quality_score: cfa.analysis?.quality_score ?? null,
+    recommendation_basis: 'screening_matrix' as const,
+    score_basis: 'quality_proxy' as const,
+    memo: cfa.memo
+      ? {
+          headline: cfa.memo.headline,
+          strengths: cfa.memo.strengths ?? [],
+          risks: cfa.memo.risks ?? [],
+          investment_case: cfa.memo.investment_case,
+        }
+      : null,
   };
 }
 
@@ -136,6 +195,7 @@ export async function getStockSummary(symbol: string, refresh = false) {
 
   const screenerRow = screenSymbol(String(metrics.symbol ?? symbol), metrics);
   const valuation = valuationFromScreenerRow(screenerRow);
+  const lastVerify = await lastVerifyForSymbol(normalized).catch(() => null);
 
   return {
     symbol: String(metrics.symbol ?? normalized),
@@ -143,6 +203,7 @@ export async function getStockSummary(symbol: string, refresh = false) {
     success: true,
     metrics,
     valuation,
+    last_verify: lastVerify,
     sources,
     from_cache,
     data_quality: dataQuality(metrics as Record<string, unknown>, sources),
@@ -157,6 +218,7 @@ export interface StockChartResponse {
   chart: DailyChartPayload | null;
   ta: TaMetrics;
   phases: ChartPhaseAnalysis;
+  patterns: ChartPatternResult;
   from_cache: boolean;
 }
 
@@ -176,18 +238,22 @@ export async function getStockChart(
     };
   }
 
-  const bars = await fetchDailyBars(normalized, refresh);
-  if (bars.length < 30) {
+  const emptyPatterns = detectChartPatterns([]);
+  const detected = await detectSymbolChartPatterns(normalized, refresh);
+
+  if (!detected || detected.bar_count < 30) {
     const ta = mergeTaFundamentalFallback({ ta_ready: false }, fund);
     return {
       symbol: normalized,
       chart: null,
       ta,
       phases: chartPhaseAnalysis(Number(fund.price ?? 0), ta, null),
+      patterns: emptyPatterns,
       from_cache: !refresh,
     };
   }
 
+  const { bars, patterns } = detected;
   const chart = buildDailyChartPayload(bars, normalized);
   const price = bars[bars.length - 1].close;
   const ta = mergeTaFundamentalFallback(enrichDetailTa(bars, price), {
@@ -197,11 +263,17 @@ export async function getStockChart(
   });
   const phases = chartPhaseAnalysis(price, ta, chart);
 
+  persistChartPatternsAsync(normalized, patterns, {
+    lastBarDate: detected.last_bar_date,
+    barCount: detected.bar_count,
+  });
+
   return {
     symbol: normalized,
     chart,
     ta,
     phases,
+    patterns,
     from_cache: !refresh,
   };
 }

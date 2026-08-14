@@ -45,6 +45,13 @@ describe('config loader', () => {
     expect(policy.cache_ttl.screener_row).toBe(3600);
     expect(policy.cache_ttl.morning_etf).toBe(600);
     expect(policy.cache_ttl.morning_bundle).toBe(60);
+    expect(policy.cache_ttl.intraday_state).toBe(60);
+  });
+
+  it('loads etfs.yaml catalog', () => {
+    const cfg = buildAppConfig(REPO_CONFIG);
+    expect(cfg.etfs.entries.length).toBeGreaterThanOrEqual(18);
+    expect(cfg.etfs.entries.some((r) => r.symbol === 'NIFTYBEES')).toBe(true);
   });
 
   it('loads schedules.yaml daily sync at 6 AM IST', () => {
@@ -63,6 +70,7 @@ describe('config loader', () => {
     expect(ttl.index_symbols).toBe(2592000);
     expect(ttl.morning_etf).toBe(600);
     expect(ttl.morning_bundle).toBe(60);
+    expect(ttl.intraday_state).toBe(60);
     expect(ttl.job_progress).toBe(CACHE_TTL.job_progress);
   });
 
@@ -70,10 +78,14 @@ describe('config loader', () => {
     reloadAppConfig({
       dataPolicy: {
         cache_ttl: { stock: 3600 },
+        prefetch: { universes: ['nifty200'] },
+        staleness: { index_max_age_days: 14 },
       },
     });
     expect(getDataPolicy().cache_ttl.stock).toBe(3600);
     expect(getCacheTtl().stock).toBe(3600);
+    expect(getDataPolicy().prefetch.universes).toEqual(['nifty200']);
+    expect(getDataPolicy().staleness.index_max_age_days).toBe(14);
   });
 
   it('initAppConfig returns cached singleton', async () => {

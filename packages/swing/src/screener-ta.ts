@@ -1,6 +1,17 @@
 import { bottomOutHint } from './detail-ta.js';
 import { matchesZone52w, normalizeZone52w } from './scanner.js';
 import type { TaMetrics } from './types.js';
+import {
+  DAILY_PRICE_CROSS_FILTERS,
+  FRESH_CROSS_DEFAULT_BARS,
+  HOURLY_PRICE_CROSS_FILTERS,
+  dailyCrossFilterToTaKey,
+  hourlyCrossFilterToTaKey,
+  passesFreshCross,
+  priceCrossFilterActive,
+  type DailyPriceCrossFilter,
+  type HourlyPriceCrossFilter,
+} from './price-ma-cross.js';
 
 /** TA gate fields merged from screener presets (PHP ScreenerInputResolver parity). */
 export interface ScreenerTaFilters {
@@ -27,6 +38,24 @@ export interface ScreenerTaFilters {
   death_cross_9_50?: boolean;
   bull_ma_stack?: boolean;
   bear_ma_stack?: boolean;
+  /** Fresh price↔MA cross within last N bars (1–5). Default 3. */
+  fresh_cross_bars?: number;
+  cross_above_sma20?: boolean;
+  cross_below_sma20?: boolean;
+  cross_above_sma50?: boolean;
+  cross_below_sma50?: boolean;
+  cross_above_ema20?: boolean;
+  cross_below_ema20?: boolean;
+  cross_above_ema50?: boolean;
+  cross_below_ema50?: boolean;
+  hourly_cross_above_sma20?: boolean;
+  hourly_cross_below_sma20?: boolean;
+  hourly_cross_above_sma50?: boolean;
+  hourly_cross_below_sma50?: boolean;
+  hourly_cross_above_ema20?: boolean;
+  hourly_cross_below_ema20?: boolean;
+  hourly_cross_above_ema50?: boolean;
+  hourly_cross_below_ema50?: boolean;
 }
 
 const SMA_CROSS_KEYS = [
@@ -38,6 +67,14 @@ const SMA_CROSS_KEYS = [
   'bear_ma_stack',
 ] as const;
 
+export function needsHourlyTaFilters(filters: ScreenerTaFilters = {}): boolean {
+  return priceCrossFilterActive(filters as Record<string, unknown>, HOURLY_PRICE_CROSS_FILTERS);
+}
+
+export function needsDailyPriceCrossFilters(filters: ScreenerTaFilters = {}): boolean {
+  return priceCrossFilterActive(filters as Record<string, unknown>, DAILY_PRICE_CROSS_FILTERS);
+}
+
 export function taFiltersActive(filters: ScreenerTaFilters = {}): boolean {
   if (filters.technical_only) return true;
   if (filters.above_sma50 || filters.above_sma200 || filters.above_sma20) return true;
@@ -46,6 +83,7 @@ export function taFiltersActive(filters: ScreenerTaFilters = {}): boolean {
   for (const key of SMA_CROSS_KEYS) {
     if (filters[key]) return true;
   }
+  if (needsDailyPriceCrossFilters(filters) || needsHourlyTaFilters(filters)) return true;
   if (filters.macd_bullish || filters.below_bb_lower || filters.bottom_out_hint) return true;
   for (const key of ['min_rsi', 'max_rsi', 'min_pct_52w', 'max_pct_52w', 'min_bb_pct_b', 'max_bb_pct_b'] as const) {
     const v = filters[key];
@@ -73,6 +111,11 @@ function num(v: unknown): number | null {
 
 function bool(v: unknown): boolean {
   return v === true;
+}
+
+function freshBars(filters: ScreenerTaFilters): number {
+  const n = Number(filters.fresh_cross_bars ?? FRESH_CROSS_DEFAULT_BARS);
+  return Number.isFinite(n) ? n : FRESH_CROSS_DEFAULT_BARS;
 }
 
 /** PHP CfaStockAnalyzer::checkTechnicalFilters parity. */
@@ -109,6 +152,18 @@ export function passesTaFilters(ta: TaMetrics, filters: ScreenerTaFilters = {}):
   ];
   for (const [presetKey, taKey] of crossChecks) {
     if (filters[presetKey] && !bool(ta[taKey])) return false;
+  }
+
+  const maxFresh = freshBars(filters);
+  for (const key of DAILY_PRICE_CROSS_FILTERS) {
+    if (!filters[key as DailyPriceCrossFilter]) continue;
+    const barsAgo = num(ta[dailyCrossFilterToTaKey(key)]);
+    if (!passesFreshCross(barsAgo, maxFresh)) return false;
+  }
+  for (const key of HOURLY_PRICE_CROSS_FILTERS) {
+    if (!filters[key as HourlyPriceCrossFilter]) continue;
+    const barsAgo = num(ta[hourlyCrossFilterToTaKey(key)]);
+    if (!passesFreshCross(barsAgo, maxFresh)) return false;
   }
 
   const pct52 = num(ta.ta_pct_52w);
@@ -155,5 +210,37 @@ export function taFieldsForRow(ta: TaMetrics): Record<string, unknown> {
     ta_52w_chart_zone: typeof ta.ta_52w_chart_zone === 'string' ? ta.ta_52w_chart_zone : null,
     ta_above_sma50: ta.ta_above_sma50 === true ? true : ta.ta_above_sma50 === false ? false : null,
     ta_macd_bullish: ta.ta_macd_bullish === true ? true : ta.ta_macd_bullish === false ? false : null,
+    ta_cross_above_sma20: ta.ta_cross_above_sma20 === true,
+    ta_cross_below_sma20: ta.ta_cross_below_sma20 === true,
+    ta_cross_above_sma50: ta.ta_cross_above_sma50 === true,
+    ta_cross_below_sma50: ta.ta_cross_below_sma50 === true,
+    ta_cross_above_ema20: ta.ta_cross_above_ema20 === true,
+    ta_cross_below_ema20: ta.ta_cross_below_ema20 === true,
+    ta_cross_above_ema50: ta.ta_cross_above_ema50 === true,
+    ta_cross_below_ema50: ta.ta_cross_below_ema50 === true,
+    ta_h_cross_above_sma20: ta.ta_h_cross_above_sma20 === true,
+    ta_h_cross_below_sma20: ta.ta_h_cross_below_sma20 === true,
+    ta_h_cross_above_sma50: ta.ta_h_cross_above_sma50 === true,
+    ta_h_cross_below_sma50: ta.ta_h_cross_below_sma50 === true,
+    ta_h_cross_above_ema20: ta.ta_h_cross_above_ema20 === true,
+    ta_h_cross_below_ema20: ta.ta_h_cross_below_ema20 === true,
+    ta_h_cross_above_ema50: ta.ta_h_cross_above_ema50 === true,
+    ta_h_cross_below_ema50: ta.ta_h_cross_below_ema50 === true,
+    ta_cross_above_sma20_bars: num(ta.ta_cross_above_sma20_bars),
+    ta_cross_above_sma50_bars: num(ta.ta_cross_above_sma50_bars),
+    ta_cross_below_sma20_bars: num(ta.ta_cross_below_sma20_bars),
+    ta_cross_below_sma50_bars: num(ta.ta_cross_below_sma50_bars),
+    ta_cross_above_ema20_bars: num(ta.ta_cross_above_ema20_bars),
+    ta_cross_below_ema20_bars: num(ta.ta_cross_below_ema20_bars),
+    ta_cross_above_ema50_bars: num(ta.ta_cross_above_ema50_bars),
+    ta_cross_below_ema50_bars: num(ta.ta_cross_below_ema50_bars),
+    ta_h_cross_above_sma20_bars: num(ta.ta_h_cross_above_sma20_bars),
+    ta_h_cross_below_sma20_bars: num(ta.ta_h_cross_below_sma20_bars),
+    ta_h_cross_above_sma50_bars: num(ta.ta_h_cross_above_sma50_bars),
+    ta_h_cross_below_sma50_bars: num(ta.ta_h_cross_below_sma50_bars),
+    ta_h_cross_above_ema20_bars: num(ta.ta_h_cross_above_ema20_bars),
+    ta_h_cross_below_ema20_bars: num(ta.ta_h_cross_below_ema20_bars),
+    ta_h_cross_above_ema50_bars: num(ta.ta_h_cross_above_ema50_bars),
+    ta_h_cross_below_ema50_bars: num(ta.ta_h_cross_below_ema50_bars),
   };
 }

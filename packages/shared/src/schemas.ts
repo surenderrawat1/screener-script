@@ -6,6 +6,16 @@ export const loginSchema = z.object({
   password: z.string().min(6),
 });
 
+export const refreshTokenSchema = z.object({
+  refreshToken: z.string().min(16),
+});
+
+/** Accept API zones plus UI aliases low→green, high→red. */
+export const zone52wSchema = z
+  .enum(['any', 'green', 'mid', 'red', 'low', 'high'])
+  .transform((v) => (v === 'low' ? 'green' : v === 'high' ? 'red' : v))
+  .optional();
+
 export const screenerRunSchema = z.object({
   universe: z.string().min(1),
   preset: z.enum(SCREENER_PRESETS).optional(),
@@ -21,6 +31,18 @@ export const verifyAutoSchema = z.object({
   refresh: z.boolean().optional(),
 });
 
+export const verifyBatchSchema = z
+  .object({
+    universe: z.string().min(1).optional(),
+    symbols: z.array(z.string().min(1).max(32)).optional(),
+    maxScan: z.number().int().min(10).max(2000).optional(),
+    refresh: z.boolean().optional(),
+  })
+  .refine(
+    (v) => (v.symbols?.length ?? 0) > 0 || Boolean(v.universe),
+    { message: 'Provide either symbols[] or universe', path: ['symbols'] },
+  );
+
 export const verifyFullFetchSchema = z.object({
   symbol: z.string().min(1).max(32),
   refresh: z.boolean().optional(),
@@ -30,6 +52,14 @@ export const verifyFullFetchSchema = z.object({
 export const verifyFullRunSchema = z.object({
   symbol: z.string().min(1).max(32).optional(),
   input: z.record(z.union([z.string(), z.number(), z.boolean()])),
+  /** From last Fetch & Fill — drives D1 cache freshness gate. */
+  cache_meta: z
+    .object({
+      created_at: z.number().int().positive(),
+      expires_at: z.number().int().positive().optional(),
+      from_cache: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export const verifyFullDraftSchema = z.object({
@@ -105,6 +135,33 @@ export const niftyIntradayPositionCloseSchema = z.object({
   closed_reason: z.string().max(120).optional(),
 });
 
+export const niftyIntradayPositionUpdateSchema = z.object({
+  entry_price: z.number().positive().optional(),
+  quantity: z.number().positive().nullable().optional(),
+  stop_loss: z.number().positive().nullable().optional(),
+  target_t1: z.number().positive().nullable().optional(),
+  target_t2: z.number().positive().nullable().optional(),
+  target_t3: z.number().positive().nullable().optional(),
+  notes: z.string().max(500).nullable().optional(),
+  t1_booked: z.boolean().optional(),
+  t2_booked: z.boolean().optional(),
+  breakeven_armed: z.boolean().optional(),
+});
+
+export const paperWalletArmSchema = z.object({
+  armed: z.boolean(),
+});
+
+export const swingPaperArchiveSchema = z.object({
+  label: z.string().max(120).optional(),
+  reset_wallet: z.boolean().optional(),
+});
+
+export const paperPositionCloseSchema = z.object({
+  closed_price: z.number().positive().optional(),
+  closed_reason: z.string().max(120).optional(),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ScreenerRunInput = z.infer<typeof screenerRunSchema>;
 export type VerifyAutoInput = z.infer<typeof verifyAutoSchema>;
@@ -115,11 +172,11 @@ export const swingScanSchema = z.object({
   maxScan: z.number().int().min(0).max(2000).default(0),
   background: z.boolean().optional(),
   min_verdict: z.enum(['ENTER', 'SETUP_PLUS', 'WATCH', 'ALL']).optional(),
-  zone_52w: z.enum(['any', 'green', 'mid', 'red']).optional(),
+  zone_52w: zone52wSchema,
   gc9_only: z.boolean().optional(),
   breakout_volume: z.boolean().optional(),
-  min_rules_passed: z.number().int().min(1).max(11).optional(),
-  require_rules: z.array(z.enum(['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'E10', 'E11'])).optional(),
+  min_rules_passed: z.number().int().min(1).max(8).optional(),
+  require_rules: z.array(z.enum(['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'E10', 'E11', 'E12'])).optional(),
   sort_by: z
     .enum(['swing_rank', 'rules_passed', 'r_multiple', 'pct_52w', 'volume_ratio', 'entry_score', 'rsi', 'symbol'])
     .optional(),
@@ -132,11 +189,11 @@ export const swingEvaluateSchema = z.object({
   symbol: z.string().min(1),
   refresh: z.boolean().optional(),
   min_verdict: z.enum(['ENTER', 'SETUP_PLUS', 'WATCH', 'ALL']).optional(),
-  zone_52w: z.enum(['any', 'green', 'mid', 'red']).optional(),
+  zone_52w: zone52wSchema,
   gc9_only: z.boolean().optional(),
   breakout_volume: z.boolean().optional(),
-  min_rules_passed: z.number().int().min(1).max(11).optional(),
-  require_rules: z.array(z.enum(['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'E10', 'E11'])).optional(),
+  min_rules_passed: z.number().int().min(1).max(8).optional(),
+  require_rules: z.array(z.enum(['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'E10', 'E11', 'E12'])).optional(),
 });
 
 export type SwingEvaluateInput = z.infer<typeof swingEvaluateSchema>;
@@ -152,23 +209,57 @@ export const swingEvaluateExitSchema = z.object({
 
 export type SwingEvaluateExitInput = z.infer<typeof swingEvaluateExitSchema>;
 
-export const swingBacktestSchema = z.object({
-  symbol: z.string().min(1),
-  symbols: z.array(z.string().min(1)).max(15).optional(),
-  universe: z.string().min(1).optional(),
-  maxScan: z.number().int().min(1).max(50).optional(),
-  warmup: z.number().int().min(100).max(300).optional(),
-  forward_sessions: z.number().int().min(5).max(60).optional(),
-  min_verdict: z.enum(['ENTER', 'SETUP_PLUS', 'WATCH', 'ALL']).optional(),
-  zone_52w: z.enum(['any', 'green', 'mid', 'red']).optional(),
-  gc9_only: z.boolean().optional(),
-  breakout_volume: z.boolean().optional(),
-  min_rules_passed: z.number().int().min(1).max(11).optional(),
-  require_rules: z.array(z.enum(['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'E10', 'E11'])).optional(),
-  refresh: z.boolean().optional(),
-});
+export const swingBacktestSchema = z
+  .object({
+    symbol: z.string().min(1).optional(),
+    symbols: z.array(z.string().min(1)).max(50).optional(),
+    universe: z.string().min(1).optional(),
+    maxScan: z.number().int().min(1).max(50).optional(),
+    warmup: z.number().int().min(100).max(300).optional(),
+    forward_sessions: z.number().int().min(5).max(60).optional(),
+    min_verdict: z.enum(['ENTER', 'SETUP_PLUS', 'WATCH', 'ALL']).optional(),
+    zone_52w: zone52wSchema,
+    gc9_only: z.boolean().optional(),
+    breakout_volume: z.boolean().optional(),
+    min_rules_passed: z.number().int().min(1).max(8).optional(),
+    require_rules: z.array(z.enum(['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'E10', 'E11', 'E12'])).optional(),
+    portfolio_gates: z.boolean().optional(),
+    portfolio_nav: z.number().positive().max(1_000_000_000).optional(),
+    notional_inr: z.number().positive().max(5_000_000).optional(),
+    refresh: z.boolean().optional(),
+    /** Phase D — walk-forward Auto-tier replay (default on for single-symbol). */
+    auto_tiers: z.boolean().optional(),
+  })
+  .refine((v) => Boolean(v.symbol?.trim()) || Boolean(v.symbols?.length) || Boolean(v.universe), {
+    message: 'symbol, symbols, or universe required',
+  });
 
 export type SwingBacktestInput = z.infer<typeof swingBacktestSchema>;
+
+// --- M12: Screener point-in-time (PIT) backtest (MVP: TA-only)
+export const screenerPitBacktestSchema = z
+  .object({
+    universe: z.string().min(1).optional(),
+    symbols: z.array(z.string().min(1).max(16)).optional(),
+    // Screener preset key (e.g. `ta_pullback`, `quality`, etc.). For MVP we mainly rely on its TA gates.
+    preset: z.string().min(1).optional(),
+    // Additional Screener filters to apply.
+    filters: z.record(z.unknown()).optional(),
+    /**
+     * How far back from the latest daily bar to compute TA indicators (bar offset, not strict calendar days).
+     * Example: `asOfDaysAgo=180` means "use bars[length-1-180]".
+     */
+    asOfDaysAgo: z.number().int().min(10).max(600).optional(),
+    /** Forward horizon measured in daily bars ahead. */
+    forwardDays: z.number().int().min(5).max(120).optional(),
+    refresh: z.boolean().optional(),
+    maxScan: z.number().int().min(1).max(2000).optional(),
+  })
+  .refine((v) => Boolean(v.symbols?.length) || Boolean(v.universe), {
+    message: 'symbols or universe required',
+  });
+
+export type ScreenerPitBacktestInput = z.infer<typeof screenerPitBacktestSchema>;
 
 export const swingAutoScanSchema = z.object({
   force: z.boolean().optional(),
@@ -197,10 +288,47 @@ export const strategyRunSchema = z.object({
 });
 
 export type StrategyRunInput = z.infer<typeof strategyRunSchema>;
+
+// --- Strategy builder (M11) — user custom screener presets (minimal slice)
+export const userScreenerPresetCreateSchema = z.object({
+  name: z.string().min(1).max(80),
+  // Stored as raw ScreenerFilters JSON (whatever keys are supported by the screener engine).
+  filters: z.record(z.unknown()),
+});
+
+export type UserScreenerPresetCreateInput = z.infer<typeof userScreenerPresetCreateSchema>;
+
+export const userScreenerPresetUpdateSchema = z
+  .object({
+    name: z.string().min(1).max(80).optional(),
+    filters: z.record(z.unknown()).optional(),
+  })
+  .refine((v) => v.name != null || v.filters != null, { message: 'Provide name and/or filters.' });
+
+export type UserScreenerPresetUpdateInput = z.infer<typeof userScreenerPresetUpdateSchema>;
+
+// --- Strategy builder (M11) — custom swing rule profiles (minimal slice)
+export const swingRuleProfileCreateSchema = z.object({
+  name: z.string().min(1).max(80),
+  options: z.record(z.unknown()),
+});
+
+export type SwingRuleProfileCreateInput = z.infer<typeof swingRuleProfileCreateSchema>;
+
+export const swingRuleProfileUpdateSchema = z
+  .object({
+    name: z.string().min(1).max(80).optional(),
+    options: z.record(z.unknown()).optional(),
+  })
+  .refine((v) => v.name != null || v.options != null, { message: 'Provide name and/or options.' });
+
+export type SwingRuleProfileUpdateInput = z.infer<typeof swingRuleProfileUpdateSchema>;
+
 export type WatchlistUpsertInput = z.infer<typeof watchlistUpsertSchema>;
 export type SwingPositionCreateInput = z.infer<typeof swingPositionCreateSchema>;
 export type SwingPositionUpdateInput = z.infer<typeof swingPositionUpdateSchema>;
 export type NiftyIntradayPositionCreateInput = z.infer<typeof niftyIntradayPositionCreateSchema>;
+export type NiftyIntradayPositionUpdateInput = z.infer<typeof niftyIntradayPositionUpdateSchema>;
 
 export interface StockMetrics {
   symbol: string;
@@ -264,6 +392,30 @@ export interface ScreenerRow extends MosEstimate {
   ta_52w_chart_zone?: string | null;
   ta_above_sma50?: boolean | null;
   ta_macd_bullish?: boolean | null;
+  ta_cross_above_sma20?: boolean | null;
+  ta_cross_below_sma20?: boolean | null;
+  ta_cross_above_sma50?: boolean | null;
+  ta_cross_below_sma50?: boolean | null;
+  ta_cross_above_ema20?: boolean | null;
+  ta_cross_below_ema20?: boolean | null;
+  ta_cross_above_ema50?: boolean | null;
+  ta_cross_below_ema50?: boolean | null;
+  ta_h_cross_above_sma20?: boolean | null;
+  ta_h_cross_below_sma20?: boolean | null;
+  ta_h_cross_above_sma50?: boolean | null;
+  ta_h_cross_below_sma50?: boolean | null;
+  ta_h_cross_above_ema20?: boolean | null;
+  ta_h_cross_below_ema20?: boolean | null;
+  ta_h_cross_above_ema50?: boolean | null;
+  ta_h_cross_below_ema50?: boolean | null;
+  ta_cross_above_sma20_bars?: number | null;
+  ta_cross_above_sma50_bars?: number | null;
+  ta_cross_above_ema20_bars?: number | null;
+  ta_cross_above_ema50_bars?: number | null;
+  ta_h_cross_above_sma20_bars?: number | null;
+  ta_h_cross_above_sma50_bars?: number | null;
+  ta_h_cross_above_ema20_bars?: number | null;
+  ta_h_cross_above_ema50_bars?: number | null;
 }
 
 export interface JobProgress {

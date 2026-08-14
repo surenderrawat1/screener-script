@@ -1,10 +1,11 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type ReactNode, Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import { EmptyState } from '../PageLayout';
 import { PnlBreakdown } from './PnlBreakdown';
 import { PositionInlineClose, PositionInlineEdit } from './PositionInlineForms';
 import { PositionPriceCell, sourceBadgeClass, sourceBadgeLabel } from './PositionPriceCell';
+import { SwingRulesTable, type SwingRuleRow } from './SwingRulesTable';
 export interface OpenPositionRow {
   id: string;
   symbol: string;
@@ -22,6 +23,7 @@ export interface OpenPositionRow {
   pnl_detail?: Record<string, unknown> | null;
   exit_verdict: string;
   exit_triggers: string[];
+  exit_rules?: SwingRuleRow[];
   position_action: string;
   action_label: string;
   action_reasons: string[];
@@ -169,6 +171,7 @@ export function OpenPositionsPanel({
   const [closeBusy, setCloseBusy] = useState<string | null>(null);
   const [editBusy, setEditBusy] = useState<string | null>(null);
   const [closeError, setCloseError] = useState('');
+  const [expandedExit, setExpandedExit] = useState<string | null>(null);
 
   const rows = positions.open;
   const exitCount = positions.exit_count ?? positions.summary?.exit_signals ?? 0;
@@ -285,6 +288,7 @@ export function OpenPositionsPanel({
           <table className="data-table swing-pos-table">
             <thead>
               <tr>
+                <th />
                 <th>Symbol</th>
                 <th>Entry</th>
                 <th>Last</th>
@@ -294,12 +298,30 @@ export function OpenPositionsPanel({
                 <th>Action</th>
                 <th>Exit</th>
                 {showSessions ? <th>Triggers</th> : null}
-                <th>Stop / target</th>                <th></th>
+                <th>Stop / target</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((p) => (
-                <tr key={p.id || p.symbol} className={actionRowClass(p.position_action)}>
+              {rows.map((p) => {
+                const colSpan = 9 + (showSessions ? 2 : 0) + 1;
+                const rules = p.exit_rules ?? [];
+                const open = expandedExit === (p.id || p.symbol);
+                return (
+                  <Fragment key={p.id || p.symbol}>
+                <tr className={actionRowClass(p.position_action)}>
+                  <td>
+                    {rules.length > 0 ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-xs"
+                        title="X1–X9 exit rules"
+                        onClick={() => setExpandedExit(open ? null : p.id || p.symbol)}
+                      >
+                        {open ? '−' : '+'}
+                      </button>
+                    ) : null}
+                  </td>
                   <td>
                     <Link to={`/swing?mode=symbol&symbol=${encodeURIComponent(p.symbol)}&autorun=1`}>
                       {p.symbol}
@@ -446,7 +468,20 @@ export function OpenPositionsPanel({
                       </div>
                     ) : null}
                   </td>                </tr>
-              ))}
+                  {open && rules.length > 0 ? (
+                    <tr className="swing-exit-rules-row">
+                      <td colSpan={colSpan}>
+                        <p className="muted" style={{ margin: '0 0 0.5rem' }}>
+                          Exit rules X1–X9 for {p.symbol}
+                          {p.exit_triggers.length ? ` · active: ${p.exit_triggers.join(', ')}` : ''}
+                        </p>
+                        <SwingRulesTable rules={rules} emptyLabel="Exit rules not available." />
+                      </td>
+                    </tr>
+                  ) : null}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -4,10 +4,13 @@ import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
 import { prisma } from '@sv/db';
 import {
+  attachHourlyPriceCrossMetrics,
   enrichDetailTa,
+  needsHourlyTaFilters,
   passesTaFilters,
   taFieldsForRow,
   taFiltersActive,
+  type TaMetrics,
 } from '@sv/swing';
 import { runCfaAutoVerify } from './cfa-auto-verify.js';
 import { fetchScreenerAnnualFinancials } from './screener-annual.js';
@@ -16,7 +19,7 @@ import { enrichStockMetrics } from './stock-metrics-enrich.js';
 import { fetchStockData } from './stock-data-fetcher.js';
 import { getPromoterHolding } from './promoter-holding.js';
 import { filterUnrestrictedSymbols } from './exchange-list-loader.js';
-import { fetchDailyBars } from './swing-chart.js';
+import { fetchDailyBars, fetchHourlyBars } from './swing-chart.js';
 
 export type { ScreenerFilters };
 
@@ -53,7 +56,14 @@ async function applyTaGates(
     return taFiltersActive(filters) ? null : row;
   }
 
-  const ta = enrichDetailTa(bars, row.price);
+  let ta = enrichDetailTa(bars, row.price);
+  if (needsHourlyTaFilters(filters)) {
+    const hourly = await fetchHourlyBars(symbol, refresh);
+    if (!hourly.length) {
+      return taFiltersActive(filters) ? null : { ...row, ...taFieldsForRow(ta) } as ScreenerRow;
+    }
+    ta = attachHourlyPriceCrossMetrics(ta, hourly);
+  }
   if (taFiltersActive(filters) && !passesTaFilters(ta, filters)) {
     return null;
   }
@@ -231,7 +241,16 @@ async function screenSymbolFiltered(
   if (!refresh) {
     const cached = await cacheGetJson<ScreenerRow>(rowCacheKey);
     if (cached && passesFilters(cached, filters)) {
-      if (!shouldEnrichTa(filters) || cached.ta_ready) {
+      if (!shouldEnrichTa(filters)) {
+        if (cacheHits) cacheHits.count++;
+        return cached;
+      }
+      // Only reuse TA-ready rows that still pass *these* TA gates.
+      // (Daily enrich cache must not satisfy a later hourly cross filter.)
+      if (
+        cached.ta_ready &&
+        (!taFiltersActive(filters) || passesTaFilters(cached as unknown as TaMetrics, filters))
+      ) {
         if (cacheHits) cacheHits.count++;
         return cached;
       }
@@ -273,7 +292,15 @@ export async function runLiveScreener(
   symbols: string[],
   preset?: string,
   customFilters: ScreenerFilters = {},
-  onProgress?: (progress: { processed: number; total: number; passed: number }) => void | Promise<void>,
+  onProgress?: (
+    progress: {
+      processed: number;
+      total: number;
+      passed: number;
+      recent_symbols?: string[];
+      recent_passed_symbols?: string[];
+    },
+  ) => void | Promise<void>,
   options: ScreenerRunOptions = {},
 ): Promise<ScreenerRunResult> {
   const filters = { ...(preset ? (PRESET_FILTERS[preset] ?? {}) : {}), ...customFilters };
@@ -299,10 +326,15 @@ export async function runLiveScreener(
     for (const row of batchResults) {
       if (row) rows.push(row);
     }
+
+    const recentSymbols = batchResults.map((r) => r?.symbol).filter(Boolean) as string[];
+    const recentPassedSymbols = batchResults.filter((r): r is ScreenerRow => Boolean(r)).map((r) => r.symbol);
     await onProgress?.({
       processed: Math.min(start + batch.length, total),
       total,
       passed: rows.length,
+      recent_symbols: recentSymbols.slice(0, 20),
+      recent_passed_symbols: recentPassedSymbols.slice(0, 20),
     });
   }
 

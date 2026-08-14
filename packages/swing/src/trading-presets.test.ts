@@ -7,18 +7,21 @@ import {
   intradaySessionFilterId,
   intradayRadarHref,
   isValidTradingPresetId,
+  ma20StratzyIntradayHref,
   normalizeTradingPresetId,
   PRESET_CONSERVATIVE_SWING,
   PRESET_ETF_ROTATION,
   PRESET_GUIDE_TIPS,
+  PRESET_MA20_STRATZY,
+  resolveIntradayFilterHighlight,
   SWING_TIER_A_UNIVERSE_ID,
   tradingPresetIds,
   tradingPresetReadiness,
 } from './trading-presets.js';
 
 describe('tradingPresetIds', () => {
-  it('lists three system presets', () => {
-    expect(tradingPresetIds()).toHaveLength(3);
+  it('lists four system presets', () => {
+    expect(tradingPresetIds()).toHaveLength(4);
   });
 });
 
@@ -69,12 +72,15 @@ describe('intraday session preset', () => {
 describe('isValidTradingPresetId', () => {
   it('accepts normalized aliases', () => {
     expect(isValidTradingPresetId('scalp')).toBe(true);
+    expect(isValidTradingPresetId('stratzy')).toBe(true);
+    expect(isValidTradingPresetId('startazy')).toBe(true);
+    expect(isValidTradingPresetId('startzy')).toBe(true);
     expect(isValidTradingPresetId('unknown')).toBe(false);
   });
 });
 
 describe('tradingPresetReadiness', () => {
-  it('marks all three system presets ready', () => {
+  it('marks all four system presets ready', () => {
     for (const id of tradingPresetIds()) {
       const preset = getTradingPreset(id);
       expect(preset).not.toBeNull();
@@ -103,8 +109,19 @@ describe('intradaySessionFilterId', () => {
   });
 });
 
+describe('20 MA Stratzy hub preset', () => {
+  it('links intraday filter and swing strategy', () => {
+    const preset = getTradingPreset(PRESET_MA20_STRATZY);
+    expect(preset?.primary_href).toContain('preset=ma20_stratzy');
+    expect(ma20StratzyIntradayHref('15m')).toContain('ma20_stratzy');
+    expect(resolveIntradayFilterHighlight('stratzy', '5m')).toBe('ma20_stratzy');
+    expect(resolveIntradayFilterHighlight('startazy', '5m')).toBe('ma20_stratzy');
+    expect(resolveIntradayFilterHighlight('intraday_session', '5m')).toBe('trend_scalp_5m');
+  });
+});
+
 describe('PRESET_GUIDE_TIPS', () => {
   it('ships accuracy tips for hub banner', () => {
-    expect(PRESET_GUIDE_TIPS.length).toBeGreaterThanOrEqual(3);
+    expect(PRESET_GUIDE_TIPS.length).toBeGreaterThanOrEqual(4);
   });
 });

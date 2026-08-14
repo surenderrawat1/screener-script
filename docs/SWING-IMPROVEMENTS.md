@@ -1,129 +1,83 @@
 # Swing Trading & Auto Radar — CFA Verification & Improvement Plan
 
 **Reviewer lens:** Senior CFA (equity research, portfolio risk) + Senior Developer (PHP parity, production safety)  
-**Engine:** `@sv/swing` v3.9-gc9 · E1–E11 entry · X1–X9 exit  
-**Date:** July 2026
+**Engine:** `@sv/swing` v3.11-lite · E1–E12 entry (soft catalysts) · X1–X9 exit  
+**Updated:** August 2026
 
 ---
 
 ## Executive summary
 
-The swing **analysis engine** is sound: E1–E11, strict vs discovery verdicts, 3R targets, regime-aware 52w bands, and tiered Auto Radar match the PHP design intent. The main gaps are **live position management** (regime/hourly not wired on refresh, trail ratchet not persisted) and **PHP overlays** (backtest truth, NAV deploy scale) not yet ported.
+The swing **analysis engine** and **Auto Radar** are production-ready for research use. Phase 1–3 parity gaps for entry, exits, Auto Radar truth, and portfolio-gated universe backtests are closed.
+
+**v3.11-lite (over-rule cleanup):** E7 no longer vetoes on short-EMA stack alone; E9/E10/E12 are soft or style-scoped; discovery/strict ENTER no longer re-AND the full E-ladder or require dynamic volume; SETUP+ sorts by `swing_rank`; X1 no longer double-counts trail with X6; `min_rules_passed` counts hard E1–E8 only (max 8).
 
 | Area | Grade | Notes |
 |------|-------|-------|
-| Entry rules E1–E11 | **A−** | Unified across scan/evaluate/backtest; E3 MACD “turning up” fixed in this pass |
-| Exit rules X1–X9 | **B+** | Library complete; live refresh was missing hourly E9 + regime |
-| Auto Radar tiers | **A** | Four tiers + decision scoring; hit normalization fixed |
-| Portfolio risk | **B** | Heat gate works; deploy scale vs regime still display-only |
-| PHP parity | **B+** | BT truth + walk-forward ported; momentum target boost fixed (Jul 2026) |
-| UI completeness | **B+** | E1–E11 on scan/details; exit rules on positions improved |
+| Entry rules E1–E12 | **A** | Hard E1–E8 · Soft E9–E12 · `min_rules_passed` = hard only |
+| Exit rules X1–X9 | **A** | X1 hard/BE only; X6 owns trail — no double-fire |
+| Auto Radar tiers | **A** | BT truth overlay, deploy scale, stale penalties |
+| Portfolio risk | **A** | Heat gate live + `applyPortfolioGates` in multi-symbol BT |
+| PHP parity | **A−** | Gates + walk-forward; NAV compound sim still PHP-only |
+| UI completeness | **A** | E1–E12 + X1–X9; Nifty 250 batch backtest |
 
 ---
 
 ## What is verified correct
 
+### Operator guide — hard vs soft (v3.11-lite)
+
+| Tier | Rules | Role |
+|------|-------|------|
+| **Hard** | E1–E8 | Risk/structure — drive score, filters, and Strict ENTER readiness |
+| **Soft** | E9–E12 | Catalysts / style — advisory or strategy-scoped (`require_rules`) |
+
+**How to use the scanner**
+- Default SETUP+: discovery ENTER/SETUP, ranked by `swing_rank` (not raw rule count)
+- **Min hard rules:** optional 1–8 on E1–E8 only — do not set ≥9
+- **Stratzy:** strategy `swing_ma20_stratzy` or Require rules = E12 (hard pass = pullback to SMA-20)
+- **GC9 only:** use the GC9 filter / `gc9_only` — E11 is soft on the checklist
+- Strict ENTER ≠ “12/12 rules” — it is score floor + liquidity + PA + R/net-edge + core trend
+
+**Paper Stratzy proof (intraday):** wallet auto uses `ma20_stratzy`; proof scorecard needs ≥5 Stratzy closes.
+
+---
+
 ### Entry engine (`evaluate-entry.ts`)
 
-- **E1** Trend: Price ≥ SMA-50 ≥ SMA-200, 200+ bars
-- **E2** Pullback: RSI 42–54 or within 2.5% of SMA-50 / EMA-21
-- **E4** 52w band: Regime-adjusted (`bear` 20–55%, default 32–68%)
-- **E7/E11** EMA stack + GC9 state machine
-- **Verdicts:** `strict_verdict` (ENTER/WATCH/AVOID) vs `discovery_verdict` (ENTER/SETUP/WATCH)
-- **Strict ENTER** requires score floor, E1/E6, PA, 3R, net edge after charges
+- **E1–E12** with E3 MACD turning-up vs prior session
+- **v3.11-lite:** E7 = EMA primary trend (short stack confirmatory); E9 soft unless weak momentum; E10 soft when E2 pullback OK; E11/E12 optional catalysts / Stratzy `require_rules`
+- Regime-aware E4 52w band; hourly E9 advisory on scan
+- Strict vs discovery verdicts without double-gating the full rule card; 3R + net-edge gate
+- `navDeployScaleForEntry` (bull 1.8× / bear 0.8× / chop)
 
-### Scanner & filters (`scanner.ts`, `entry-filters.ts`)
-
-- `min_verdict`, `zone_52w`, `gc9_only`, `breakout_volume`
-- `min_rules_passed`, `require_rules` (e.g. E1 + E11)
-- Hourly bars for **E9** on scan path
-- `currentMarketRegime()` on all scan/evaluate paths
-
-### Auto Radar (`auto-decision.ts`, `auto-screener.ts`)
+### Auto Radar
 
 - Tiers: `high_conviction`, `strict_enter`, `setup_radar`, `breakout_surge`
-- Decision actions: STRONG_BUY / BUY / WATCH / SKIP
-- Position overlay: held symbols demoted; high conviction excludes open lots
-- Worker scheduler: 5m incremental / 30m full N250 (no browser required)
+- `SwingAutoBacktestTruth` — top-40 walk-forward grades (STRONG/OK/WEAK/FAIL)
+- Grades feed `decisionScore`, `entryAction`, `isHighConviction`
+- Incremental stale → `STALE_DATA` penalty
 
-### Exit engine (`evaluate-exit.ts`)
+### Exit & positions
 
-- X1 hard/breakeven/trail stop
-- X2 3R target (frozen at entry)
-- X3 trend break, X4 RSI partial, X5 MACD advisory, X6 trail, X7 time stop, X8 PA, X9 hourly EMA
-- Unit tests: `parity-exit.test.ts`
+- Live refresh: regime + hourly bars + HWM from bar highs
+- Trail ratchet persisted (up only)
+- `exit_rules[]` on position API; expandable X1–X9 table on Open Positions
+- Charge-aware PnL (`trade-pnl.ts`) on open/closed summaries
 
----
+### Backtest (`/swing/backtest`)
 
-## Issues found (prioritized)
-
-### P0 — Live position safety (fixed in this pass)
-
-| ID | Issue | Impact | Fix |
-|----|-------|--------|-----|
-| P0-1 | `refreshOpenPositions` omitted regime + hourly bars | X9 dead; X3/X6/X7 wrong; chop TRIM never fires | Pass `regime` + `ctx.hourlyBars` into `refreshPosition` → `evaluateExit` |
-| P0-2 | Trail ratchet not persisted | Stops reset after restart | Update `highestSinceEntry` / `trailedStopLoss` on live refresh (ratchet up only) |
-| P0-3 | HWM from price only, not bar highs | X6 trail too loose | Walk daily bars since `entry_date` for session highs |
-
-### P1 — Parity & scoring (partially fixed)
-
-| ID | Issue | Status |
-|----|-------|--------|
-| P1-1 | E3 ignored “MACD turning up” vs prior bar | **Fixed** — `priorMacdHistogram(bars)` |
-| P1-2 | `incremental_stale` hits not penalized | **Fixed** — treat as `stale` in `enrichHit` |
-| P1-3 | `findHitMatch` omitted regime | **Fixed** |
-| P1-4 | Positions ledger live path: no hits/regime | **Fixed** — snapshot hits + regime on `/positions` |
-| P1-5 | Client-sent regime on check-add | **Fixed** — server resolves from snapshot / NIFTYBEES |
-| P1-6 | Exit rules not in position API | **Fixed** — `exit_rules[]` on serialize |
-| P1-7 | `SwingAutoBacktestTruth` (top-40 overlay) | **Open** — Phase 2 |
-| P1-8 | `navDeployScaleForEntry` (bull/chop sizing) | **Done** — `evaluate-entry.ts` + evaluate API |
-
-### P2 — Polish (backlog)
-
-- Full walk-forward backtest with X1–X9 (not just signal replay)
-- STT/DP charge-aware PnL on closed positions
-- Per-hit `incremental_stale` badge on Auto Radar table rows
-- Strategy registry copy: “E1–E8” → “E1–E11”
-- Morning routine: re-enrich tiers from fresh regime
+- E1–E11 signal collection + filters
+- **Exit simulation:** stop (X1), target (X2), `evaluateExit` rules, time stop (X7)
+- Non-overlapping trades, cooldown, charge-aware net P&L
+- **Universe batch:** Nifty 250 (and other universes), up to 50 symbols
+- **`applyPortfolioGates`:** chronological max 10 opens / 4% heat across symbols
 
 ---
 
-## CFA interpretation guide
+## Implementation status
 
-### When is strict ENTER valid?
-
-All must align:
-
-1. **E1 + E7** — Primary trend (SMA + EMA stack)
-2. **E2 or proximity** — Not chasing extended move (or GC9/momentum exception via E10)
-3. **E4** — Not at 52w high in bear regime (chase risk)
-4. **E9** — Hourly EMA not bearish (MTF confirmation)
-5. **Score ≥ floor** (88 bull, 90 sideways, 100 strong bear blocked)
-6. **3R + net edge** — Target covers ~1.25% round-trip + 4% minimum edge
-
-**Example:** 8/11 rules pass with E2, E4, E9 failing → **WATCH/SETUP**, not ENTER. Do not size full position.
-
-### Auto Radar tier usage
-
-| Tier | Use |
-|------|-----|
-| **high_conviction** | STRONG_BUY or strict ENTER + score; size per heat gate |
-| **strict_enter** | Strict ENTER verdict; confirm E2/E9 before add |
-| **setup_radar** | SETUP+ discovery; watchlist / starter only |
-| **breakout_surge** | Volume breakout; higher false-positive rate in bear |
-
-### Exit priority (live book)
-
-1. **X1** — Stop hit → exit (non-negotiable)
-2. **X8/X9** — Structure/hourly deterioration with gain → trim or tighten
-3. **X4** — RSI partial after 85% of target path
-4. **X6** — Trail after 50% of target; ratchet must persist (P0-2)
-
----
-
-## Implementation phases
-
-### Phase 1 — Safety & wiring ✅ (this release)
+### Phase 1 — Safety & wiring ✅
 
 - [x] Regime + hourly on position refresh
 - [x] HWM from bars since entry
@@ -134,50 +88,61 @@ All must align:
 - [x] Server-side regime on check-add
 - [x] Exit rules in position API
 
-### Phase 2 — PHP parity (next)
+### Phase 2 — PHP parity ✅
 
-- [ ] Port `SwingAutoBacktestTruth` → grade top 40 hits (PASS/WEAK/FAIL)
-- [ ] Wire backtest flags into `decisionScore` / `isHighConviction`
-- [ ] `navDeployScaleForEntry` on `suggestedShares`
-- [ ] `SwingExitRulesTable` on Open Positions panel (full UI)
+- [x] `SwingAutoBacktestTruth` → grade top 40 hits
+- [x] Wire backtest flags into `decisionScore` / `isHighConviction`
+- [x] `navDeployScaleForEntry` on `suggestedShares`
+- [x] `SwingRulesTable` (E1–E11 / X1–X9) on Open Positions panel
 
-### Phase 3 — Research tooling
+### Phase 3 — Research tooling ✅
 
-- [ ] Backtest with exit simulation (PHP `SwingTradingBacktest` parity)
-- [ ] Universe backtest report (Nifty 250 sample)
-- [ ] Charge-aware closed PnL
+- [x] Backtest with exit simulation (stop / target / X rules)
+- [x] Multi-symbol portfolio heat gates in backtest (`applyPortfolioGates`)
+- [x] Universe backtest report (Nifty 250 batch UI, max 50 names)
+- [x] Charge-aware closed PnL (ledger + simulated trades)
+
+---
+
+## CFA interpretation guide
+
+### When is strict ENTER valid?
+
+1. **E1 + E7** — Primary trend  
+2. **E2 or proximity** — Not chasing (or E10 exception)  
+3. **E4** — Not chasing 52w high in bear  
+4. **E9** — Hourly EMA not bearish  
+5. **Score ≥ floor** + **3R + net edge**  
+6. Prefer **BT STRONG/OK** and win-rate gate ≥ 70% when proven
+
+### Exit priority (live book)
+
+1. **X1** stop → exit  
+2. **X8/X9** structure/hourly with gain → trim/tighten  
+3. **X4** RSI partial after ~85% of target path  
+4. **X6** trail after 50% of target (ratchet persisted)
 
 ---
 
 ## Verification checklist
 
 ```bash
-# Unit tests
 pnpm --filter @sv/swing test
-
-# Single symbol evaluate (E1–E11 + regime)
-curl -X POST /api/v1/swing/evaluate -d '{"symbol":"TCS"}'
-
-# Auto radar state (tiers + positions)
-curl /api/v1/swing/auto/state?live=1
-
-# Walk-forward backtest
-curl -X POST /api/v1/swing/backtest -d '{"symbol":"TCS","min_verdict":"SETUP_PLUS"}'
+# Auto radar: GET /api/v1/swing/auto/state?live=1
+# Backtest:  POST /api/v1/swing/backtest {"symbol":"TCS","min_verdict":"SETUP_PLUS"}
 ```
 
-**Manual CFA checks:**
-
-1. Bear regime → E4 band 20–55%; `blocks_strict_enter` on strong bear
-2. Open position → `exit_rules` shows X1–X9 with active/advisory labels
-3. After live refresh → `trailed_stop_loss` only increases in DB
-4. Incremental scan → stale hits show `STALE_DATA` flag in tier scores
+1. Bear regime → E4 band tightens; strong bear blocks new adds  
+2. Open position → expand **+** for X1–X9 table  
+3. Live refresh → `trailed_stop_loss` only increases  
+4. Backtest trades table shows exit_reason / triggers  
+5. Universe batch (Nifty 250) → portfolio section shows accepted vs blocked by heat  
 
 ---
 
 ## Related docs
 
-- [SWING-AUTO.md](SWING-AUTO.md) — Architecture & scheduler
-- [SWING-IMPROVEMENTS.md](SWING-IMPROVEMENTS.md) — CFA verification & improvement plan
-- [SWING-POSITIONS.md](SWING-POSITIONS.md) — Ledger & exit workflow
-- [TRADING-PRESETS.md](TRADING-PRESETS.md) — Conservative swing / ETF presets
-- [API.md](API.md) — `/swing/scan`, `/swing/evaluate`, `/swing/backtest`
+- [SWING-AUTO.md](SWING-AUTO.md)  
+- [SWING-POSITIONS.md](SWING-POSITIONS.md)  
+- [TRADING-PRESETS.md](TRADING-PRESETS.md)  
+- [API.md](API.md)  

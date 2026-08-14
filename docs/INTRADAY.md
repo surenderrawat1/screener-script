@@ -1,8 +1,12 @@
 # Nifty Intraday (5m / 15m) & Intraday App — Architecture & Speed Plan
 
-**Nifty Intraday** analyzes Nifty 50 on **5-minute** and **15-minute** charts: direction, MTF confluence, 13 entry presets, trade plan, and live playbook. The PHP **Intraday App** (`intraday-app.php`) is a mobile PWA for the same workflow with scalp gate and position logging.
+**Nifty Intraday** analyzes Nifty 50 on **5-minute** and **15-minute** charts: direction, MTF confluence, 14 entry presets, trade plan, and live playbook. The PHP **Intraday App** (`intraday-app.php`) is a mobile PWA for the same workflow with scalp gate and position logging.
+
+ETF radar chips come from **Admin → Data → ETF list** (`config/etfs.yaml`, tick Radar). Type any NSE/BSE ticker, ETF, or index (`TCS`, `NIFTYBEES`, `SUNPHARMA`, `INFY.BO`, `^NSEI`) into the radar — unknown names are synthesized as spot-only instruments. Catalog tabs stay as shortcuts.
 
 Script Screener has ported the **analysis engine** to `@sv/intraday` with Redis-cached Yahoo charts. The **full trading UI** (charts, multi-instrument, scalp setup, PWA) remains largely on the PHP side.
+
+> **PHP vs v2:** Use the old PHP project to *add* missing capability or stricter gates. Do not replace a v2 default, preset, or workflow with an older/looser PHP equivalent.
 
 > Intraday **positions** (same-day index trades) are documented separately in [NIFTY-POSITIONS.md](NIFTY-POSITIONS.md). They are **not** the same as [Swing Positions](SWING-POSITIONS.md).
 
@@ -17,7 +21,7 @@ Script Screener has ported the **analysis engine** to `@sv/intraday` with Redis-
 5. [System architecture](#system-architecture)
 6. [5m / 15m chart pipeline](#5m--15m-chart-pipeline)
 7. [Analysis engine](#analysis-engine)
-8. [13 entry presets](#13-entry-presets)
+8. [14 entry presets](#14-entry-presets)
 9. [Live playbook](#live-playbook)
 10. [API mapping](#api-mapping)
 11. [UI surfaces](#ui-surfaces)
@@ -35,7 +39,7 @@ Script Screener has ported the **analysis engine** to `@sv/intraday` with Redis-
 | **Direction** | Bias, confidence, structure, chop detection |
 | **MTF confluence** | 5m + 15m alignment score and deploy % |
 | **Trade plan** | Entry zone, stop, T1/T2/T3, R:R |
-| **13 presets** | Entry gate profiles (baseline → cfa_precision) |
+| **14 presets** | Entry gate profiles (baseline → cfa_precision + 20 MA Stratzy) |
 | **Signal quality** | Grade A/B/C on active timeframe setup |
 | **Live playbook** | Step-by-step session actions |
 | **60s refresh** | Poll during market hours |
@@ -62,16 +66,16 @@ Script Screener has ported the **analysis engine** to `@sv/intraday` with Redis-
 | Aspect | PHP | Script Screener |
 |--------|-----|-----------------|
 | **Analysis engine** | `Nifty15mDirection.php` + 12 includes | `@sv/intraday` package |
-| **Instruments** | Nifty50, BankNifty, Sensex, FinNifty, stocks | **Indices + 12 liquid stocks**; F&O for indices + 7 stocks |
+| **Instruments** | Nifty50, BankNifty, Sensex, FinNifty, stocks | Nifty, Bank Nifty, Sensex, Fin Nifty + 12 liquid stocks |
 | **Charts** | Lightweight Charts in browser (full OHLC) | ✓ Lightweight Charts via `GET /api/v1/intraday/chart/:instrument` + `IntradayPriceChart` (candles + SMA-9/20/50/200) |
 | **Chart cache** | SQLite 90s/120s | Redis `sv:ta:intraday:nifty50:{5m\|15m}` with runtime `intraday_chart` TTL |
 | **Dual fetch** | Often sequential in page | `Promise.all` 5m + 15m |
-| **Scalp setup** | `NiftyIntradayScalpSetup.php` | **Not ported** |
+| **Scalp setup** | `NiftyIntradayScalpSetup.php` | `buildScalpSetup()` + `/intraday` banner |
 | **Preset table UI** | 13-row pass/fail per TF | `preset_eval` in API; **UI not shown** |
-| **Instrument presets** | BankNifty → `banknifty_tuned` | Hardcoded `cfa_precision` |
+| **Instrument presets** | BankNifty → `strict_mtf`; Sensex → `production` | **v2 keeps** Bank/Fin → `banknifty_tuned`; Nifty/Sensex/stocks → `cfa_precision`; stock floors are additive |
 | **Intraday positions** | JSON ledger + APIs | See [NIFTY-POSITIONS.md](NIFTY-POSITIONS.md) |
 | **Backtest** | Full matrix UI | Phase 12 |
-| **Tests** | `validate-logic.php` | 17 parity tests |
+| **Tests** | `validate-logic.php` | `@sv/intraday` vitest (parity + instrument presets) |
 
 ---
 
@@ -175,10 +179,10 @@ Grades active setup: **A** / **B** / **C** with reasons.
 
 ---
 
-## 13 entry presets
+## 14 entry presets
 
 **File:** `packages/intraday/src/entry-filter.ts`  
-**Test:** `presetIds().length === 13`
+**Test:** `presetIds().length === 14`
 
 | ID | Label (summary) |
 |----|-----------------|
@@ -195,10 +199,13 @@ Grades active setup: **A** / **B** / **C** with reasons.
 | `production` | Production profile |
 | `banknifty_tuned` | BankNifty overrides (PHP applies per instrument) |
 | `cfa_precision` | Strictest CFA gates — **v2 default recommended** |
+| `ma20_stratzy` | SMA-20 bias · ≤0.45% from MA · MTF ≥55% · 15m SMA-20 · after 10:15 · 1 trade/day · **stratzy_trend 55/30/15** exits |
 
-`evaluatePresets(analysis5, analysis15, mtf)` returns pass/fail per preset for both TFs.
+`evaluatePresets(analysis5, analysis15, mtf, instrument, interval)` returns pass/fail per preset for both TFs and marks the live recommended row.
 
-PHP `presetOptionsForInstrument()` applies BankNifty/Sensex overrides — **v2 uses single preset options only**.
+`presetOptionsForInstrument(id, instrument)` adds **stricter stock floors** from PHP (`min_mtf_deploy ≥ 60`, actionable trigger, grade ≥ B, skip chop, 1 trade/session) via `max()` on numeric gates. Index products keep v2 preset defaults — PHP `strict_mtf` / `production` are not used as Bank/Sensex recommendations.
+
+15m v2 defaults: Nifty / Sensex / stocks → `cfa_precision`, Bank Nifty / Fin Nifty → `banknifty_tuned`. 5m → `trend_scalp_5m`. `pickLiveRecommendedPreset()` keeps that default when it passes the active TF, otherwise the first passing row on `quality` → `strict_mtf` → `banknifty_tuned` → `production` → `cfa_precision` → `baseline`.
 
 ---
 
@@ -237,7 +244,7 @@ GET /api/v1/intraday/nifty/state?interval=15m&refresh=0
 | Action | v2 |
 |--------|-----|
 | `GET ?action=state` | `GET /intraday/nifty/state` |
-| `GET ?action=lite` | Not ported (PWA payload) |
+| `GET ?action=lite` | `GET /api/v1/intraday/nifty/lite` |
 | `GET ?action=positions` | Not ported → [NIFTY-POSITIONS.md](NIFTY-POSITIONS.md) |
 | `POST add_position` | Not ported |
 | `POST close_position` | Not ported |
@@ -286,12 +293,11 @@ GET /api/v1/intraday/nifty/state?interval=15m&refresh=0
 
 ### PHP `intraday-app.php` (mobile PWA)
 
-**Not in v2:**
-- Installable PWA manifest + service worker
-- `lite` API optimized payload
-- Scalp gate full-screen UI
-- Session journal
-- Touch-optimized position cards
+**Shipped (v2 ahead of PHP):**
+- `/intraday/app` + `GET /api/v1/intraday/nifty/lite`
+- Any stock/ETF/index (not Nifty-only)
+- 14:30 IST flatten banner
+- Installable manifest + service worker
 
 ---
 
@@ -300,7 +306,7 @@ GET /api/v1/intraday/nifty/state?interval=15m&refresh=0
 | Feature | PHP | v2 | Gap |
 |---------|-----|-----|-----|
 | 5m/15m direction engine | ✓ | ✓ tested | — |
-| 13 presets | ✓ | ✓ tested | — |
+| 14 presets | ✓ | ✓ tested | — |
 | MTF confluence | ✓ | ✓ | — |
 | Live playbook | ✓ | ✓ | — |
 | Yahoo + cache TTL | ✓ | ✓ | — |
@@ -308,13 +314,13 @@ GET /api/v1/intraday/nifty/state?interval=15m&refresh=0
 | Chart UI | ✓ | ✓ | `IntradayPriceChart` (candles + SMA overlays, 5m/15m) |
 | Preset table UI | ✓ | ✗ | Phase I-C |
 | Scalp setup | ✓ | ✗ | Phase I-B |
-| Multi-instrument | ✓ | ✓ partial | Sensex/FinNifty not yet |
-| Stock F&O plans | ✓ | ✓ partial | 7 liquid names; monthly expiry |
-| Intraday App PWA | ✓ | ✗ | Phase I-D |
+| Multi-instrument | ✓ | ✓ | Nifty, Bank Nifty, Sensex, Fin Nifty + 12 stocks |
+| Stock F&O plans | ✓ | ✓ partial | 7 liquid names; NSE monthly last Tuesday |
+| Intraday App PWA | ✓ | ✓ | `/intraday/app` + manifest |
 | Instrument-aware preset | ✓ | ✗ | Phase I-B |
 | Intraday positions | ✓ | ✗ | [NIFTY-POSITIONS.md](NIFTY-POSITIONS.md) |
 | Backtest matrix | ✓ | ✗ | Phase 12 |
-| `lite` API | ✓ | ✗ | Phase I-D |
+| `lite` API | ✓ | ✓ | I-D1 any-symbol |
 
 ---
 
@@ -324,17 +330,17 @@ GET /api/v1/intraday/nifty/state?interval=15m&refresh=0
 
 | # | Task | Target |
 |---|------|--------|
-| I-A1 | Redis snapshot `sv:intraday:nifty:state` TTL 60s | p95 < **200ms** cached |
-| I-A2 | Split `GET .../chart?interval=5m` for OHLC (lazy load) | Main state < **50KB** |
-| I-A3 | `?refresh=1` only bypasses chart cache, not full recompute path | Predictable refresh cost |
+| I-A1 | Redis snapshot `sv:intraday:nifty:state` TTL 60s | **Shipped** — `sv:intraday:state:{id}:{tf}:{gate}` TTL 60s |
+| I-A2 | Split `GET .../chart?interval=5m` for OHLC (lazy load) | **Shipped** — state has bar counts only; OHLC via `/chart/:instrument` |
+| I-A3 | `?refresh=1` only bypasses chart cache, not full recompute path | **Shipped** — refresh busts 5m/15m session charts + snapshot; 60d accuracy gate stays on chart TTL |
 
 ### Phase I-B — Analysis parity (2–3 days)
 
 | # | Task |
 |---|------|
-| I-B1 | Port `NiftyIntradayScalpSetup` → `@sv/intraday/scalp-setup.ts` |
-| I-B2 | `presetOptionsForInstrument()` for future multi-instrument |
-| I-B3 | Dynamic `recommended_preset` from MTF + session (not hardcoded) |
+| I-B1 | Port `NiftyIntradayScalpSetup` → `@sv/intraday/scalp-setup.ts` | **Shipped** |
+| I-B2 | `presetOptionsForInstrument()` for future multi-instrument | **Shipped** — stock floors + `max()` merge |
+| I-B3 | Dynamic `recommended_preset` from MTF + session (not hardcoded) | **Shipped** — `pickLiveRecommendedPreset` |
 
 ### Phase I-C — Radar UI (3–5 days)
 
@@ -349,10 +355,10 @@ GET /api/v1/intraday/nifty/state?interval=15m&refresh=0
 
 | # | Task |
 |---|------|
-| I-D1 | `GET /intraday/nifty/lite` PWA payload |
-| I-D2 | `IntradayInstrument` resolver — BankNifty, FinNifty, liquid stocks |
-| I-D3 | Mobile layout route `/intraday/app` |
-| I-D4 | Service worker static cache (optional) |
+| I-D1 | `GET /intraday/nifty/lite` PWA payload | **Shipped** — any instrument + journal + 14:30 flatten |
+| I-D2 | `IntradayInstrument` resolver — BankNifty, Sensex, FinNifty, liquid stocks | **Shipped** — plus free-text synthesize |
+| I-D3 | Mobile layout route `/intraday/app` | **Shipped** |
+| I-D4 | Service worker static cache (optional) | **Shipped** — installability SW (no hashed-asset cache) |
 
 ### Acceptance criteria
 
@@ -364,6 +370,56 @@ GET /api/v1/intraday/nifty/state?interval=15m&refresh=0
 
 ---
 
+## High-Accuracy Gate — More Than 70% Profitable Trades
+
+Intraday live eligibility still requires the recommended preset to satisfy both:
+
+- **Win rate > 70%** (strictly greater, not equal)
+- **At least 10 simulated trades** over the 60-day backtest
+
+The gate is calculated in `intraday-backtest.ts` and returned on every preset as:
+
+- `accuracy_status`: `pass`, `fail`, `unproven`, or `missing`
+- `accuracy_pass`
+- `accuracy_floor_pct`
+- `min_trades_required`
+
+### Economic ranking (matrix / Stratzy proof)
+
+The combo matrix no longer scores T1-only (+1R/−1R). Simulation uses the live book:
+
+- **Partials:** preset exit profile (Stratzy `55/30/15` @1R/2R/3R)
+- **After T1:** stop ratchets to breakeven
+- **Paper execution:** worker books **PARTIAL_T1 → PARTIAL_T2 → EXIT_TARGET (T3)** on live bars (high/low), not suggest-only
+
+**Paper DB:** `paper_positions` tracks `remaining_pct`, `t1_booked`, `t2_booked`, `breakeven_armed`, `original_qty`. Run `pnpm --filter @sv/db exec prisma db push` after pull.
+
+- **Partials:** 40% @1R (T1), 40% @2R (T2), 20% @3R (T3)
+- **After T1:** stop ratchets to breakeven
+- **Win% (Stratzy / accuracy gate):** classic **T1-only** (+1R/−1R) — same yardstick as before the scaled-exit upgrade (historically often mid-40%s on Nifty/BankNifty)
+- **Scaled WR:** full 40/40/20 book before costs (runners can give back a T1 win → lower WR)
+- **Net WR / Net E:** after ~5 bps/side + ₹45 RT on ₹30,000 notional
+- **Economic pass:** net E > 0.1R and profit factor ≥ 1.25 (≥10 trades)
+- **Rank order:** economic pass → net E → PF → Stratzy WR gate
+
+- **Exit profiles are live:** preset `exit_profile` now drives T1/T2/T3 weights in BT + playbook (`stratzy_trend` = 55/30/15 @1/2/3R).
+- **Stratzy entries tightened:** MTF ≥55%, 15m SMA-20 agreement, no SMA chase (>0.45%), actionable trigger, 1 trade/session.
+
+The live state API runs the recommended preset against cached 60-day 5m/15m charts. `buildLivePlaybook()` sets `actionable: false` when the preset fails, has fewer than 10 trades, or has no historical evidence. The UI shows **LIVE ELIGIBLE** or **BLOCKED**.
+
+### Live validation — 3 August 2026 (classic T1-only sample)
+
+| Instrument / TF | Best proven preset | Trades | Win rate | >70% status |
+|-----------------|--------------------|--------|----------|-------------|
+| Nifty 50 · 5m | Trend scalp | 36 | 55.6% | Fail |
+| Nifty 50 · 15m | Baseline | 116 | 41.4% | Fail |
+| Bank Nifty · 5m | Trend scalp | 34 | 52.9% | Fail |
+| Bank Nifty · 15m | Baseline | 116 | 44.8% | Fail |
+
+**Interpretation:** No tested preset cleared the >70% WR threshold under the old payoff model. Re-run the matrix after the scaled-exit upgrade before claiming economic pass. The WR gate remains an evidence gate, not a guarantee of future profitability.
+
+---
+
 ## File reference
 
 ### Script Screener (v2)
@@ -371,13 +427,14 @@ GET /api/v1/intraday/nifty/state?interval=15m&refresh=0
 ```
 packages/intraday/src/
   nifty-direction.ts      analyzeNiftyDirection
-  entry-filter.ts         13 presets, evaluatePresets
+  entry-filter.ts         14 presets, evaluatePresets
   mtf.ts                  mtfConfluence
   live-playbook.ts        buildLivePlaybook
   trade-plan.ts           plan helpers
   session-regime.ts       session-clock.ts
   signal-quality.ts       gradeSignalQuality
   ema50-bias.ts           gc9-dc9.ts
+  intraday-backtest.ts    >70% accuracy gate + 60d preset matrix
 
 packages/data-adapters/src/intraday-chart.ts
 apps/api/src/services/intraday.ts
@@ -400,7 +457,7 @@ includes/IntradayInstrument.php
 ### Tests
 
 ```bash
-pnpm --filter @sv/intraday test   # 17 tests
+pnpm --filter @sv/intraday test   # 35 tests
 ```
 
 ---

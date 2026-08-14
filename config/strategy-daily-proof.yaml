@@ -1,0 +1,25 @@
+# Script Screener — daily live strategy proof allowlist
+# Edit this file to change which strategies run after close and how wide the scan is.
+# Cron time stays in schedules.yaml (strategy_daily_proof.cron).
+# Restart API + worker after edits.
+# See docs/EVENING-GTT-AND-DAILY-PROOF.md
+
+version: 1
+
+enabled: true
+skip_weekends: true
+max_scan: 60
+
+# Curated Strategies catalog keys (must be ready in strategy-registry)
+strategies:
+  - swing_strict_enter
+  - swing_ma20_stratzy
+  - swing_breakout_volume
+  - swing_best_r
+  - hybrid_quality_swing
+
+# Optional notes for operators (ignored by runtime)
+# Add more keys from /strategies when you want broader proof coverage, e.g.:
+#  - swing_setup_plus
+#  - swing_green_zone
+#  - hybrid_moat_swing

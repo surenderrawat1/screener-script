@@ -97,7 +97,7 @@ export function IntradayPriceChart({ instrumentId, interval, label, plan }: Prop
       {chart ? (
         <div className="swing-chart-body">
           {loading && chart ? <div className="swing-chart-overlay" aria-hidden /> : null}
-          <StockDailyChart chart={chart} height={360} priceLevels={priceLevels} />
+          <StockDailyChart chart={chart} height={420} priceLevels={priceLevels} />
         </div>
       ) : null}
     </section>

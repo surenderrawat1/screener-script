@@ -55,6 +55,12 @@ function normalizePresetHighlight(raw: string, presets: TradingPreset[]): string
     rotation: 'etf_rotation',
     intraday: 'intraday_session',
     scalp: 'intraday_session',
+    stratzy: 'ma20_stratzy',
+    startazy: 'ma20_stratzy',
+    startzy: 'ma20_stratzy',
+    ma20: 'ma20_stratzy',
+    '20ma': 'ma20_stratzy',
+    sma20: 'ma20_stratzy',
   };
   const id = aliases[key] ?? key;
   return presets.some((p) => p.id === id) ? id : '';

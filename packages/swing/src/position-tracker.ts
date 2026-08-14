@@ -72,10 +72,20 @@ export function refreshPosition(position: PositionInput, live: LivePositionConte
   // A floor ratcheted from a prior bad-tick high-water would otherwise keep the
   // trailing stop inflated (and fire false exits) forever; fresh EMA-9 trailing
   // is still applied inside evaluateExit.
-  const fromHighPct = trailFromHighPct(live.regime ?? null);
+  const peak = entry > 0 ? ((high - entry) / entry) * 100 : 0;
+  const targetPctGuess =
+    position.profit_target != null && position.profit_target > entry
+      ? ((position.profit_target - entry) / entry) * 100
+      : 8.25;
+  const fromHighPct = trailFromHighPct(live.regime ?? null, peak, targetPctGuess);
   const justifiedTrailFloor = Math.round(high * (1 - fromHighPct / 100) * 100) / 100;
   const storedFloor = position.trailed_stop_loss ?? null;
   const cappedFloor = storedFloor != null ? Math.min(storedFloor, justifiedTrailFloor) : null;
+
+  const frozenTarget =
+    position.profit_target != null && position.profit_target > entry ? position.profit_target : null;
+  const frozenTargetPct =
+    frozenTarget != null ? Math.round(((frozenTarget - entry) / entry) * 10000) / 100 : null;
 
   const exit = evaluateExit(
     { ...live.ta, as_of_date: live.ta.as_of_date ?? new Date().toISOString().slice(0, 10) },
@@ -86,8 +96,8 @@ export function refreshPosition(position: PositionInput, live: LivePositionConte
     high,
     live.bars ?? null,
     live.bars ?? null,
-    position.profit_target ?? null,
-    null,
+    frozenTarget,
+    frozenTargetPct,
     live.regime ?? null,
     live.hourlyBars ?? null,
     cappedFloor,

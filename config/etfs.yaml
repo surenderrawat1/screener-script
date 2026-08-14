@@ -1,0 +1,150 @@
+# Script Screener — NSE ETF book
+# Edit here or via Admin → Data → ETF list (DB override wins).
+# radar: true shows the name on /intraday quick picks (default = liquidity high).
+# See docs/DATA-RULES.md
+
+version: 1
+
+entries:
+  - symbol: NIFTYBEES
+    name: Nifty 50 BeES
+    category: index
+    underlying: Nifty 50
+    ter_pct: 0.05
+    liquidity: high
+    note: Regime proxy · core index
+
+  - symbol: SETFNIF50
+    name: SBI Nifty 50 ETF
+    category: index
+    underlying: Nifty 50
+    ter_pct: 0.07
+    liquidity: high
+
+  - symbol: HDFCNIFETF
+    name: HDFC Nifty 50 ETF
+    category: index
+    underlying: Nifty 50
+    ter_pct: 0.05
+    liquidity: medium
+
+  - symbol: ICICINIFTY
+    name: ICICI Pru Nifty 50 ETF
+    category: index
+    underlying: Nifty 50
+    ter_pct: 0.05
+    liquidity: medium
+
+  - symbol: BANKBEES
+    name: Bank Nifty BeES
+    category: index
+    underlying: Nifty Bank
+    ter_pct: 0.05
+    liquidity: high
+    note: Bank index proxy
+
+  - symbol: SETFNIFBK
+    name: SBI Bank Nifty ETF
+    category: index
+    underlying: Nifty Bank
+    ter_pct: 0.07
+    liquidity: medium
+
+  - symbol: JUNIORBEES
+    name: Nifty Next 50 BeES
+    category: index
+    underlying: Nifty Next 50
+    ter_pct: 0.05
+    liquidity: high
+
+  - symbol: NV20BEES
+    name: Nifty NV20 BeES
+    category: index
+    underlying: Nifty 50 Value 20
+    ter_pct: 0.05
+    liquidity: low
+
+  - symbol: ITBEES
+    name: Nifty IT BeES
+    category: sector
+    underlying: Nifty IT
+    ter_pct: 0.05
+    liquidity: high
+
+  - symbol: PHARMABEES
+    name: Nifty Pharma BeES
+    category: sector
+    underlying: Nifty Pharma
+    ter_pct: 0.05
+    liquidity: medium
+
+  - symbol: AUTOBEES
+    name: Nifty Auto BeES
+    category: sector
+    underlying: Nifty Auto
+    ter_pct: 0.05
+    liquidity: medium
+
+  - symbol: PSUBNKBEES
+    name: PSU Bank BeES
+    category: sector
+    underlying: Nifty PSU Bank
+    ter_pct: 0.05
+    liquidity: medium
+
+  - symbol: INFRABEES
+    name: Infra BeES
+    category: sector
+    underlying: Nifty Infra
+    ter_pct: 0.05
+    liquidity: medium
+
+  - symbol: CPSEETF
+    name: CPSE ETF
+    category: sector
+    underlying: Nifty CPSE
+    ter_pct: 0.07
+    liquidity: low
+
+  - symbol: MOM100
+    name: Nifty 100 Momentum
+    category: thematic
+    underlying: Nifty 100 Momentum 30
+    ter_pct: 0.05
+    liquidity: medium
+
+  - symbol: HDFCMOMENT
+    name: Nifty 200 Momentum 30
+    category: thematic
+    underlying: Nifty 200 Momentum 30
+    ter_pct: 0.05
+    liquidity: low
+
+  - symbol: GOLDBEES
+    name: Gold BeES
+    category: commodity
+    underlying: Domestic gold (995)
+    ter_pct: 0.05
+    liquidity: high
+    note: Gold proxy · different vol profile
+
+  - symbol: SILVERBEES
+    name: Silver BeES
+    category: commodity
+    underlying: Domestic silver
+    ter_pct: 0.05
+    liquidity: low
+
+  - symbol: MON100
+    name: Nasdaq 100 (MO)
+    category: global
+    underlying: Nasdaq 100
+    ter_pct: 0.1
+    liquidity: medium
+
+  - symbol: MASPTOP50
+    name: S&P 500 Top 50 (MO)
+    category: global
+    underlying: S&P 500 Top 50
+    ter_pct: 0.1
+    liquidity: low

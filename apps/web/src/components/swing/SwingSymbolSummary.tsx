@@ -87,8 +87,14 @@ export function SwingSymbolSummary({
       </p>
 
       <div className="swing-symbol-meta-row">
-        <span>
-          {Number(entry.rules_passed ?? 0)} / {ruleCount} rules pass
+        <span title="Hard risk/structure rules E1–E8">
+          Hard {Number(entry.rules_hard_passed ?? 0)}/{Number(entry.rules_hard_total ?? 8)}
+        </span>
+        <span className="muted" title="Soft catalysts E9–E12">
+          Soft {Number(entry.rules_soft_passed ?? 0)}/{Number(entry.rules_soft_total ?? 4)}
+        </span>
+        <span className="muted">
+          All {Number(entry.rules_passed ?? 0)}/{ruleCount}
         </span>
         {entry.deploy_scale != null ? (
           <span>

@@ -1,8 +1,12 @@
-import { riskFlagForGrade, scoreDelta } from './auto-backtest-truth.js';
+import { riskFlagForGrade, riskFlagForWinRate, scoreDelta, economicScoreBoost, economicEdgeGateStatus } from './auto-backtest-truth.js';
 import { VOLUME_SURGE_MIN } from './dynamic-signals.js';
 import { strictFloor } from './entry-scorer.js';
+import { applyFundamentalQuality } from './fundamental-quality.js';
 import { MIN_LIQUIDITY_CR } from './ranker.js';
+import { computeTapeConfluence } from './tape-confluence.js';
+import { evaluateCompounderSleeve, evaluateCompounderHold, isCompounderManaged } from './compounder-sleeve.js';
 
+export { computeTapeConfluence, type TapeConfluence, type TapeConfluenceKey } from './tape-confluence.js';
 export const ACTION_STRONG_BUY = 'STRONG_BUY';
 export const ACTION_BUY = 'BUY';
 export const ACTION_WATCH = 'WATCH';
@@ -24,18 +28,38 @@ const CUT_LOSS_PCT = -4.0;
 const TRIM_GAIN_PCT = 8.0;
 
 export function enrichHit(hit: Record<string, unknown>, regime?: Record<string, unknown> | null): Record<string, unknown> {
-  const normalized =
+  const base =
     hit.incremental_stale && !hit.stale ? { ...hit, stale: true, incremental_stale: true } : hit;
-  const flags = riskFlags(normalized, regime);
-  const score = decisionScore(normalized, regime, flags);
-  const action = entryAction(normalized, score, flags, regime);
+  // Only apply quality demotion when fundamentals were attached (roe/roce/quality fields present).
+  const withQuality =
+    base.roe != null || base.roce != null || base.fundamental_quality_ok != null
+      ? applyFundamentalQuality(base)
+      : base;
+  const flags = riskFlags(withQuality, regime);
+  const score = decisionScore(withQuality, regime, flags);
+  const action = entryAction(withQuality, score, flags, regime);
+  const highConviction = isHighConviction(withQuality, score, action, flags);
+  const withHc = { ...withQuality, high_conviction: highConviction };
+  const sleeve = evaluateCompounderSleeve(withHc, regime);
+  const sleeveHold =
+    sleeve.eligible || sleeve.sleeve === 'compounder'
+      ? evaluateCompounderHold({ ...withQuality, sessions_held: 0, gain_pct: 0 }, withHc)
+      : null;
   return {
-    ...normalized,
+    ...withQuality,
     decision_score: score,
     decision_action: action,
     decision_label: actionLabel(action),
-    risk_flags: flags,
-    high_conviction: isHighConviction(normalized, score, action, flags),
+    risk_flags: sleeve.eligible ? [...flags, 'COMPOUNDER_SLEEVE'] : flags,
+    high_conviction: highConviction && !sleeve.blocks_swing_paper,
+    tape_confluence: computeTapeConfluence(withQuality, regime),
+    sleeve: sleeve.sleeve,
+    sleeve_label: sleeve.label,
+    sleeve_summary: sleeve.summary,
+    sleeve_eligible: sleeve.eligible,
+    sleeve_blocks_swing_paper: sleeve.blocks_swing_paper,
+    sleeve_policy: sleeve.policy,
+    sleeve_hold: sleeveHold,
   };
 }
 
@@ -49,6 +73,7 @@ export function categorizeHits(
   const strict: Record<string, unknown>[] = [];
   const setup: Record<string, unknown>[] = [];
   const breakout: Record<string, unknown>[] = [];
+  const compounder: Record<string, unknown>[] = [];
 
   for (const hit of enriched) {
     if (hit.high_conviction) highConviction.push(hit);
@@ -57,6 +82,7 @@ export function categorizeHits(
     if (['ENTER', 'SETUP'].includes(discovery)) setup.push(hit);
     const volRatio = Number(hit.ta_volume_ratio ?? 0);
     if (hit.broke_swing_high && volRatio >= VOLUME_SURGE_MIN) breakout.push(hit);
+    if (hit.sleeve_eligible === true || hit.sleeve === 'compounder') compounder.push(hit);
   }
 
   const sort = (a: Record<string, unknown>, b: Record<string, unknown>) =>
@@ -67,8 +93,15 @@ export function categorizeHits(
   strict.sort(sort);
   setup.sort(sort);
   breakout.sort(sort);
+  compounder.sort(sort);
 
-  return { high_conviction: highConviction, strict_enter: strict, setup_radar: setup, breakout_surge: breakout };
+  return {
+    high_conviction: highConviction,
+    strict_enter: strict,
+    setup_radar: setup,
+    breakout_surge: breakout,
+    compounder_sleeve: compounder,
+  };
 }
 
 export function overlayOpenPositionsOnTiers(
@@ -146,10 +179,46 @@ export function riskFlags(hit: Record<string, unknown>, regime?: Record<string, 
 
   if (regime?.high_vol && !hit.volume_surge) flags.push('HIGH_VOL_NO_SURGE');
 
+  // CFA quality: ROE & ROCE ≥ 15% (set by applyFundamentalQuality / metrics on hit).
+  if (hit.fundamental_quality_status === 'unknown' || flags.includes('QUALITY_UNKNOWN')) {
+    if (!flags.includes('QUALITY_UNKNOWN')) flags.push('QUALITY_UNKNOWN');
+  } else if (hit.fundamental_quality_ok === false) {
+    if (!flags.includes('QUALITY_FAIL')) flags.push('QUALITY_FAIL');
+    const roe = num(hit.roe) ?? 0;
+    const roce = num(hit.roce) ?? 0;
+    if (roe > 0 && roe < 15 && !flags.includes('LOW_ROE')) flags.push('LOW_ROE');
+    if (roce > 0 && roce < 15 && !flags.includes('LOW_ROCE')) flags.push('LOW_ROCE');
+  } else if (Array.isArray(hit.risk_flags)) {
+    for (const f of hit.risk_flags as string[]) {
+      if (['QUALITY_FAIL', 'QUALITY_UNKNOWN', 'LOW_ROE', 'LOW_ROCE'].includes(f) && !flags.includes(f)) {
+        flags.push(f);
+      }
+    }
+  }
+
   const truth = hit.backtest_truth as Record<string, unknown> | undefined;
   if (truth) {
     const btFlag = riskFlagForGrade(String(truth.grade ?? ''));
     if (btFlag) flags.push(btFlag);
+    const edgeStatus = economicEdgeGateStatus({
+      trades_closed: Number(truth.trades_closed ?? 0),
+      profit_factor: Number(truth.profit_factor ?? 0),
+      compounded_return_pct: Number(truth.compounded_return_pct ?? 0),
+      max_drawdown_pct: Number(truth.max_drawdown_pct ?? 0),
+      expectancy_pct: Number(truth.expectancy_pct ?? 0),
+      win_rate_pct: Number(truth.win_rate_pct ?? 0),
+      avg_win_pct: Number(truth.avg_win_pct ?? 0),
+      avg_loss_pct: Number(truth.avg_loss_pct ?? 0),
+    });
+    if (edgeStatus === 'fail') flags.push('BACKTEST_EDGE_FAIL');
+    else if (edgeStatus === 'pass') flags.push('BACKTEST_EDGE_OK');
+
+    // Soft WR observation only — never the primary blocker.
+    const wrFlag = riskFlagForWinRate({
+      trades_closed: Number(truth.trades_closed ?? 0),
+      win_rate_pct: Number(truth.win_rate_pct ?? 0),
+    });
+    if (wrFlag === 'BACKTEST_LOW_WR') flags.push(wrFlag);
   }
 
   return flags;
@@ -183,6 +252,8 @@ export function decisionScore(hit: Record<string, unknown>, regime: Record<strin
   const truth = hit.backtest_truth as Record<string, unknown> | undefined;
   if (truth) {
     score += Number(truth.score_delta ?? scoreDelta(String(truth.grade ?? '')));
+    // Prefer live economic boost when score_delta was grade-only.
+    if (truth.score_delta == null) score += economicScoreBoost(truth as never);
   }
 
   const penalties: Record<string, number> = {
@@ -195,6 +266,11 @@ export function decisionScore(hit: Record<string, unknown>, regime: Record<strin
     SCORE_BELOW_FLOOR: 10,
     HIGH_VOL_NO_SURGE: 6,
     BEAR_NO_STRICT: 5,
+    BACKTEST_EDGE_FAIL: 14,
+    BACKTEST_LOW_WR: 4, // soft only
+    BACKTEST_EDGE_OK: 0,
+    BACKTEST_STRONG: 0,
+    BACKTEST_WR_OK: 0,
   };
   for (const flag of flags) score -= penalties[flag] ?? 4;
 
@@ -207,9 +283,18 @@ export function entryAction(
   flags: string[],
   regime?: Record<string, unknown> | null,
 ): string {
-  const blockers = ['STALE_DATA', 'LOW_R', 'RSI_CHASE', 'EXTENDED_52W'];
+  const blockers = ['STALE_DATA', 'LOW_R', 'RSI_CHASE', 'EXTENDED_52W', 'BACKTEST_EDGE_FAIL'];
   for (const b of blockers) {
     if (flags.includes(b) && score < 70) return ACTION_SKIP;
+  }
+
+  if (flags.includes('BACKTEST_EDGE_FAIL') && score < 78) {
+    return score >= 58 ? ACTION_WATCH : ACTION_SKIP;
+  }
+
+  // Soft WR: mild demotion only — never the sole skip reason when edge is OK.
+  if (flags.includes('BACKTEST_LOW_WR') && !flags.includes('BACKTEST_EDGE_OK') && score < 72) {
+    return score >= 58 ? ACTION_WATCH : ACTION_SKIP;
   }
 
   if (regime?.blocks_strict_enter && String(hit.strict_verdict ?? '') !== 'ENTER') {
@@ -238,12 +323,32 @@ export function isHighConviction(
   action: string,
   flags: string[],
 ): boolean {
-  if (action === ACTION_STRONG_BUY) return true;
-  if (action !== ACTION_BUY || score < 72) return false;
-  if (String(hit.strict_verdict ?? '') !== 'ENTER') return false;
+  // High conviction requires proven economic edge — not win rate alone.
+  if (flags.includes('BACKTEST_EDGE_FAIL')) return false;
+  const truth = hit.backtest_truth as Record<string, unknown> | undefined;
+  if (economicEdgeGateStatus(truth as never) !== 'pass') return false;
+
+  // Quality filter: avoid chase entries that historically stop out (WR drag).
+  if (flags.includes('RSI_CHASE') || flags.includes('EXTENDED_52W')) return false;
   if (flags.includes('STALE_DATA') || flags.includes('LOW_R')) return false;
   if (flags.includes('BACKTEST_FAIL')) return false;
+  if (flags.includes('QUALITY_FAIL') || flags.includes('QUALITY_UNKNOWN') || flags.includes('LOW_ROE') || flags.includes('LOW_ROCE')) {
+    return false;
+  }
+  if (hit.fundamental_quality_ok === false) return false;
+
+  if (action === ACTION_STRONG_BUY) {
+    return hit.r_multiple_ok === true;
+  }
+  if (action !== ACTION_BUY || score < 72) return false;
+  if (String(hit.strict_verdict ?? '') !== 'ENTER') return false;
   if (flags.includes('BACKTEST_WEAK') && score < 78) return false;
+
+  // Prefer confirmed momentum/breakout for HC — lifts live WR without dropping edge gate.
+  const qualityTape = hit.volume_surge === true || hit.broke_swing_high === true;
+  if (!qualityTape && score < 80) return false;
+  // High-vol research: never mark HC without tape confirmation.
+  if ((flags.includes('HIGH_VOL_NO_SURGE') || hit.high_vol_entry === true) && !qualityTape) return false;
 
   return hit.r_multiple_ok === true;
 }
@@ -263,6 +368,25 @@ export function evaluatePositionAction(
     num(row.effective_stop) ?? num(row.active_stop);
   const trailArmed = Boolean(row.trail_armed);
   const trailStop = num(row.trail_stop);
+
+  if (isCompounderManaged(row, hitMatch)) {
+    // Still honor a hard X1 stop if the exit engine already fired.
+    if (exitV === 'EXIT') {
+      const triggers = Array.isArray(row.exit_triggers) ? row.exit_triggers : [];
+      const hardStop = triggers.some((t) => /stop|x1|hard/i.test(String(t)));
+      if (hardStop) {
+        reasons.push(triggers.length > 0 ? triggers.join(', ') : 'Hard stop triggered');
+        reasons.push('Compounder sleeve still honors hard capital stop');
+        return positionResult(POS_EXIT, reasons, entry, price, activeStop);
+      }
+    }
+    const hold = evaluateCompounderHold(row, hitMatch);
+    reasons.push(...hold.reasons);
+    if (hold.action === 'EXIT_THESIS') return positionResult(POS_EXIT, reasons, entry, price, activeStop);
+    if (hold.action === 'CUT_LOSS') return positionResult(POS_CUT, reasons, entry, price, activeStop);
+    if (hold.action === 'REVIEW_THESIS') return positionResult(POS_REVIEW, reasons, entry, price, activeStop);
+    return positionResult(POS_HOLD, reasons, entry, price, activeStop);
+  }
 
   if (exitV === 'EXIT') {
     const triggers = Array.isArray(row.exit_triggers) ? row.exit_triggers : [];

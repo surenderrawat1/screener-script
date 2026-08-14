@@ -1,4 +1,5 @@
 import { Redis } from 'ioredis';
+import { randomUUID } from 'node:crypto';
 import { CACHE_PREFIX, CACHE_TTL } from '@sv/shared';
 
 let client: Redis | null = null;
@@ -130,6 +131,29 @@ export async function cacheGetJson<T>(key: string): Promise<T | null> {
   }
 }
 
+/**
+ * Batch JSON GET via Redis MGET (one round trip for many keys).
+ * Missing / unparseable entries are null — same semantics as cacheGetJson.
+ */
+export async function cacheGetJsonMany<T>(keys: string[]): Promise<Array<T | null>> {
+  if (keys.length === 0) return [];
+  try {
+    const redis = await ensureRedis();
+    const raw = await redis.mget(...keys);
+    return raw.map((item) => {
+      if (item == null) return null;
+      try {
+        return JSON.parse(item) as T;
+      } catch {
+        return null;
+      }
+    });
+  } catch {
+    resetRedisClient();
+    return keys.map(() => null);
+  }
+}
+
 export async function cacheSetJson(
   key: string,
   value: unknown,
@@ -141,6 +165,94 @@ export async function cacheSetJson(
   } catch {
     resetRedisClient();
   }
+}
+
+/** Acquire a short Redis lease. Returns null when held or Redis is unavailable. */
+export async function acquireCacheLock(key: string, ttlSeconds: number): Promise<string | null> {
+  try {
+    const redis = await ensureRedis();
+    const token = randomUUID();
+    const result = await redis.set(key, token, 'EX', Math.max(1, ttlSeconds), 'NX');
+    return result === 'OK' ? token : null;
+  } catch {
+    resetRedisClient();
+    return null;
+  }
+}
+
+/** Release only the lease owned by token; never delete another worker's lock. */
+export async function releaseCacheLock(key: string, token: string): Promise<void> {
+  try {
+    const redis = await ensureRedis();
+    await redis.eval(
+      "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+      1,
+      key,
+      token,
+    );
+  } catch {
+    resetRedisClient();
+  }
+}
+
+/** Extend TTL only when this process still owns the lease. */
+export async function renewCacheLock(
+  key: string,
+  token: string,
+  ttlSeconds: number,
+): Promise<boolean> {
+  try {
+    const redis = await ensureRedis();
+    const result = await redis.eval(
+      "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('set', KEYS[1], ARGV[1], 'EX', ARGV[2]) else return 0 end",
+      1,
+      key,
+      token,
+      String(Math.max(1, ttlSeconds)),
+    );
+    return result === 'OK';
+  } catch {
+    resetRedisClient();
+    return false;
+  }
+}
+
+const WORKER_LEADER_KEY = 'sv:worker:leader';
+/** Lease longer than heartbeat interval so a busy tick cannot lose leadership mid-work. */
+export const WORKER_LEADER_TTL_SEC = 90;
+
+/**
+ * Single-leader gate for scheduled worker ticks (auto scan, paper, daily sync).
+ * Fail-open when Redis is unavailable so local single-worker still runs.
+ * Returns true when this workerId holds (or just acquired) the lease.
+ */
+export async function tryHoldWorkerLeader(
+  workerId: string,
+  ttlSeconds = WORKER_LEADER_TTL_SEC,
+): Promise<boolean> {
+  const id = String(workerId || '').trim();
+  if (!id) return true;
+  try {
+    const redis = await ensureRedis();
+    const ttl = Math.max(1, ttlSeconds);
+    const current = await redis.get(WORKER_LEADER_KEY);
+    if (current === id) {
+      await redis.expire(WORKER_LEADER_KEY, ttl);
+      return true;
+    }
+    if (current) return false;
+    const result = await redis.set(WORKER_LEADER_KEY, id, 'EX', ttl, 'NX');
+    return result === 'OK';
+  } catch {
+    resetRedisClient();
+    return true;
+  }
+}
+
+export async function releaseWorkerLeader(workerId: string): Promise<void> {
+  const id = String(workerId || '').trim();
+  if (!id) return;
+  await releaseCacheLock(WORKER_LEADER_KEY, id);
 }
 
 export async function cacheDel(pattern: string): Promise<number> {
@@ -198,6 +310,7 @@ export async function cacheClearSymbol(symbol: string): Promise<number> {
     cacheKey(CACHE_PREFIX.TA, `bars:${sym}*`),
     cacheKey(CACHE_PREFIX.TA, `bars:1h:${sym}*`),
     cacheKey(CACHE_PREFIX.TA, `intraday:${intradayKey}:*`),
+    cacheKey(CACHE_PREFIX.INTRADAY, `state:${slug}:*`),
   ];
 
   let deleted = 0;
@@ -275,9 +388,19 @@ export async function rateLimitCheck(
   }
 }
 
-export async function setWorkerHeartbeat(workerId: string): Promise<void> {
+export async function setWorkerHeartbeat(
+  workerId: string,
+  meta: { leader?: boolean } = {},
+): Promise<void> {
   const key = cacheKey(CACHE_PREFIX.WORKER_HEARTBEAT, workerId);
-  await cacheSetJson(key, { at: new Date().toISOString() }, 120);
+  await cacheSetJson(
+    key,
+    {
+      at: new Date().toISOString(),
+      ...(meta.leader != null ? { leader: meta.leader } : {}),
+    },
+    120,
+  );
 }
 
 export async function hasActiveWorker(): Promise<boolean> {

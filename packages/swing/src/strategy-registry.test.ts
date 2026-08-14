@@ -10,8 +10,8 @@ import {
 } from './strategy-registry.js';
 
 describe('strategy-registry', () => {
-  it('lists 21 system strategies', () => {
-    expect(listStrategies().length).toBe(21);
+  it('lists 22 system strategies', () => {
+    expect(listStrategies().length).toBe(22);
   });
 
   it('has swing strict enter on swing engine', () => {
@@ -38,8 +38,19 @@ describe('strategy-registry', () => {
 
   it('filters by style tab', () => {
     const swing = listStrategies(STRATEGY_STYLE_SWING);
-    expect(swing.length).toBe(6);
+    expect(swing.length).toBe(7);
     expect(swing.every((s) => s.style === STRATEGY_STYLE_SWING)).toBe(true);
+  });
+
+  it('has 20 MA Stratzy swing strategy requiring E12', () => {
+    const s = getStrategy('swing_ma20_stratzy');
+    expect(s?.ready).toBe(true);
+    expect(s?.require_rules).toEqual(['E12']);
+    expect(s?.sort_by).toBe('swing_rank');
+  });
+
+  it('SETUP+ discovery sorts by swing_rank (not raw rules_passed)', () => {
+    expect(getStrategy('swing_setup_plus')?.sort_by).toBe('swing_rank');
   });
 
   it('validates keys', () => {
@@ -47,10 +58,10 @@ describe('strategy-registry', () => {
     expect(isValidStrategy('nope')).toBe(false);
   });
 
-  it('marks all 21 system strategies ready', () => {
+  it('marks all 22 system strategies ready', () => {
     const blocked = listStrategies().filter((s) => !s.ready);
     expect(blocked).toEqual([]);
-    expect(readyStrategyCount()).toBe(21);
+    expect(readyStrategyCount()).toBe(22);
   });
 
   it('has at least 18 ready strategies', () => {

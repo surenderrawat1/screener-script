@@ -1,10 +1,13 @@
 import type { IntradayBar } from './nifty-direction.js';
 import { atrPct14 } from '@sv/swing';
+import { resolveExitProfile } from './exit-profile.js';
+import { TIME_STOP_IST } from './session-clock.js';
 
-const TARGET_RR = [1, 2, 3];
-const PARTIAL_PCTS = [40, 40, 20];
-
-export function buildTradePlan(bars: IntradayBar[], analysis: Record<string, unknown>) {
+export function buildTradePlan(
+  bars: IntradayBar[],
+  analysis: Record<string, unknown>,
+  options: { exit_profile?: string } = {},
+) {
   if (!analysis.ok) {
     return noTrade(String(analysis.message ?? 'Analysis unavailable'), analysis);
   }
@@ -25,12 +28,13 @@ export function buildTradePlan(bars: IntradayBar[], analysis: Record<string, unk
   const swing = swingLevels(bars, lookback);
   const session = sessionLevels(bars);
   const atr = atrFromBars(bars, price);
+  const profile = resolveExitProfile(options.exit_profile);
 
   if (['bullish', 'lean_bull'].includes(direction)) {
-    return buildDirectional('long', bars, analysis, swing, session, atr, interval);
+    return buildDirectional('long', bars, analysis, swing, session, atr, interval, profile);
   }
   if (['bearish', 'lean_bear'].includes(direction)) {
-    return buildDirectional('short', bars, analysis, swing, session, atr, interval);
+    return buildDirectional('short', bars, analysis, swing, session, atr, interval, profile);
   }
   if (direction === 'sideways') {
     return noTrade('Sideways — range fades deferred in v2 MVP.', analysis);
@@ -46,6 +50,7 @@ function buildDirectional(
   _session: { high: number; low: number; open: number },
   atr: number,
   interval: string,
+  profile: ReturnType<typeof resolveExitProfile>,
 ) {
   const price = Number(analysis.price ?? 0);
   const ema9 = num(analysis.ema9);
@@ -72,7 +77,7 @@ function buildDirectional(
       ema21 !== null ? ema21 - atr * 0.5 : entry - atr,
       swing.low,
     );
-    return packPlan(isLong, entryType, entry, entryNote, Math.round(stop * 100) / 100, confidence, interval, analysis);
+    return packPlan(isLong, entryType, entry, entryNote, Math.round(stop * 100) / 100, confidence, interval, analysis, profile);
   }
 
   if (direction === 'lean_bear' && ema9 !== null && price < ema9) {
@@ -81,7 +86,7 @@ function buildDirectional(
     entryNote = 'Sell rally to EMA-9';
   }
   const stop = Math.max(entry + atr, swing.high + atr * 0.5, ema21 !== null ? ema21 + atr * 0.5 : entry + atr);
-  return packPlan(false, entryType, entry, entryNote, Math.round(stop * 100) / 100, confidence, interval, analysis);
+  return packPlan(false, entryType, entry, entryNote, Math.round(stop * 100) / 100, confidence, interval, analysis, profile);
 }
 
 function packPlan(
@@ -93,12 +98,13 @@ function packPlan(
   confidence: number,
   interval: string,
   analysis: Record<string, unknown>,
+  profile: ReturnType<typeof resolveExitProfile>,
 ) {
   const riskPts = Math.abs(entry - stop);
   if (riskPts <= 0) return noTrade('Could not derive a valid risk distance.', analysis);
 
   const riskPct = Math.round((riskPts / entry) * 1000) / 1000;
-  const exits = scaledExits(entry, stop, isLong);
+  const exits = scaledExits(entry, stop, isLong, profile);
   const trigger = entryTrigger(entryType, entry, Number(analysis.price ?? entry), isLong);
 
   return {
@@ -114,23 +120,36 @@ function packPlan(
     entry: { type: entryType, price: Math.round(entry * 100) / 100, condition: entryNote },
     stop_loss: { price: Math.round(stop * 100) / 100, pts: Math.round(riskPts * 100) / 100, pct: riskPct, label: 'Structural stop' },
     exits,
-    exit_rules: ['T1 book 40% + breakeven', 'T2 book 40%', 'T3 trail remainder', 'Time exit 15:15 IST'],
+    exit_profile: profile.id,
+    exit_profile_label: profile.label,
+    exit_rules: [
+      `T1 book ${profile.partial_pcts[0]}% + breakeven`,
+      `T2 book ${profile.partial_pcts[1]}%`,
+      `T3 trail remainder (${profile.partial_pcts[2]}%)`,
+      `Time exit ${TIME_STOP_IST} IST`,
+      profile.label,
+    ],
     trail: { trail_pts: Math.round(riskPts * 1.5 * 100) / 100, label: 'Trail after T2' },
-    time_stop_ist: '15:15',
+    time_stop_ist: TIME_STOP_IST,
     invalidation: isLong ? 'Close below stop on active timeframe' : 'Close above stop on active timeframe',
     interval,
   };
 }
 
-function scaledExits(entry: number, stop: number, isLong: boolean) {
+function scaledExits(
+  entry: number,
+  stop: number,
+  isLong: boolean,
+  profile: ReturnType<typeof resolveExitProfile>,
+) {
   const risk = Math.abs(entry - stop);
-  return TARGET_RR.map((rr, i) => {
+  return profile.rr.map((rr, i) => {
     const px = isLong ? entry + risk * rr : entry - risk * rr;
     return {
       tier: `T${i + 1}`,
       price: Math.round(px * 100) / 100,
       rr,
-      action: `Book ${PARTIAL_PCTS[i]}%`,
+      action: `Book ${profile.partial_pcts[i]}%`,
     };
   });
 }

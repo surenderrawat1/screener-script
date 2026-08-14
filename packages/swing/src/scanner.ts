@@ -1,6 +1,6 @@
 import type { SwingScanHit, SwingScanOptions, SymbolContext, TaMetrics } from './types.js';
 import { matchesEntryRules } from './entry-filters.js';
-import { evaluateEntry } from './evaluate-entry.js';
+import { evaluateEntry, ENGINE_VERSION } from './evaluate-entry.js';
 import { fromTa } from './gc9-dc9.js';
 import { VOLUME_SURGE_MIN } from './dynamic-signals.js';
 import { normalizeScanHit } from './hit-normalizer.js';
@@ -98,6 +98,9 @@ export function matchesZone52w(pct52w: number | null, zone: string, chartZone?: 
 
 export function normalizeZone52w(zone: string): string {
   const z = zone.toLowerCase().trim();
+  // UI aliases: low ≈ green (near 52w low), high ≈ red (near 52w high)
+  if (z === 'low') return ZONE_52W_GREEN;
+  if (z === 'high') return ZONE_52W_RED;
   return [ZONE_52W_ANY, ZONE_52W_GREEN, ZONE_52W_MID, ZONE_52W_RED].includes(z) ? z : ZONE_52W_ANY;
 }
 
@@ -191,7 +194,7 @@ export function scanSymbols(
   let ranked = rankHits(hits);
   ranked = sortHits(ranked, sortBy);
 
-  const engineVersion = String(ranked[0]?.engine_version ?? 'v3.9-gc9');
+  const engineVersion = String(ranked[0]?.engine_version ?? ENGINE_VERSION);
   const scanSummary = buildScanSummary(ranked, minVerdict, { scanned: contexts.length });
 
   return {
@@ -209,7 +212,12 @@ export function scanSymbols(
 
 function sortHits(hits: SwingScanHit[], sortBy: string): SwingScanHit[] {
   if (sortBy === 'rules_passed') {
-    return [...hits].sort((a, b) => (b.rules_passed ?? 0) - (a.rules_passed ?? 0));
+    return [...hits].sort((a, b) => {
+      const hardDiff =
+        Number(b.rules_hard_passed ?? b.rules_passed ?? 0) - Number(a.rules_hard_passed ?? a.rules_passed ?? 0);
+      if (hardDiff !== 0) return hardDiff;
+      return Number(b.rules_passed ?? 0) - Number(a.rules_passed ?? 0);
+    });
   }
   if (sortBy === 'r_multiple') {
     return [...hits].sort((a, b) => Number(b.r_multiple ?? 0) - Number(a.r_multiple ?? 0));
@@ -262,8 +270,13 @@ export function assessScanEligibility(
   if (!matchesGc9Entry(entry, ta, price, Boolean(options.gc9_only))) {
     failed.push('GC9 entry only (E11)');
   }
-  if (!matchesEntryRules(entry as { rules?: import('./types.js').SwingRule[]; rules_passed?: number }, options)) {
-    failed.push('Required entry rules');
+  if (!matchesEntryRules(entry as { rules?: import('./types.js').SwingRule[]; rules_passed?: number; rules_hard_passed?: number }, options)) {
+    const minHard = options.min_rules_passed;
+    if (minHard != null && minHard > 0) {
+      failed.push(`Min hard rules (E1–E8 ≥ ${Math.min(minHard, 8)})`);
+    } else {
+      failed.push('Required entry rules');
+    }
   }
 
   return { passes: failed.length === 0, failed };

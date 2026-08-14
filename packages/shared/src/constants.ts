@@ -65,6 +65,7 @@ export const CACHE_PREFIX = {
   SWING_AUTO: 'sv:swing:auto',
   REGIME: 'sv:regime',
   MORNING: 'sv:morning',
+  INTRADAY: 'sv:intraday',
 } as const;
 
 export const CACHE_TTL = {
@@ -78,6 +79,7 @@ export const CACHE_TTL = {
   yahoo: 604800,
   job_progress: 3600,
   intraday: 120,
+  intraday_state: 60,
   swing_auto_snapshot: 7200,
   regime: 900,
   morning_etf: 600,
@@ -117,6 +119,12 @@ export const SCREENER_PRESETS = [
   'cfa_moat_bottom',
   'cfa_moat_uptrend',
   'cfa_best_opportunity',
+  'ta_fresh_sma20_cross',
+  'ta_fresh_sma50_cross',
+  'ta_hourly_sma20_cross',
+  'ta_fresh_ema20_cross',
+  'ta_fresh_ema50_cross',
+  'ta_hourly_ema20_cross',
 ] as const;
 
 export type ScreenerPreset = (typeof SCREENER_PRESETS)[number];

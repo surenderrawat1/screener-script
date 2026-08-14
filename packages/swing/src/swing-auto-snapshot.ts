@@ -20,6 +20,12 @@ export async function getSwingAutoSnapshot(): Promise<SwingAutoSnapshot | null> 
   return row ?? null;
 }
 
+/** Write a fully-formed snapshot to Redis (Phase C1 — warm after DB fallback). */
+export async function warmSwingAutoSnapshot(snapshot: SwingAutoSnapshot): Promise<void> {
+  const key = cacheKey(CACHE_PREFIX.SWING_AUTO, SNAPSHOT_KEY);
+  await cacheSetJson(key, snapshot, getCacheTtl().swing_auto_snapshot);
+}
+
 export async function saveSwingAutoSnapshot(scanResult: Record<string, unknown>): Promise<SwingAutoSnapshot> {
   const hits = Array.isArray(scanResult.hits) ? (scanResult.hits as Record<string, unknown>[]) : [];
   const regime = (scanResult.regime as Record<string, unknown> | undefined) ?? null;
@@ -39,7 +45,6 @@ export async function saveSwingAutoSnapshot(scanResult: Record<string, unknown>)
     summary: summarizeScan(scanResult, hits, regime),
   };
 
-  const key = cacheKey(CACHE_PREFIX.SWING_AUTO, SNAPSHOT_KEY);
-  await cacheSetJson(key, snapshot, getCacheTtl().swing_auto_snapshot);
+  await warmSwingAutoSnapshot(snapshot);
   return snapshot;
 }

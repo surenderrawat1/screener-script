@@ -11,7 +11,14 @@ const candidates = [
 
 for (const path of candidates) {
   if (existsSync(path)) {
-    config({ path });
+    const { parsed } = config({ path });
+    // CRLF-authored .env files leave a trailing CR that Node rejects in HTTP headers.
+    for (const key of Object.keys(parsed ?? {})) {
+      const value = process.env[key];
+      if (typeof value === 'string' && /\r$/.test(value)) {
+        process.env[key] = value.replace(/\r+$/, '');
+      }
+    }
     break;
   }
 }

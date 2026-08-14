@@ -7,10 +7,13 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY apps/worker/package.json ./apps/worker/
 COPY packages/cache/package.json ./packages/cache/
 COPY packages/core/package.json ./packages/core/
+COPY packages/data-adapters/package.json ./packages/data-adapters/
 COPY packages/db/package.json ./packages/db/
+COPY packages/intraday/package.json ./packages/intraday/
 COPY packages/jobs/package.json ./packages/jobs/
 COPY packages/shared/package.json ./packages/shared/
-RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+COPY packages/swing/package.json ./packages/swing/
+RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
 COPY . .

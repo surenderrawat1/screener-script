@@ -1,5 +1,5 @@
 import { SwingAddPositionForm } from './SwingAddPositionForm';
-import { SwingEntryRulesTable } from './SwingEntryRulesTable';
+import { SwingRulesTable } from './SwingRulesTable';
 import { SwingExitRulesReference } from './SwingExitRulesReference';
 import { SwingExitTestPanel } from './SwingExitTestPanel';
 import { SwingScoreBreakdown } from './SwingScoreBreakdown';
@@ -62,12 +62,13 @@ export function SwingSymbolEvaluatePanel({ evalData, loading = false, onPosition
         </div>
 
         <section className="swing-subsection swing-rules-section">
-          <h3>Entry rules (E1–E11)</h3>
+          <h3>Entry rules (E1–E8 hard · E9–E12 soft)</h3>
           <p className="swing-subsection-hint muted">
-            Strict ENTER requires score floor, R ≥ {entry.min_r_multiple ?? evalData.engine_meta?.min_r_multiple ?? 3},
-            liquidity, and net edge after charges.
+            Hard E1–E8 drive risk/structure. Soft E9–E12 are catalysts/style (Stratzy via require E12).
+            Strict ENTER needs score floor, R ≥ {entry.min_r_multiple ?? evalData.engine_meta?.min_r_multiple ?? 3},
+            liquidity, and net edge — not all 12 checklist rows.
           </p>
-          <SwingEntryRulesTable rules={rules} />
+          <SwingRulesTable showTiers rules={rules} emptyLabel="Entry rules not available." />
         </section>
       </section>
 

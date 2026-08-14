@@ -1,11 +1,13 @@
 import { FormEvent, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { APP_NAME } from '../brand';
+import { homeRouteForRole } from '../lib/home-route';
 
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('admin@example.com');
   const [password, setPassword] = useState('admin123');
   const [error, setError] = useState('');
@@ -16,8 +18,9 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
-      navigate('/');
+      const signedIn = await login(email, password);
+      const next = searchParams.get('next') ?? '';
+      navigate(next.startsWith('/') && !next.startsWith('//') ? next : homeRouteForRole(signedIn.role));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {

@@ -102,9 +102,10 @@ Reference data in PostgreSQL; market cache warmed once at **06:00 IST**. Phases 
 
 8-phase allocation wizard — `index.php` parity. Phases **FV-A** through **FV-E**.
 
-- [ ] `/verify/full` route + Fetch & Fill API
-- [ ] `VerificationEngine` + investment-ready badge + scorecard UI
-- [ ] Phase 6 sector panels, Phase 8 thesis → watchlist
+- [x] `/verify/full` route + Fetch & Fill API
+- [x] `VerificationEngine` + investment-ready badge + scorecard UI
+- [x] Phase 6 sector panels, Phase 8 thesis → watchlist
+- [x] EPS dual basis + cache_meta D1 gate + Hindi/mobile polish (FV-E)
 - **Doc:** [FULL-VERIFY.md](FULL-VERIFY.md)
 
 ### CFA Verify memo (parallel track)
@@ -130,7 +131,7 @@ Single-symbol research hub — fundamentals, valuation, chart, Screener profile,
 
 - [ ] Morning briefing dashboard (regime, top hits, position alerts)
 - [ ] LTG (long-term growth) auto-screener pipeline
-- [ ] Email/webhook notifications for tier changes (optional)
+- [x] Email/webhook notifications for tier changes (optional)
 - **Doc:** [MORNING-ROUTINE.md](MORNING-ROUTINE.md) (morning cockpit); LTG auto TBD
 
 ### Morning Routine (parallel track)
@@ -147,10 +148,11 @@ Pre-market one-screen cockpit — `morning-dashboard.php` parity. Phases **MR-A*
 
 Curated 21-strategy runner — `strategies.php` parity. Phases **TS-A** through **TS-F**.
 
-- [ ] `GET /api/v1/strategies` + `/strategies` page (TS-A)
-- [ ] Swing + screener engines; hybrid screener→swing pipeline (TS-B–TS-C)
-- [ ] Expand screener presets for positional strategies (TS-D) — see [SCREENER.md](SCREENER.md)
-- [ ] Background strategy jobs + progress UI (TS-E)
+- [x] `GET /api/v1/strategies` + `/strategies` page (TS-A)
+- [x] Swing + screener engines; hybrid screener→swing pipeline (TS-B–TS-C)
+- [x] Expand screener presets for positional strategies (TS-D) — see [SCREENER.md](SCREENER.md)
+- [x] Background strategy jobs + progress UI (TS-E)
+- [x] Deep link autorun on `/strategies` (TS-F3)
 - **Doc:** [TRADING-STRATEGIES.md](TRADING-STRATEGIES.md)
 
 ### Phase 11 — Strategy builder

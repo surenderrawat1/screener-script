@@ -49,6 +49,12 @@ export interface VerifyFullFetchResponse {
     from_cache?: boolean;
     cached_until?: string;
   };
+  /** Unix seconds — pass through to /run for D1 data-quality gate. */
+  cache_meta: {
+    created_at: number;
+    expires_at?: number;
+    from_cache?: boolean;
+  };
   phases: typeof VERIFY_FULL_PHASES;
   sectors: typeof VERIFY_SECTOR_OPTIONS;
 }
@@ -100,8 +106,9 @@ export async function fetchVerifyFull(
 
   const name = String(input.stock_name ?? normalized);
   const ttlDays = 7;
-  const cachedUntil = new Date();
-  cachedUntil.setDate(cachedUntil.getDate() + ttlDays);
+  const createdAt = Math.floor(Date.now() / 1000);
+  const expiresAt = createdAt + ttlDays * 86400;
+  const cachedUntil = new Date(expiresAt * 1000);
 
   return {
     success: true,
@@ -117,6 +124,11 @@ export async function fetchVerifyFull(
       sources: fetched.sources,
       from_cache: fetched.from_cache,
       cached_until: cachedUntil.toISOString().slice(0, 10),
+    },
+    cache_meta: {
+      created_at: createdAt,
+      expires_at: expiresAt,
+      from_cache: Boolean(fetched.from_cache),
     },
     phases: VERIFY_FULL_PHASES,
     sectors: VERIFY_SECTOR_OPTIONS,
@@ -164,7 +176,11 @@ export interface VerifyFullRunResponse {
 
 export async function runVerifyFull(
   input: VerifyFullInput,
-  options: { symbol?: string; userId?: string } = {},
+  options: {
+    symbol?: string;
+    userId?: string;
+    cacheMeta?: { created_at?: number; expires_at?: number; from_cache?: boolean } | null;
+  } = {},
 ): Promise<VerifyFullRunResponse> {
   const sym = normalizeVerifySymbol(
     String(options.symbol ?? input.fetch_symbol ?? input.stock_name ?? ''),
@@ -172,9 +188,20 @@ export async function runVerifyFull(
   if (!sym) throw new Error('Invalid symbol');
 
   const hints = { ...NSE_SECTOR_HINTS, ...sectorHintsForSymbol(sym) };
+  const cacheMeta =
+    options.cacheMeta && (options.cacheMeta.created_at ?? 0) > 0
+      ? {
+          created_at: Number(options.cacheMeta.created_at),
+          expires_at:
+            options.cacheMeta.expires_at != null
+              ? Number(options.cacheMeta.expires_at)
+              : undefined,
+        }
+      : { created_at: Math.floor(Date.now() / 1000) };
+
   const result = runVerificationEngine(input as Record<string, unknown>, {
     sectorHints: hints,
-    cacheMeta: { created_at: Math.floor(Date.now() / 1000) },
+    cacheMeta,
   });
 
   let runId: string | undefined;

@@ -21,7 +21,8 @@
     "morning:prewarm": "pnpm --filter @sv/data-adapters run morning:prewarm",
     "test": "pnpm -r run test",
     "lint": "pnpm -r run lint",
-    "typecheck": "pnpm -r run typecheck"
+    "typecheck": "pnpm -r run typecheck",
+    "deploy:check": "bash scripts/deploy-check.sh"
   },
   "engines": {
     "node": ">=20"

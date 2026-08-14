@@ -1,9 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { api } from '../api';
 import { Page, PageHeader } from '../components/PageLayout';
 import { ScreenerResults } from '../components/screener/ScreenerResults';
 import type { ScreenerRow } from '../lib/screener-export';
+import { emaColumnsRelevant, hourlyEmaColumnsRelevant } from '../lib/screener-filters';
 
 interface Universe {
   key: string;
@@ -14,8 +15,9 @@ interface Universe {
 interface ScreenerPreset {
   id: string;
   label: string;
-  filters: Record<string, number>;
+  filters: Record<string, unknown>;
   description?: string;
+  ta_preset?: boolean;
 }
 
 interface CustomFilters {
@@ -26,12 +28,52 @@ interface CustomFilters {
   min_promoter_holding: string;
 }
 
+interface TechFilters {
+  fresh_cross_bars: string;
+  cross_above_sma20: boolean;
+  cross_below_sma20: boolean;
+  cross_above_sma50: boolean;
+  cross_below_sma50: boolean;
+  cross_above_ema20: boolean;
+  cross_below_ema20: boolean;
+  cross_above_ema50: boolean;
+  cross_below_ema50: boolean;
+  hourly_cross_above_sma20: boolean;
+  hourly_cross_below_sma20: boolean;
+  hourly_cross_above_sma50: boolean;
+  hourly_cross_below_sma50: boolean;
+  hourly_cross_above_ema20: boolean;
+  hourly_cross_below_ema20: boolean;
+  hourly_cross_above_ema50: boolean;
+  hourly_cross_below_ema50: boolean;
+}
+
 const EMPTY_FILTERS: CustomFilters = {
   min_roe: '',
   min_roce: '',
   min_mos: '',
   max_pe: '',
   min_promoter_holding: '',
+};
+
+const EMPTY_TECH: TechFilters = {
+  fresh_cross_bars: '3',
+  cross_above_sma20: false,
+  cross_below_sma20: false,
+  cross_above_sma50: false,
+  cross_below_sma50: false,
+  cross_above_ema20: false,
+  cross_below_ema20: false,
+  cross_above_ema50: false,
+  cross_below_ema50: false,
+  hourly_cross_above_sma20: false,
+  hourly_cross_below_sma20: false,
+  hourly_cross_above_sma50: false,
+  hourly_cross_below_sma50: false,
+  hourly_cross_above_ema20: false,
+  hourly_cross_below_ema20: false,
+  hourly_cross_above_ema50: false,
+  hourly_cross_below_ema50: false,
 };
 
 function parseFilterNum(value: string): number | undefined {
@@ -53,6 +95,19 @@ function filtersFromPreset(preset: ScreenerPreset | undefined): CustomFilters {
   };
 }
 
+function techFromPreset(preset: ScreenerPreset | undefined): TechFilters {
+  const out = { ...EMPTY_TECH };
+  if (!preset?.filters) return out;
+  for (const key of Object.keys(out) as Array<keyof TechFilters>) {
+    if (key === 'fresh_cross_bars') continue;
+    if (preset.filters[key] === true) out[key] = true;
+  }
+  if (preset.filters.fresh_cross_bars != null) {
+    out.fresh_cross_bars = String(preset.filters.fresh_cross_bars);
+  }
+  return out;
+}
+
 function buildApiFilters(custom: CustomFilters): Record<string, number> | undefined {
   const out: Record<string, number> = {};
   const minRoe = parseFilterNum(custom.min_roe);
@@ -68,19 +123,57 @@ function buildApiFilters(custom: CustomFilters): Record<string, number> | undefi
   return Object.keys(out).length ? out : undefined;
 }
 
+function buildTechApiFilters(tech: TechFilters): Record<string, unknown> | undefined {
+  const out: Record<string, unknown> = {};
+  let anyCross = false;
+  for (const [key, value] of Object.entries(tech)) {
+    if (key === 'fresh_cross_bars') continue;
+    if (value === true) {
+      out[key] = true;
+      anyCross = true;
+    }
+  }
+  if (!anyCross) return undefined;
+  const fresh = parseFilterNum(tech.fresh_cross_bars);
+  out.fresh_cross_bars = fresh !== undefined ? Math.min(5, Math.max(1, fresh)) : 3;
+  return out;
+}
+
+const TECH_CROSS_OPTIONS: Array<{ key: keyof TechFilters; label: string }> = [
+  { key: 'cross_above_sma20', label: 'Daily · Cross ↑ SMA-20' },
+  { key: 'cross_below_sma20', label: 'Daily · Cross ↓ SMA-20' },
+  { key: 'cross_above_sma50', label: 'Daily · Cross ↑ SMA-50' },
+  { key: 'cross_below_sma50', label: 'Daily · Cross ↓ SMA-50' },
+  { key: 'cross_above_ema20', label: 'Daily · Cross ↑ EMA-20' },
+  { key: 'cross_below_ema20', label: 'Daily · Cross ↓ EMA-20' },
+  { key: 'cross_above_ema50', label: 'Daily · Cross ↑ EMA-50' },
+  { key: 'cross_below_ema50', label: 'Daily · Cross ↓ EMA-50' },
+  { key: 'hourly_cross_above_sma20', label: 'Hourly · Cross ↑ SMA-20' },
+  { key: 'hourly_cross_below_sma20', label: 'Hourly · Cross ↓ SMA-20' },
+  { key: 'hourly_cross_above_sma50', label: 'Hourly · Cross ↑ SMA-50' },
+  { key: 'hourly_cross_below_sma50', label: 'Hourly · Cross ↓ SMA-50' },
+  { key: 'hourly_cross_above_ema20', label: 'Hourly · Cross ↑ EMA-20' },
+  { key: 'hourly_cross_below_ema20', label: 'Hourly · Cross ↓ EMA-20' },
+  { key: 'hourly_cross_above_ema50', label: 'Hourly · Cross ↑ EMA-50' },
+  { key: 'hourly_cross_below_ema50', label: 'Hourly · Cross ↓ EMA-50' },
+];
+
 export default function ScreenerPage() {
+  const routeLocation = useLocation();
+  const initialParams = useMemo(() => new URLSearchParams(routeLocation.search), [routeLocation.search]);
   const [universes, setUniverses] = useState<Universe[]>([]);
   const [presets, setPresets] = useState<ScreenerPreset[]>([]);
-  const [universe, setUniverse] = useState('nifty50');
-  const [preset, setPreset] = useState('quality');
-  const [maxScan, setMaxScan] = useState(200);
+  const [universe, setUniverse] = useState(initialParams.get('universe') ?? 'nifty50');
+  const [preset, setPreset] = useState(initialParams.get('preset') ?? 'quality');
+  const [maxScan, setMaxScan] = useState(Number(initialParams.get('maxScan') ?? 200) || 200);
   const [background, setBackground] = useState(false);
-  const [excludeRestricted, setExcludeRestricted] = useState(true);
-  const [showTa, setShowTa] = useState(false);
+  const [excludeRestricted, setExcludeRestricted] = useState(initialParams.get('exclude_restricted') !== '0');
+  const [showTa, setShowTa] = useState(initialParams.get('show_ta') === '1');
   const [refresh, setRefresh] = useState(false);
   const [exchangeMeta, setExchangeMeta] = useState<{ as_of: string; total: number } | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [customFilters, setCustomFilters] = useState<CustomFilters>({ ...EMPTY_FILTERS });
+  const [techFilters, setTechFilters] = useState<TechFilters>({ ...EMPTY_TECH });
   const [filtersTouched, setFiltersTouched] = useState(false);
   const [rows, setRows] = useState<ScreenerRow[]>([]);
   const [scanMeta, setScanMeta] = useState<{
@@ -94,11 +187,34 @@ export default function ScreenerPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [jobId, setJobId] = useState<string | null>(null);
-  const [progress, setProgress] = useState<{ processed: number; total: number; passed: number; phase?: string } | null>(
-    null,
-  );
+  const [progress, setProgress] = useState<
+    | {
+        processed: number;
+        total: number;
+        passed: number;
+        phase?: string;
+        recent_symbols?: string[];
+        recent_passed_symbols?: string[];
+      }
+    | null
+  >(null);
 
   const activePreset = useMemo(() => presets.find((p) => p.id === preset), [presets, preset]);
+  const activeUniverse = useMemo(() => universes.find((u) => u.key === universe), [universes, universe]);
+  const showEmaCols = emaColumnsRelevant(techFilters, showTa);
+  const showHourlyEmaCols = hourlyEmaColumnsRelevant(techFilters);
+
+  useEffect(() => {
+    const params = new URLSearchParams(routeLocation.search);
+    const u = params.get('universe');
+    const p = params.get('preset');
+    if (u) setUniverse(u);
+    if (p) setPreset(p);
+    if (params.get('show_ta') === '1') setShowTa(true);
+    if (params.get('exclude_restricted') === '0') setExcludeRestricted(false);
+    const max = Number(params.get('maxScan') ?? '');
+    if (Number.isFinite(max) && max > 0) setMaxScan(max);
+  }, [routeLocation.search]);
 
   useEffect(() => {
     api<{ universes: Universe[] }>('/api/v1/universes')
@@ -115,6 +231,10 @@ export default function ScreenerPage() {
   useEffect(() => {
     if (!filtersTouched && activePreset) {
       setCustomFilters(filtersFromPreset(activePreset));
+      if (activePreset.ta_preset || activePreset.id.startsWith('ta_')) {
+        setTechFilters(techFromPreset(activePreset));
+        setShowTa(true);
+      }
     }
   }, [activePreset, filtersTouched]);
 
@@ -185,7 +305,9 @@ export default function ScreenerPage() {
     setProgress(null);
 
     const filters: Record<string, unknown> = { ...(buildApiFilters(customFilters) ?? {}) };
-    if (showTa) filters.show_ta = true;
+    const tech = buildTechApiFilters(techFilters);
+    if (tech) Object.assign(filters, tech);
+    if (showTa || tech) filters.show_ta = true;
     const filtersPayload = Object.keys(filters).length ? filters : undefined;
 
     try {
@@ -224,9 +346,14 @@ export default function ScreenerPage() {
         title="CFA Screener"
         subtitle="Universe scan · live fundamentals · MOS & quality filters"
         actions={
-          <Link to="/verify/full" className="btn btn-secondary">
-            Full Verify
-          </Link>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Link to="/verify/full" className="btn btn-secondary">
+              Full Verify
+            </Link>
+            <Link to="/screener/pit-backtest" className="btn btn-secondary">
+              PIT backtest
+            </Link>
+          </div>
         }
       />
       <p className="disclaimer">
@@ -389,12 +516,61 @@ export default function ScreenerPage() {
               onClick={() => {
                 setFiltersTouched(false);
                 setCustomFilters(filtersFromPreset(activePreset));
+                setTechFilters({ ...EMPTY_TECH });
               }}
             >
               Reset to preset
             </button>
           </div>
         )}
+
+        <div className="screener-filters card nested" style={{ marginTop: '0.75rem' }}>
+          <p style={{ marginTop: 0, marginBottom: '0.5rem' }}>
+            <strong>Technical filters</strong>
+            <span className="muted"> — fresh price cross of SMA/EMA 20 or 50 (daily or hourly)</span>
+          </p>
+          <div className="form-row" style={{ alignItems: 'end' }}>
+            <div className="form-group">
+              <label>Fresh within (bars)</label>
+              <select
+                value={techFilters.fresh_cross_bars}
+                onChange={(e) => setTechFilters((f) => ({ ...f, fresh_cross_bars: e.target.value }))}
+                style={{ width: '100%' }}
+              >
+                <option value="1">1 bar (latest close only)</option>
+                <option value="2">2 bars</option>
+                <option value="3">3 bars (default)</option>
+                <option value="5">5 bars</option>
+              </select>
+            </div>
+          </div>
+          <div
+            className="screener-tech-grid"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: '0.35rem 1rem',
+              marginTop: '0.5rem',
+            }}
+          >
+            {TECH_CROSS_OPTIONS.map((opt) => (
+              <label key={opt.key} className="morning-live-toggle">
+                <input
+                  type="checkbox"
+                  checked={Boolean(techFilters[opt.key])}
+                  onChange={(e) =>
+                    setTechFilters((f) => ({ ...f, [opt.key]: e.target.checked }))
+                  }
+                />
+                {opt.label}
+              </label>
+            ))}
+          </div>
+          <p className="muted" style={{ marginBottom: 0, fontSize: '0.85rem' }}>
+            Hourly filters fetch 60m bars (slower). Combine with a fundamental preset or use TA presets like
+            Fresh SMA-20 Cross.
+          </p>
+        </div>
 
         <button type="submit" className="btn" disabled={loading}>
           {loading ? 'Running…' : 'Run screener'}
@@ -413,6 +589,14 @@ export default function ScreenerPage() {
               {progress.passed} passed · {progressPct}%
             </span>
           </div>
+          {progress.recent_symbols?.length ? (
+            <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>
+              Recent scanned: {progress.recent_symbols.slice(0, 10).join(', ')}
+              {progress.recent_passed_symbols?.length ? (
+                <> · Passed: {progress.recent_passed_symbols.slice(0, 10).join(', ')}</>
+              ) : null}
+            </p>
+          ) : null}
           <div className="progress-bar">
             <div className="progress-fill" style={{ width: `${progressPct}%` }} />
           </div>
@@ -427,6 +611,16 @@ export default function ScreenerPage() {
           restrictedSkipped={scanMeta?.restricted_skipped}
           cacheHits={scanMeta?.cache_hits}
           exchangeListAsOf={scanMeta?.exchange_list_as_of}
+          showEmaColumns={showEmaCols}
+          showHourlyEmaColumns={showHourlyEmaCols}
+          filterStrip={{
+            universeName: activeUniverse?.name ?? universe,
+            presetLabel: activePreset?.label ?? preset,
+            custom: customFilters,
+            tech: techFilters,
+            showTa,
+            excludeRestricted,
+          }}
         />
       )}
     </Page>

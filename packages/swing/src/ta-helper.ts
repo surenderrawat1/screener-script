@@ -20,7 +20,7 @@ export function emaSeries(closes: number[], period: number): number[] {
   return out;
 }
 
-function emaSeriesIndexed(closes: number[], period: number): Map<number, number> {
+export function emaSeriesIndexed(closes: number[], period: number): Map<number, number> {
   if (closes.length < period) return new Map();
   let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
   const out = new Map<number, number>();
@@ -294,6 +294,7 @@ export function metricsFromBars(bars: OhlcBar[], _symbol: string, withCrossovers
   return {
     ta_rsi14: rsi(closes),
     ta_sma9: sma(closes, 9),
+    ta_sma20: sma(closes, 20),
     ta_sma50: sma(closes, 50),
     ta_sma200: sma(closes, 200),
     ta_pct_52w: pct52w,

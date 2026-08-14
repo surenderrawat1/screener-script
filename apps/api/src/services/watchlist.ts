@@ -135,6 +135,9 @@ export async function syncWatchlistFromVerify(
         last_score: snapshot.last_score ?? 0,
         last_mos: snapshot.last_mos ?? null,
         last_verdict: snapshot.last_verdict ?? '',
+        verify_mode: 'quick',
+        recommendation_basis: 'screening_matrix',
+        score_basis: 'quality_proxy',
       } as Prisma.InputJsonValue,
     },
     update: {
@@ -146,6 +149,9 @@ export async function syncWatchlistFromVerify(
         last_score: snapshot.last_score ?? prevMeta.last_score ?? 0,
         last_mos: snapshot.last_mos ?? prevMeta.last_mos ?? null,
         last_verdict: snapshot.last_verdict ?? prevMeta.last_verdict ?? '',
+        verify_mode: 'quick',
+        recommendation_basis: 'screening_matrix',
+        score_basis: 'quality_proxy',
       } as Prisma.InputJsonValue,
     },
   });
@@ -192,6 +198,9 @@ export async function syncWatchlistFromFullVerify(
     last_score: result.scorecard?.total ?? 0,
     last_mos: result.metrics?.margin_of_safety ?? null,
     last_verdict: result.verdict?.action ?? '',
+    verify_mode: 'full',
+    recommendation_basis: 'full_verify_matrix',
+    score_basis: 'full_scorecard',
   };
 
   await prisma.watchlistItem.upsert({
