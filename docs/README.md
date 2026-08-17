@@ -26,7 +26,7 @@
 | [Trading Strategies](TRADING-STRATEGIES.md) | 21 curated swing / screener / hybrid strategies (planned) |
 | [Nifty Intraday (5m/15m)](INTRADAY.md) | Direction, presets, playbook, intraday app |
 | [Nifty Positions](NIFTY-POSITIONS.md) | Same-day intraday trade ledger (PHP parity plan) |
-| [Stock Details](STOCK-DETAILS.md) | Single-symbol fundamentals, chart, profile (planned) |
+| [Stock Details](STOCK-DETAILS.md) | Single-symbol fundamentals, chart, profile, patterns |
 | [Database](DATABASE.md) | PostgreSQL schema, tables, relationships |
 | [Data Rules](DATA-RULES.md) | What goes in DB vs cache, 6 AM sync, config & settings |
 | [Redis & Cache](REDIS-CACHE.md) | Key namespaces, TTLs, universe resolution |

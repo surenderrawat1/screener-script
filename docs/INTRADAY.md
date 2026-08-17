@@ -50,12 +50,12 @@ Script Screener has ported the **analysis engine** to `@sv/intraday` with Redis-
 
 | PHP file | Purpose | v2 equivalent |
 |----------|---------|---------------|
-| `nifty-15m.php` | Desktop radar: charts, presets table, signals, positions block | `/intraday` (partial) |
-| `intraday-app.php` | Mobile PWA: scalp gate, live positions, journal | **Not ported** |
-| `intraday-manifest.php` + `intraday-sw.js` | PWA install + offline | **Not ported** |
-| `nifty-15m-api.php` | JSON: `state`, `lite`, `positions`, `add_position` | `GET /api/v1/intraday/nifty/state` only |
-| `trading-presets.php` | Hub links to intraday session | **Not ported** — [TRADING-PRESETS.md](TRADING-PRESETS.md) |
-| `nifty-intraday-backtest.php` | 60d preset matrix backtest | Phase 12 roadmap |
+| `nifty-15m.php` | Desktop radar: charts, presets table, signals, positions block | `/intraday` |
+| `intraday-app.php` | Mobile PWA: scalp gate, live positions, journal | `/intraday/app` |
+| `intraday-manifest.php` + `intraday-sw.js` | PWA install + offline | `/intraday/app` manifest + SW |
+| `nifty-15m-api.php` | JSON: `state`, `lite`, `positions`, `add_position` | `state`, `lite`, positions CRUD |
+| `trading-presets.php` | Hub links to intraday session | `/presets` hub ✅ |
+| `nifty-intraday-backtest.php` | 60d preset matrix backtest | `/intraday/backtest` + `POST /api/v1/intraday/backtests` |
 
 **Note:** There is no `intraday.php` in PHP. `docs/MIGRATION.md` uses that name as a logical alias for the v2 `/intraday` route.
 
@@ -71,10 +71,10 @@ Script Screener has ported the **analysis engine** to `@sv/intraday` with Redis-
 | **Chart cache** | SQLite 90s/120s | Redis `sv:ta:intraday:nifty50:{5m\|15m}` with runtime `intraday_chart` TTL |
 | **Dual fetch** | Often sequential in page | `Promise.all` 5m + 15m |
 | **Scalp setup** | `NiftyIntradayScalpSetup.php` | `buildScalpSetup()` + `/intraday` banner |
-| **Preset table UI** | 13-row pass/fail per TF | `preset_eval` in API; **UI not shown** |
+| **Preset table UI** | 13-row pass/fail per TF | `IntradayPresetTable` on `/intraday` ✅ |
 | **Instrument presets** | BankNifty → `strict_mtf`; Sensex → `production` | **v2 keeps** Bank/Fin → `banknifty_tuned`; Nifty/Sensex/stocks → `cfa_precision`; stock floors are additive |
-| **Intraday positions** | JSON ledger + APIs | See [NIFTY-POSITIONS.md](NIFTY-POSITIONS.md) |
-| **Backtest** | Full matrix UI | Phase 12 |
+| **Intraday positions** | JSON ledger + APIs | PostgreSQL ledger — [NIFTY-POSITIONS.md](NIFTY-POSITIONS.md) ✅ |
+| **Backtest** | Full matrix UI | `/intraday/backtest` combo_compare matrix ✅ |
 | **Tests** | `validate-logic.php` | `@sv/intraday` vitest (parity + instrument presets) |
 
 ---
@@ -245,9 +245,9 @@ GET /api/v1/intraday/nifty/state?interval=15m&refresh=0
 |--------|-----|
 | `GET ?action=state` | `GET /intraday/nifty/state` |
 | `GET ?action=lite` | `GET /api/v1/intraday/nifty/lite` |
-| `GET ?action=positions` | Not ported → [NIFTY-POSITIONS.md](NIFTY-POSITIONS.md) |
-| `POST add_position` | Not ported |
-| `POST close_position` | Not ported |
+| `GET ?action=positions` | `GET /api/v1/intraday/positions?status=open&live=1` |
+| `POST add_position` | `POST /api/v1/intraday/positions` |
+| `POST close_position` | `POST /api/v1/intraday/positions/:id/close` |
 
 ### State response shape (v2)
 
@@ -282,14 +282,17 @@ GET /api/v1/intraday/nifty/state?interval=15m&refresh=0
 - Headline, bias, LTP, direction, confidence, MTF
 - Playbook steps list
 
-**Missing vs PHP `nifty-15m.php`:**
-- Candlestick chart (Lightweight Charts)
-- Preset evaluation table (13 rows)
-- Scalp setup gate panel
-- Trade plan level cards (entry, stop, T1/T2/T3)
-- Signal list / trigger history
-- Instrument tabs (BankNifty, etc.)
-- Intraday positions block
+**Shipped on `/intraday` (parity with PHP `nifty-15m.php`):**
+- Candlestick chart — `IntradayPriceChart` (Lightweight Charts, lazy OHLC)
+- Preset evaluation table — `IntradayPresetTable` (13+ rows, 5m/15m)
+- Scalp setup gate — `IntradayScalpSetupCard`
+- Trade plan cards — spot + F&O panels with entry/stop/T1–T3
+- Multi-instrument tabs — indices, stocks, ETFs, free-text symbol
+- Open positions block — live 60s poll (independent of radar refresh)
+- Direction signals panel — `IntradaySignalsPanel` (KPI strip + bull/bear signal list + trigger line; PHP `#n15-signals`)
+
+**Still lighter vs PHP:**
+- Trigger history log (persisted trigger state over time — PHP also lacks this; only live trigger is shown)
 
 ### PHP `intraday-app.php` (mobile PWA)
 
@@ -312,14 +315,15 @@ GET /api/v1/intraday/nifty/state?interval=15m&refresh=0
 | Yahoo + cache TTL | ✓ | ✓ | — |
 | Parallel 5m+15m fetch | partial | ✓ | v2 faster cold fetch |
 | Chart UI | ✓ | ✓ | `IntradayPriceChart` (candles + SMA overlays, 5m/15m) |
-| Preset table UI | ✓ | ✗ | Phase I-C |
-| Scalp setup | ✓ | ✗ | Phase I-B |
+| Preset table UI | ✓ | ✓ | `IntradayPresetTable` |
+| Scalp setup | ✓ | ✓ | `IntradayScalpSetupCard` |
+| Direction signals | ✓ | ✓ | `IntradaySignalsPanel` on `/intraday` |
 | Multi-instrument | ✓ | ✓ | Nifty, Bank Nifty, Sensex, Fin Nifty + 12 stocks |
 | Stock F&O plans | ✓ | ✓ partial | 7 liquid names; NSE monthly last Tuesday |
 | Intraday App PWA | ✓ | ✓ | `/intraday/app` + manifest |
-| Instrument-aware preset | ✓ | ✗ | Phase I-B |
-| Intraday positions | ✓ | ✗ | [NIFTY-POSITIONS.md](NIFTY-POSITIONS.md) |
-| Backtest matrix | ✓ | ✗ | Phase 12 |
+| Instrument-aware preset | ✓ | ✓ | `recommended_preset` + stock floors |
+| Intraday positions | ✓ | ✓ | [NIFTY-POSITIONS.md](NIFTY-POSITIONS.md) |
+| Backtest matrix | ✓ | ✓ | `/intraday/backtest` |
 | `lite` API | ✓ | ✓ | I-D1 any-symbol |
 
 ---
@@ -346,10 +350,10 @@ GET /api/v1/intraday/nifty/state?interval=15m&refresh=0
 
 | # | Task |
 |---|------|
-| I-C1 | Lightweight Charts component (lazy fetch bars endpoint) |
-| I-C2 | Preset pass/fail table (5m + 15m columns) |
-| I-C3 | Trade plan card (entry, stop, targets) |
-| I-C4 | Scalp gate banner when 5m active |
+| I-C1 | Lightweight Charts component (lazy fetch bars endpoint) | **Shipped** |
+| I-C2 | Preset pass/fail table (5m + 15m columns) | **Shipped** |
+| I-C3 | Trade plan card (entry, stop, targets) | **Shipped** |
+| I-C4 | Scalp gate banner when 5m active | **Shipped** |
 
 ### Phase I-D — Intraday App & instruments (5+ days)
 

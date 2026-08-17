@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import { screenerDeepLink } from '../lib/screener-deep-link';
 import { Page, PageHeader } from '../components/PageLayout';
 import { SignalCard } from '../components/research/SignalCard';
 
@@ -221,6 +222,7 @@ interface MorningBriefing {
       avg_hits: number;
       last_hits: number;
       last_date: string;
+      screener_href?: string;
     }>;
     href: string;
   };
@@ -349,13 +351,13 @@ function morningActions(briefing: MorningBriefing): Array<{ label: string; detai
   actions.push({
     label: 'Run quality screener',
     detail: 'Nifty 50 · quality compounders — verify top names before sizing.',
-    href: '/screener?preset=quality&universe=nifty50',
+    href: screenerDeepLink({ preset: 'quality', universe: 'nifty50' }),
     tone: 'info',
   });
   actions.push({
     label: 'Scan EMA momentum setups',
     detail: 'Daily fresh cross ↑ EMA-20 with quality gates.',
-    href: '/screener?preset=ta_fresh_ema20_cross&universe=nifty50&show_ta=1',
+    href: screenerDeepLink({ preset: 'ta_fresh_ema20_cross', universe: 'nifty50', showTa: true }),
     tone: 'info',
   });
   if (briefing.auto.available && briefing.auto.hits.length > 0) {
@@ -387,7 +389,7 @@ function morningActions(briefing: MorningBriefing): Array<{ label: string; detai
     actions.push({
       label: 'Stand aside / maintain watchlist',
       detail: 'No urgent risk alerts or high-priority new setup in the current briefing.',
-      href: '/screener?preset=quality&universe=nifty50',
+      href: screenerDeepLink({ preset: 'quality', universe: 'nifty50' }),
       tone: 'info',
     });
   }
@@ -599,7 +601,12 @@ export default function MorningPage() {
                 <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 13 }}>
                   {briefing.strategy_daily_proof!.scoreboard.slice(0, 4).map((row) => (
                     <li key={row.strategy_key}>
-                      <strong>{row.label}</strong> · avg {row.avg_hits} hits · last {row.last_hits} ({row.last_date})
+                      {row.screener_href ? (
+                        <Link to={row.screener_href}>{row.label}</Link>
+                      ) : (
+                        <strong>{row.label}</strong>
+                      )}
+                      {' '}· avg {row.avg_hits} hits · last {row.last_hits} ({row.last_date})
                     </li>
                   ))}
                 </ul>

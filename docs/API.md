@@ -637,13 +637,13 @@ Returns radar shortcuts: `indices`, `stocks`, high-liquidity `etfs`, and combine
 
 ### `GET /api/v1/intraday/nifty/lite`
 
-Compact PWA payload (I-D1). Query: `interval`/`tf` (`5m` default), `instrument`/`symbol`/`index`, `refresh=1`.
+Compact PWA payload (I-D1). Query: `interval`/`tf` (`5m` default), `instrument`/`symbol`/`index`, `refresh=1`, `positions=0`, `journal=0`.
 
-Reuses the 60s state snapshot, then adds NSE session, 14:30 flatten flag, trimmed scalp gate, `log_plan`, live open positions, and session journal. Any stock/ETF/index — not Nifty-only.
+Reuses the 60s state snapshot, then adds NSE session, 14:30 flatten flag, trimmed scalp gate, and `log_plan`. With default flags, also includes live open positions and session journal. Set `positions=0` and/or `journal=0` to skip ledger fetches (NP-B4 — `/intraday/app` polls analysis, positions, and journal on separate 60s timers). Any stock/ETF/index — not Nifty-only.
 
 ### `GET /api/v1/intraday/nifty/state`
 
-Query: `instrument` (or `index` / `symbol`), `interval=5m|15m`, `refresh=1`. `symbol` wins. Any NSE/BSE ticker or ETF is accepted; unknown tokens return 404 (not silent Nifty 50). Successful payloads are cached 60s (`cached: true` on hit). `refresh=1` rebuilds live analysis from fresh session charts; the 60d accuracy gate is not refetched.
+Query: `instrument` (or `index` / `symbol`), `interval=5m|15m`, `refresh=1`, `positions=0` (explicit analysis-only; state never embeds positions). `symbol` wins. Any NSE/BSE ticker or ETF is accepted; unknown tokens return 404 (not silent Nifty 50). Successful payloads are cached 60s (`cached: true` on hit). `refresh=1` rebuilds live analysis from fresh session charts; the 60d accuracy gate is not refetched.
 
 Permission: `view_app`
 

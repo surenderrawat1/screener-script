@@ -80,6 +80,8 @@ interface LitePayload {
   };
   refresh_sec?: number;
   error?: string;
+  positions_included?: boolean;
+  journal_included?: boolean;
 }
 
 interface Chip {
@@ -119,10 +121,19 @@ export default function IntradayAppPage() {
   const [draft, setDraft] = useState(initialInstrument);
   const [chips, setChips] = useState<Chip[]>([]);
   const [data, setData] = useState<LitePayload | null>(null);
+  const [openPositions, setOpenPositions] = useState<LiteOpen[]>([]);
+  const [portfolio, setPortfolio] = useState<{
+    count?: number;
+    net_pnl_inr?: number | null;
+    urgent_count?: number;
+  } | null>(null);
+  const [journal, setJournal] = useState<LitePayload['journal'] | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [qty, setQty] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const REFRESH_MS = 60_000;
 
   useEffect(() => {
     void api<{ indices: Chip[]; stocks: Chip[]; etfs?: Chip[] }>('/api/v1/intraday/instruments')
@@ -137,7 +148,7 @@ export default function IntradayAppPage() {
       setError('');
       if (!silent) setLoading(true);
       try {
-        const q = new URLSearchParams({ interval, instrument });
+        const q = new URLSearchParams({ interval, instrument, positions: '0', journal: '0' });
         if (refresh) q.set('refresh', '1');
         const payload = await api<LitePayload>(`/api/v1/intraday/nifty/lite?${q}`);
         setData(payload);
@@ -155,11 +166,42 @@ export default function IntradayAppPage() {
     [interval, instrument],
   );
 
+  const loadPositions = useCallback(async () => {
+    try {
+      const q = new URLSearchParams({ interval, instrument, positions: '1', journal: '0' });
+      const payload = await api<LitePayload>(`/api/v1/intraday/nifty/lite?${q}`);
+      setOpenPositions(payload.positions?.open ?? []);
+      setPortfolio(payload.positions?.portfolio ?? null);
+    } catch {
+      /* best-effort */
+    }
+  }, [interval, instrument]);
+
+  const loadJournal = useCallback(async () => {
+    try {
+      const q = new URLSearchParams({ interval, instrument, positions: '0', journal: '1' });
+      const payload = await api<LitePayload>(`/api/v1/intraday/nifty/lite?${q}`);
+      setJournal(payload.journal ?? null);
+    } catch {
+      /* best-effort */
+    }
+  }, [interval, instrument]);
+
   useEffect(() => {
     void load();
-    const id = window.setInterval(() => void load(false, true), 60_000);
+    const id = window.setInterval(() => void load(false, true), REFRESH_MS);
     return () => window.clearInterval(id);
   }, [load]);
+
+  useEffect(() => {
+    void loadPositions();
+    void loadJournal();
+    const id = window.setInterval(() => {
+      void loadPositions();
+      void loadJournal();
+    }, REFRESH_MS);
+    return () => window.clearInterval(id);
+  }, [loadPositions, loadJournal]);
 
   function select(id: string, tf?: Interval) {
     const nextTf = tf ?? interval;
@@ -201,7 +243,7 @@ export default function IntradayAppPage() {
         }),
       });
       setQty('');
-      await load(true);
+      await Promise.all([load(true), loadPositions(), loadJournal()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Log failed');
     } finally {
@@ -220,7 +262,7 @@ export default function IntradayAppPage() {
         method: 'POST',
         body: JSON.stringify({ closed_price: px, closed_reason: isUrgent(row) ? row.action_label : 'manual' }),
       });
-      await load(true);
+      await Promise.all([load(true), loadPositions(), loadJournal()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Close failed');
     } finally {
@@ -228,13 +270,13 @@ export default function IntradayAppPage() {
     }
   }
 
-  const opens = data?.positions?.open ?? [];
-  const portfolio = data?.positions?.portfolio;
+  const opens = openPositions.length > 0 ? openPositions : (data?.positions?.open ?? []);
+  const portfolioKpi = portfolio ?? data?.positions?.portfolio;
+  const journalData = journal ?? data?.journal;
   const scalp = data?.scalp_setup;
   const plan = scalp?.plan;
   const flatten = Boolean(data?.time_stop?.flatten);
   const session = data?.session;
-  const journal = data?.journal;
   const radarHref = useMemo(
     () => `/intraday?instrument=${encodeURIComponent(instrument)}&interval=${interval}`,
     [instrument, interval],
@@ -308,9 +350,9 @@ export default function IntradayAppPage() {
         <span className={`ia-dir ia-${data?.direction?.tone ?? 'neutral'}`}>
           {data?.direction?.label ?? '—'} {data?.direction?.confidence ? `${data.direction.confidence}%` : ''}
         </span>
-        <span>{portfolio?.count ?? opens.length} open</span>
-        {portfolio?.net_pnl_inr != null && (
-          <span className={portfolio.net_pnl_inr >= 0 ? 'ia-live' : 'ia-warn'}>{fmtInr(portfolio.net_pnl_inr)}</span>
+        <span>{portfolioKpi?.count ?? opens.length} open</span>
+        {portfolioKpi?.net_pnl_inr != null && (
+          <span className={portfolioKpi.net_pnl_inr >= 0 ? 'ia-live' : 'ia-warn'}>{fmtInr(portfolioKpi.net_pnl_inr)}</span>
         )}
       </div>
 
@@ -413,22 +455,22 @@ export default function IntradayAppPage() {
           </Link>
         </div>
         <div className="ia-journal">
-          {journal?.summary.closed ? (
+          {journalData?.summary.closed ? (
             <>
               <span>
-                {journal.summary.wins}W / {journal.summary.losses}L
-                {journal.summary.win_rate_pct != null ? ` · ${journal.summary.win_rate_pct}%` : ''}
+                {journalData.summary.wins}W / {journalData.summary.losses}L
+                {journalData.summary.win_rate_pct != null ? ` · ${journalData.summary.win_rate_pct}%` : ''}
               </span>
-              <span className={(journal.summary.total_net_pnl ?? 0) >= 0 ? 'ia-live' : 'ia-warn'}>
-                {fmtInr(journal.summary.total_net_pnl)}
+              <span className={(journalData.summary.total_net_pnl ?? 0) >= 0 ? 'ia-live' : 'ia-warn'}>
+                {fmtInr(journalData.summary.total_net_pnl)}
               </span>
-              {journal.summary.avg_r != null && <span>Avg {journal.summary.avg_r}R</span>}
+              {journalData.summary.avg_r != null && <span>Avg {journalData.summary.avg_r}R</span>}
             </>
           ) : (
             <span className="muted">No closed trades yet</span>
           )}
         </div>
-        {journal?.recent.map((row, i) => (
+        {journalData?.recent.map((row, i) => (
           <div key={`${row.instrument_label}-${i}`} className="ia-closed-card">
             <div className="ia-closed-head">
               <strong>

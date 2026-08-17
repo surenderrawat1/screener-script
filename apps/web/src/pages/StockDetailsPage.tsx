@@ -12,6 +12,34 @@ import { mergePatternOverlays } from '../lib/pattern-chart-overlays';
 import { StockDailyChart, type ChartPayload, type ChartPriceLevel } from '../components/StockDailyChart';
 import { SwingRulesTable, SwingVerdictBanner } from '../components/swing/SwingRulesTable';
 
+function trendHint(trend?: string, changePp?: number | null, period?: string): string | undefined {
+  if (!trend || trend === 'unknown') return period ? `As of ${period}` : undefined;
+  const arrow = trend === 'increasing' ? '↑' : trend === 'declining' ? '↓' : '→';
+  const delta = changePp != null ? `${changePp >= 0 ? '+' : ''}${changePp} pp QoQ` : '';
+  return [arrow, delta, period ? `· ${period}` : ''].filter(Boolean).join(' ');
+}
+
+function trendMetricClass(trend?: string, bearishWhenDeclining = true): string {
+  if (bearishWhenDeclining && trend === 'declining') return 'signal-bear';
+  if (!bearishWhenDeclining && trend === 'increasing') return 'signal-bull';
+  if (trend === 'increasing' && bearishWhenDeclining) return 'signal-watch';
+  return '';
+}
+
+interface ShareholdingCategoryView {
+  latest_pct: number;
+  change_pp: number | null;
+  trend: string;
+}
+
+interface ShareholdingView {
+  latest_period: string;
+  promoter: ShareholdingCategoryView | null;
+  fii: ShareholdingCategoryView | null;
+  dii: ShareholdingCategoryView | null;
+  source: string;
+}
+
 interface StockSummary {
   symbol: string;
   name: string;
@@ -56,6 +84,20 @@ interface StockSummary {
     label: string;
     message: string;
   };
+  screener_insights?: {
+    pros: string[];
+    cons: string[];
+    warnings: Array<{
+      text: string;
+      severity: 'critical' | 'watch' | 'info';
+      category: string;
+      label: string;
+    }>;
+    has_critical: boolean;
+    has_watch: boolean;
+    source: string;
+  } | null;
+  shareholding?: ShareholdingView | null;
   iv_drift?: {
     screener_iv: number;
     full_iv: number;
@@ -573,6 +615,39 @@ export default function StockDetailsPage() {
             </div>
           ) : null}
 
+          {summary.screener_insights &&
+          (summary.screener_insights.warnings.length > 0 || summary.screener_insights.pros.length > 0) ? (
+            <div className="card screener-insights-card">
+              <h2>Screener.in checklist</h2>
+              <p className="muted" style={{ marginTop: 0 }}>
+                Machine-generated pros/cons from Screener.in — use as a screening aid, not a sole decision input.
+              </p>
+              {summary.screener_insights.warnings.length > 0 ? (
+                <ul className="screener-insights-list">
+                  {summary.screener_insights.warnings.map((w) => (
+                    <li
+                      key={`${w.label}-${w.text.slice(0, 48)}`}
+                      className={`screener-insight screener-insight-${w.severity}`}
+                    >
+                      <span className="screener-insight-label">{w.label}</span>
+                      <span>{w.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {summary.screener_insights.pros.length > 0 ? (
+                <details className="screener-pros-details">
+                  <summary>{summary.screener_insights.pros.length} pro(s) from Screener</summary>
+                  <ul className="screener-insights-list screener-insights-pros">
+                    {summary.screener_insights.pros.map((p) => (
+                      <li key={p.slice(0, 60)}>{p}</li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+            </div>
+          ) : null}
+
           {(() => {
             const memo = buildStockMemoView(summary, ta);
 
@@ -701,13 +776,88 @@ export default function StockDetailsPage() {
                     : '—'
                 }
                 hint={
-                  m.promoter_holding_as_of
+                  trendHint(
+                    String(m.promoter_holding_trend ?? ''),
+                    m.promoter_holding_change_pp != null
+                      ? Number(m.promoter_holding_change_pp)
+                      : null,
+                    String(m.promoter_holding_as_of ?? summary.shareholding?.latest_period ?? ''),
+                  ) ??
+                  (m.promoter_holding_as_of
                     ? `As of ${String(m.promoter_holding_as_of)}`
-                    : undefined
+                    : undefined)
+                }
+                className={trendMetricClass(String(m.promoter_holding_trend ?? ''), true)}
+              />
+              <MetricTile
+                label="Promoter pledge"
+                value={
+                  m.promoter_pledge != null ? `${fmtNum(Number(m.promoter_pledge), '%')}` : '—'
+                }
+                hint={
+                  m.promoter_pledge_as_of
+                    ? `As of ${String(m.promoter_pledge_as_of)}`
+                    : Number(m.promoter_pledge ?? 0) > 25
+                      ? 'Above 25% — governance flag'
+                      : undefined
+                }
+                className={
+                  Number(m.promoter_pledge ?? 0) > 25
+                    ? 'signal-bear'
+                    : Number(m.promoter_pledge ?? 0) > 0
+                      ? 'signal-watch'
+                      : ''
                 }
               />
             </div>
           </div>
+
+          {summary.shareholding?.promoter || summary.shareholding?.fii || summary.shareholding?.dii ? (
+            <div className="card">
+              <h2>Shareholding pattern</h2>
+              <p className="muted" style={{ marginTop: 0 }}>
+                Quarterly trend from Screener.in
+                {summary.shareholding.latest_period ? ` · latest ${summary.shareholding.latest_period}` : ''}
+              </p>
+              <div className="sd-metric-grid">
+                {summary.shareholding.promoter ? (
+                  <MetricTile
+                    label="Promoters"
+                    value={`${fmtNum(summary.shareholding.promoter.latest_pct, '%')}`}
+                    hint={trendHint(
+                      summary.shareholding.promoter.trend,
+                      summary.shareholding.promoter.change_pp,
+                      summary.shareholding.latest_period,
+                    )}
+                    className={trendMetricClass(summary.shareholding.promoter.trend, true)}
+                  />
+                ) : null}
+                {summary.shareholding.fii ? (
+                  <MetricTile
+                    label="FII"
+                    value={`${fmtNum(summary.shareholding.fii.latest_pct, '%')}`}
+                    hint={trendHint(
+                      summary.shareholding.fii.trend,
+                      summary.shareholding.fii.change_pp,
+                      summary.shareholding.latest_period,
+                    )}
+                    className={trendMetricClass(summary.shareholding.fii.trend, false)}
+                  />
+                ) : null}
+                {summary.shareholding.dii ? (
+                  <MetricTile
+                    label="DII"
+                    value={`${fmtNum(summary.shareholding.dii.latest_pct, '%')}`}
+                    hint={trendHint(
+                      summary.shareholding.dii.trend,
+                      summary.shareholding.dii.change_pp,
+                      summary.shareholding.latest_period,
+                    )}
+                  />
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           <div className="card">
             <h2>Daily chart (2y)</h2>

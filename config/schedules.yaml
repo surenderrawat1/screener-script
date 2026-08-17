@@ -68,6 +68,11 @@ daily_sync:
 
 # Intraday jobs (separate from daily sync)
 intraday:
+  ltg_auto_scan:
+    enabled: true
+    interval_sec: 900         # 15m — PHP FundamentalAutoScreener parity
+    universe: nifty250
+    max_scan: 250
   swing_auto_scan:
     enabled: true
     interval_sec: 300         # worker tick — see SWING-AUTO.md

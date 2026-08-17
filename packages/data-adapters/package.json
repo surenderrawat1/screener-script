@@ -1,6 +1,6 @@
 {
   "name": "@sv/data-adapters",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -25,7 +25,8 @@
     "email:exit-alerts": "tsx scripts/email-exit-alerts.mts",
     "email:test": "tsx scripts/email-test.mts",
     "whatsapp:test": "tsx scripts/whatsapp-test.mts",
-    "test:ema-cross": "tsx scripts/test-ema-price-cross.mts"
+    "test:ema-cross": "tsx scripts/test-ema-price-cross.mts",
+    "screener:acceptance": "tsx scripts/screener-acceptance.mts"
   },
   "dependencies": {
     "@sv/cache": "workspace:*",

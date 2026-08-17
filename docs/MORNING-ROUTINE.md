@@ -58,17 +58,17 @@ In **Script Screener v2**, the morning research cockpit is implemented as `/morn
 | **Planned route** | — | `/morning` (implemented) |
 | **Orchestrator** | `MorningDashboard::build()` | `apps/web/src/pages/MorningPage.tsx` + `apps/api/src/services/morning.ts` |
 | **API** | Server-rendered HTML | `GET /api/v1/morning` implemented |
-| **NSE session** | `PriceFreshness::nseSession()` | **Not ported** (intraday has session-regime per chart) |
+| **NSE session** | `PriceFreshness::nseSession()` | `nseSession()` in `@sv/shared` ✅ (morning banner + lite API) |
 | **Swing regime** | `SwingMarketRegime::current()` | `currentMarketRegime()` ✅ (`sv:regime:nifty`) |
 | **Regime guidance** | `SwingAutoDecision::regimeGuidance()` | `regimeGuidance()` in `@sv/swing` ✅ |
-| **Nifty 15m** | `Nifty15mDirection::analyze()` | `GET /intraday/nifty/state` ✅ (separate page) |
-| **Swing positions** | `SwingPositionTracker::trackOpen()` | `refreshOpenPositions()` ✅ (Positions API `?live=1`) |
-| **Intraday positions** | `NiftyIntradayPositionTracker` | **Not built** — [NIFTY-POSITIONS.md](NIFTY-POSITIONS.md) |
-| **ETF SETUP+ scan** | `SwingTradingScanner` + ETF universe | ETF panel wired in `MorningPage.tsx` (see `etf` block in API response) |
+| **Nifty 15m** | `Nifty15mDirection::analyze()` | Cached 15m card on `/morning` + full radar at `/intraday` ✅ |
+| **Swing positions** | `SwingPositionTracker::trackOpen()` | `refreshOpenPositions()` ✅ (`GET /morning?live=1`) |
+| **Intraday positions** | `NiftyIntradayPositionTracker` | `intradayPositionsPanel()` ✅ — top 5 + exit alerts → `/intraday/positions` |
+| **ETF SETUP+ scan** | `SwingTradingScanner` + ETF universe | `getMorningEtfPanel()` + Refresh ETF on `/morning` ✅ |
 | **Swing Auto panel** | `SwingAutoScreener::getSnapshot()` | `getSwingAutoSnapshotDurable()` ✅ |
-| **Trading presets** | `TradingPreset::all()` (3 presets) | Preset chips wired (see `presets` block in API response) |
-| **Morning checklist** | `routineSteps()` — 7 steps | Implemented checklist (currently 10 steps) |
-| **Alert banner** | `buildAlerts()` | Implemented via `alerts` array in API response |
+| **Trading presets** | `TradingPreset::all()` (3 presets) | `tradingPresetChips()` + `/presets` hub ✅ |
+| **Morning checklist** | `routineSteps()` — 7 steps | `routineSteps()` — 11 steps ✅ (intraday exit → `warn`) |
+| **Alert banner** | `buildAlerts()` | `buildAlerts()` + action banner on `/morning` ✅ |
 | **Dashboard** | Health N/A (separate) | Morning briefing + checklist rendered in `/morning` |
 
 ---
@@ -320,7 +320,7 @@ Rendered as chips at top of morning page + full page `trading-presets.php`.
 
 ### v2
 
-**Not ported.** Planned: `packages/swing/src/trading-presets.ts`, `/presets`, morning chips (TP-E).
+**Shipped:** `packages/swing/src/trading-presets.ts`, `/presets` hub, morning chips (MR-E / TP-E).
 
 ---
 
@@ -410,22 +410,24 @@ Derive from `refreshOpenPositions()` where `exit_verdict === 'EXIT'`.
 
 | Feature | PHP | v2 | Gap |
 |---------|-----|-----|-----|
-| Morning page/route | ✓ | ✗ | **MR-A** |
-| Aggregated API | ✗ (SSR) | planned | v2 improvement |
-| NSE session banner | ✓ | ✗ | **MR-A** |
-| Regime + guidance hero | ✓ | partial (auto page) | **MR-A** |
-| Morning checklist (7 steps) | ✓ | ✗ | **MR-A** |
-| Action alerts banner | ✓ | ✗ | **MR-B** |
-| Nifty 15m card | ✓ | partial (`/intraday`) | **MR-B** |
-| Swing positions top 5 | ✓ | partial (`?live=1`) | **MR-B** |
-| Intraday positions panel | ✓ | ✗ | **MR-C** (needs Nifty Positions) |
-| ETF SETUP+ scan | ✓ | ✗ | **MR-D** |
-| Swing Auto top 5 | ✓ | partial (auto page) | **MR-B** |
-| Trading preset chips | ✓ | ✗ | **MR-E** |
-| Refresh ETF button | ✓ | ✗ | **MR-D** |
-| ETF cache 10m | ✓ | ✗ | **MR-D** |
-| `validate-logic` tests | ✓ | ✗ | **MR-F** |
-| Worker pre-warm cron | optional | planned | **MR-F** |
+| Morning page/route | ✓ | ✓ | **Shipped** — `/morning` |
+| Aggregated API | ✗ (SSR) | ✓ | v2 improvement — `GET /api/v1/morning` |
+| NSE session banner | ✓ | ✓ | **Shipped** — `nseSession()` |
+| Regime + guidance hero | ✓ | ✓ | **Shipped** |
+| Morning checklist | ✓ | ✓ | **Shipped** — 11 steps |
+| Action alerts banner | ✓ | ✓ | **Shipped** |
+| Nifty 15m card | ✓ | ✓ | **Shipped** on morning + `/intraday` |
+| Swing positions top 5 | ✓ | ✓ | **Shipped** — live eval when `?live=1` |
+| Intraday positions panel | ✓ | ✓ | **Shipped** — [NIFTY-POSITIONS.md](NIFTY-POSITIONS.md) MR-C |
+| ETF SETUP+ scan | ✓ | ✓ | **Shipped** — 10m cache + Refresh ETF |
+| Swing Auto top 5 | ✓ | ✓ | **Shipped** |
+| Trading preset chips | ✓ | ✓ | **Shipped** — `/presets` + morning chips |
+| Refresh ETF button | ✓ | ✓ | **Shipped** — `?refresh_etf=1` |
+| ETF cache 10m | ✓ | ✓ | **Shipped** — `sv:morning:etf` |
+| `validate-logic` tests | ✓ | ✓ | `morning-routine.test.ts` + `morning-dashboard.test.ts` |
+| Worker pre-warm cron | optional | ✓ | **Shipped** — `morning_prewarm` schedule |
+| ETF stale-while-revalidate | — | ✓ | **Shipped** — `morning-bundle.ts` |
+| Exit webhook/email | optional | ✓ | **Shipped** — `dispatchMorningAlerts` when configured |
 
 ---
 
@@ -435,39 +437,39 @@ Derive from `refreshOpenPositions()` where `exit_verdict === 'EXIT'`.
 
 | # | Task |
 |---|------|
-| MR-A1 | `GET /api/v1/morning` — regime + auto + routine (no ETF, no live positions) |
-| MR-A2 | Port `PriceFreshness::nseSession()` → `@sv/shared/nse-session.ts` |
-| MR-A3 | `MorningPage.tsx` at `/morning` — regime hero + checklist |
-| MR-A4 | Nav item "Morning" + Dashboard link |
-| MR-A5 | `routineSteps()` port in `@sv/swing/morning-routine.ts` |
+| MR-A1 | `GET /api/v1/morning` — regime + auto + routine | **Shipped** |
+| MR-A2 | Port `PriceFreshness::nseSession()` → `@sv/shared/nse-session.ts` | **Shipped** |
+| MR-A3 | `MorningPage.tsx` at `/morning` — regime hero + checklist | **Shipped** |
+| MR-A4 | Nav item "Morning" + Dashboard link | **Shipped** |
+| MR-A5 | `routineSteps()` port in `@sv/swing/morning-routine.ts` | **Shipped** |
 
 ### Phase MR-B — Position & nifty panels (2–3 days)
 
 | # | Task |
 |---|------|
-| MR-B1 | Wire swing panel via `refreshOpenPositions()` (`?live=1` default) |
-| MR-B2 | `?live=0` fast path — DB positions only, no Yahoo |
-| MR-B3 | Nifty card from intraday state (15m, cached) |
-| MR-B4 | `buildAlerts()` + red banner component |
-| MR-B5 | Auto panel top 5 from `getSwingAutoSnapshotDurable()` |
+| MR-B1 | Wire swing panel via `refreshOpenPositions()` (`?live=1` default) | **Shipped** |
+| MR-B2 | `?live=0` fast path — DB positions only, no Yahoo | **Shipped** |
+| MR-B3 | Nifty card from intraday state (15m, cached) | **Shipped** |
+| MR-B4 | `buildAlerts()` + red banner component | **Shipped** |
+| MR-B5 | Auto panel top 5 from `getSwingAutoSnapshotDurable()` | **Shipped** |
 
-### Phase MR-C — Intraday positions (depends on Nifty Positions)
+### Phase MR-C — Intraday positions
 
 | # | Task |
 |---|------|
-| MR-C1 | Intraday panel when `nifty_positions` table exists |
-| MR-C2 | Checklist step 5 live warn status |
-| MR-C3 | Cross-link to `/nifty/positions` |
+| MR-C1 | Intraday panel when `nifty_positions` table exists | **Shipped** — `intradayPositionsPanel()` on `/morning` |
+| MR-C2 | Checklist intraday step live `warn` on exit signals | **Shipped** — step “Intraday positions” |
+| MR-C3 | Cross-link to `/intraday/positions` | **Shipped** |
 
 ### Phase MR-D — ETF book (3–4 days)
 
 | # | Task |
 |---|------|
-| MR-D1 | Port `SwingEtfUniverse` metadata (static JSON or DB) |
-| MR-D2 | `etfPanel()` — swing scan ETF universe SETUP+ |
-| MR-D3 | `sv:morning:etf` cache 10m |
-| MR-D4 | Refresh ETF button + API flag |
-| MR-D5 | ETF card UI (TER, liquidity, stale) |
+| MR-D1 | Port `SwingEtfUniverse` metadata (static JSON or DB) | **Shipped** |
+| MR-D2 | `etfPanel()` — swing scan ETF universe SETUP+ | **Shipped** — `getMorningEtfPanel()` |
+| MR-D3 | `sv:morning:etf` cache 10m | **Shipped** |
+| MR-D4 | Refresh ETF button + API flag | **Shipped** — `?refresh_etf=1` |
+| MR-D5 | ETF card UI (TER, liquidity, stale) | **Shipped** |
 
 ### Phase MR-E — Trading presets (1–2 days)
 
@@ -475,27 +477,28 @@ See **[TRADING-PRESETS.md](TRADING-PRESETS.md)** (TP-A through TP-F) for full hu
 
 | # | Task |
 |---|------|
-| MR-E1 | Port `TradingPreset` → `@sv/swing/trading-presets.ts` |
-| MR-E2 | Preset chips on Morning page |
+| MR-E1 | Port `TradingPreset` → `@sv/swing/trading-presets.ts` | **Shipped** |
+| MR-E2 | Preset chips on Morning page | **Shipped** |
 | MR-E3 | `/presets` hub page |
 
-### Phase MR-F — Ops & pre-warm (1–2 days)
+### Phase MR-F — Ops & pre-warm — **Shipped**
 
 | # | Task |
 |---|------|
-| MR-F1 | Worker cron: warm `sv:morning:etf` + regime before 9:00 IST |
-| MR-F2 | Port `testMorningDashboard()` from `validate-logic.php` |
-| MR-F3 | Stale-while-revalidate: return cached bundle, refresh ETF async |
-| MR-F4 | Optional webhook when `exit_count > 0` |
+| MR-F1 | Worker cron: warm `sv:morning:etf` + regime before 9:00 IST | **Shipped** |
+| MR-F2 | Port `testMorningDashboard()` from `validate-logic.php` | **Shipped** — `morning-dashboard.test.ts` |
+| MR-F3 | Stale-while-revalidate: return cached bundle, refresh ETF async | **Shipped** |
+| MR-F4 | Optional webhook when `exit_count > 0` | **Shipped** — `notifyMorningAlertsIfNeeded` |
 
 ### Acceptance criteria
 
-- [ ] `/morning` loads actionable summary without visiting 4 other pages
-- [ ] Cached morning API p95 < **300ms**
-- [ ] Checklist step 3 shows `warn` when any swing EXIT
-- [ ] Regime banner matches `/swing/auto` regime data
-- [ ] ETF refresh completes < **8s** for full ETF universe
-- [ ] `validate-logic` morning tests pass in vitest
+- [x] `/morning` loads actionable summary without visiting 4 other pages
+- [x] Checklist step warns when swing or intraday EXIT
+- [x] Regime banner matches `/swing/auto` regime data
+- [x] ETF cache + background revalidate
+- [x] `validate-logic` morning tests pass in vitest
+- [ ] Cached morning API p95 < **300ms** (ops benchmark)
+- [ ] ETF refresh completes < **8s** for full ETF universe (ops benchmark)
 
 ---
 
@@ -519,7 +522,7 @@ Now — Dashboard health only; data scattered across pages
 
 **Milestone:** Maps to **M10** in [MILESTONES.md](MILESTONES.md) (Morning dashboard portion; LTG auto is separate track).
 
-**Dependency note:** MR-C blocked on [NIFTY-POSITIONS.md](NIFTY-POSITIONS.md). MR-A/B can ship first with intraday panel placeholder.
+**Dependency note:** MR-C unblocked — intraday positions ship in [NIFTY-POSITIONS.md](NIFTY-POSITIONS.md). **MR-F shipped** — pre-warm cron, ETF SWR, validate-logic parity tests, optional exit alerts.
 
 ---
 

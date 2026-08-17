@@ -108,6 +108,64 @@ export async function importNseEquityCsv(csv: string) {
   return { success: true, imported: symbols.length };
 }
 
+
+export interface PledgeRow {
+  symbol: string;
+  pledgePct: number;
+  asOf: Date | null;
+}
+
+export function parsePromoterPledgeCsv(csv: string): PledgeRow[] {
+  const rows = parseCsvRows(csv);
+  if (rows.length === 0) return [];
+
+  const header = rows[0].map((h) => h.toLowerCase());
+  const symIdx = header.indexOf('symbol');
+  let pctIdx = header.indexOf('promoter_pledge_pct');
+  if (pctIdx < 0) pctIdx = header.indexOf('pledge_pct');
+  if (pctIdx < 0) pctIdx = header.indexOf('pct');
+  const asOfIdx = header.indexOf('as_of');
+
+  if (symIdx < 0 || pctIdx < 0) return [];
+
+  const out: PledgeRow[] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const symbol = (rows[i][symIdx] ?? '').toUpperCase().replace(/\.(NS|BO)$/, '');
+    const pct = parseFloat((rows[i][pctIdx] ?? '').replace(/[^0-9.-]/g, ''));
+    if (!symbol || !Number.isFinite(pct) || pct < 0 || pct > 100) continue;
+    const asOfRaw = asOfIdx >= 0 ? rows[i][asOfIdx] : '';
+    const asOf = asOfRaw ? new Date(asOfRaw) : null;
+    out.push({ symbol, pledgePct: Math.round(pct * 100) / 100, asOf });
+  }
+  return out;
+}
+
+export async function importPromoterPledgeCsv(csv: string) {
+  const rows = parsePromoterPledgeCsv(csv);
+  if (rows.length === 0) {
+    return { success: false, imported: 0, error: 'No valid pledge rows' };
+  }
+
+  for (const row of rows) {
+    await prisma.promoterPledge.upsert({
+      where: { symbol: row.symbol },
+      create: {
+        symbol: row.symbol,
+        pledgePct: row.pledgePct,
+        asOf: row.asOf ?? new Date(),
+        source: 'upload',
+      },
+      update: {
+        pledgePct: row.pledgePct,
+        asOf: row.asOf ?? new Date(),
+        source: 'upload',
+      },
+    });
+  }
+
+  return { success: true, imported: rows.length };
+}
+
 export async function importPromoterHoldingCsv(csv: string) {
   const rows = parsePromoterHoldingCsv(csv);
   if (rows.length === 0) {
@@ -135,15 +193,17 @@ export async function importPromoterHoldingCsv(csv: string) {
 }
 
 export async function getAdminStats() {
-  const [nseCount, holdingCount, universes] = await Promise.all([
+  const [nseCount, holdingCount, pledgeCount, universes] = await Promise.all([
     prisma.nseEquity.count(),
     prisma.promoterHolding.count(),
+    prisma.promoterPledge.count(),
     prisma.universe.findMany({ include: { _count: { select: { symbols: true } } } }),
   ]);
 
   return {
     nse_equity_count: nseCount,
     promoter_holding_count: holdingCount,
+    promoter_pledge_count: pledgeCount,
     universes: universes.map((u) => ({
       key: u.key,
       name: u.name,

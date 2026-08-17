@@ -3,6 +3,7 @@ import type { StockMetrics } from '@sv/shared';
 import { lookupSectorHint } from '@sv/shared';
 import type { ScreenerAnnualFinancials } from './screener-annual.js';
 import { enrichMetricsFromScreenerAnnual } from './screener-annual.js';
+import { buildScreenerInsights } from './screener-insights.js';
 
 function revenueYoyFromHistory(revs: number[]): number {
   if (revs.length < 2) return 0;
@@ -69,6 +70,32 @@ export function enrichStockMetrics(
       ...out,
       promoter_holding: annual.promoter_holding_pct,
       promoter_holding_source: 'screener_meta',
+    };
+  }
+  if (annual?.shareholding?.promoter && annual.shareholding.promoter.latest_pct > 0) {
+    const prom = annual.shareholding.promoter;
+    const asOf = annual.shareholding.latest_period;
+    out = {
+      ...out,
+      promoter_holding: prom.latest_pct,
+      promoter_holding_as_of: asOf,
+      promoter_holding_source: 'screener_shareholding',
+      promoter_holding_change_pp: prom.change_pp ?? undefined,
+      promoter_holding_trend: prom.trend,
+    };
+  }
+  if (annual?.shareholding) {
+    out = {
+      ...out,
+      shareholding: annual.shareholding,
+    };
+  }
+  if (annual?.promoter_pledge_pct != null && Number.isFinite(annual.promoter_pledge_pct)) {
+    out = {
+      ...out,
+      promoter_pledge: annual.promoter_pledge_pct,
+      promoter_pledge_as_of: annual.promoter_pledge_as_of ?? '',
+      promoter_pledge_source: 'screener.in',
     };
   }
 
@@ -160,6 +187,19 @@ export function enrichStockMetrics(
 
   if (options.div_yield && Number(out.div_yield ?? 0) <= 0) {
     out = { ...out, div_yield: options.div_yield };
+  }
+
+  if (annual?.pros?.length || annual?.cons?.length) {
+    const insights = buildScreenerInsights(annual.pros ?? [], annual.cons ?? []);
+    out = {
+      ...out,
+      screener_pros: insights.pros,
+      screener_cons: insights.cons,
+      screener_warnings: insights.warnings,
+      screener_has_critical: insights.has_critical,
+      screener_has_watch: insights.has_watch,
+      screener_insights_source: insights.source,
+    };
   }
 
   return out;

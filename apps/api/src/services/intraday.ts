@@ -35,6 +35,14 @@ import {
 } from '@sv/intraday';
 import { listIntradayPositions } from './intraday-positions.js';
 
+/** Query flag: `0` / `false` → skip; `1` / `true` or omitted → include. */
+export function intradayIncludeFlag(value?: string, defaultOn = true): boolean {
+  if (value == null || value === '') return defaultOn;
+  if (value === '0' || value === 'false') return false;
+  if (value === '1' || value === 'true') return true;
+  return defaultOn;
+}
+
 export async function getNiftyIntradayState(
   interval = '15m',
   refresh = false,
@@ -275,18 +283,42 @@ export async function getNiftyIntradayLite(
   interval = '5m',
   instrumentId = 'nifty50',
   refresh = false,
+  options: { includePositions?: boolean; includeJournal?: boolean } = {},
 ) {
+  const includePositions = options.includePositions !== false;
+  const includeJournal = options.includeJournal !== false;
   const state = await getNiftyIntradayState(interval, refresh, instrumentId);
   if ('unknown_instrument' in state && state.unknown_instrument) return state;
   const row = state as Record<string, unknown>;
 
   const uid = userId && userId !== 'system' ? userId : undefined;
-  const [openRes, closedRes] = await Promise.all([
-    listIntradayPositions(uid, 'open', { live: true }),
-    listIntradayPositions(uid, 'closed'),
-  ]);
-  const openRows = (openRes.positions ?? []) as Record<string, unknown>[];
-  const closedRows = (closedRes.positions ?? []) as Record<string, unknown>[];
+  const emptyPortfolio = { count: 0, net_pnl_inr: null as number | null, urgent_count: 0 };
+  let openRows: Record<string, unknown>[] = [];
+  let closedRows: Record<string, unknown>[] = [];
+  let openPortfolio = emptyPortfolio;
+
+  if (includePositions || includeJournal) {
+    const fetches: Promise<unknown>[] = [];
+    if (includePositions) {
+      fetches.push(listIntradayPositions(uid, 'open', { live: true }));
+    }
+    if (includeJournal) {
+      fetches.push(listIntradayPositions(uid, 'closed'));
+    }
+    const results = await Promise.all(fetches);
+    let i = 0;
+    if (includePositions) {
+      const openRes = results[i++] as Awaited<ReturnType<typeof listIntradayPositions>>;
+      openRows = (openRes.positions ?? []) as Record<string, unknown>[];
+      openPortfolio =
+        (openRes.live?.portfolio as typeof emptyPortfolio | undefined) ??
+        ({ count: openRows.length, net_pnl_inr: null, urgent_count: 0 } as typeof emptyPortfolio);
+    }
+    if (includeJournal) {
+      const closedRes = results[i++] as Awaited<ReturnType<typeof listIntradayPositions>>;
+      closedRows = (closedRes.positions ?? []) as Record<string, unknown>[];
+    }
+  }
   const scalp = (row.scalp_setup as Record<string, unknown> | undefined) ?? null;
   const analysis5 = (row.analysis_5m as Record<string, unknown> | undefined) ?? null;
   const playbook = (row.playbook as Record<string, unknown> | undefined) ?? null;
@@ -316,9 +348,11 @@ export async function getNiftyIntradayLite(
     log_source: INTRADAY_APP_SOURCE,
     positions: {
       open: openRows.map(liteOpenPosition),
-      portfolio: openRes.live?.portfolio ?? { count: openRows.length, net_pnl_inr: null, urgent_count: 0 },
+      portfolio: openPortfolio,
     },
     journal: liteJournal(closedRows),
+    positions_included: includePositions,
+    journal_included: includeJournal,
     refresh_sec: Number(row.refresh_sec ?? NIFTY_INTRADAY_REFRESH_SEC),
     server_time: new Date().toISOString(),
   };

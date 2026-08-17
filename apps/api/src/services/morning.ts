@@ -10,6 +10,7 @@ import {
   scheduleEtfPanelRevalidate,
   setCachedMorningBundle,
   shouldRevalidateEtfPanel,
+  buildScreenerPathFromStrategyKey,
 } from '@sv/data-adapters';
 
 import { nseSession } from '@sv/shared';
@@ -198,7 +199,10 @@ async function buildMorningBriefing(
       ? {
           days: dailyProof.days,
           run_count: dailyProof.runs.length,
-          scoreboard: (dailyProof.scoreboard ?? []).slice(0, 5),
+          scoreboard: (dailyProof.scoreboard ?? []).slice(0, 5).map((row) => ({
+          ...row,
+          screener_href: buildScreenerPathFromStrategyKey(row.strategy_key) ?? undefined,
+        })),
           href: '/strategies',
         }
       : { days: 0, run_count: 0, scoreboard: [], href: '/strategies' },

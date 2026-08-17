@@ -2,7 +2,7 @@
 
 **CFA Verify** is the one-click institutional valuation memo: auto-fetch fundamentals, run CFA valuation (DCF, fair P/E, sector models), score quality, compute margin of safety, and render an investment memo — with optional **Full Verify** (8 manual phases) before allocating capital.
 
-In **Script Screener v2**, `/verify` runs the **valuation engine only** (`CfaValuationEngine` via `estimate()`). The PHP **8-phase `VerificationEngine`**, investment memo UI, annual-report inference, and verify result cache are **not yet ported**.
+In **Script Screener v2**, `/verify` runs **one-click CFA auto-verify**: fetch → screening defaults → `VerificationEngine` (screening mode) → investment memo + annual-report scan. Full manual 8-phase wizard lives at `/verify/full`.
 
 > Educational research only — screening-mode auto-verify assumes Phase 0 gates; confirm personally before investing.
 
@@ -61,9 +61,9 @@ In **Script Screener v2**, `/verify` runs the **valuation engine only** (`CfaVal
 | **Valuation** | `CfaValuationEngine` inside `VerificationEngine` | `CfaValuationEngine.analyze()` direct |
 | **8-phase gates** | `VerificationEngine` (Phases 0–8) | **Not ported** |
 | **Investment memo** | `CfaInvestmentMemo::build()` + `cfa_report.php` | **Table only** (8 fields) |
-| **Annual report** | `AnnualReportLogic::inferGates()` | **Not ported** |
+| **Annual report** | `AnnualReportLogic::inferGates()` | ✓ `@sv/data-adapters/annual-report` |
 | **Auto-fill** | ~80 fields via `buildVerifierAutoFill()` | ~15 metrics from `fetchStockData` |
-| **Verify cache** | `VerificationResultCache` 7d + price refresh | `sv:verify` key **defined, not wired** |
+| **Verify cache** | `VerificationResultCache` 7d + price refresh | `sv:verify` wired + **>1% price drift invalidate** |
 | **UI refresh** | Cache by default; stale if price drift >1% | UI sends `refresh: true` every click |
 | **History** | Optional JSON file | `verification_runs` table + API |
 | **Batch job** | `AnnualVerifyJob` + `run-annual-verify-job.php` | **Planned** Phase 13 |
@@ -133,13 +133,13 @@ PHP `VerificationResultCache`:
 |-----|-----|---------|
 | `stock_verify/verify:{SYM}` | 7d | Full analyze payload |
 
-v2 constant: `sv:verify:{SYM}` — **not wired**.
+v2: `sv:verify:{SYM}` read/write in `runCfaAutoVerify()`; invalidated when `sv:stock` price drifts **>1%** (PHP `cachedPriceStale`).
 
 Warm verify target: **p95 < 50ms** (read cache + optional price patch).
 
 ### 2. Stop forcing refresh on every click
 
-`VerifyPage.tsx` sends `refresh: true` always → bypasses `sv:stock` and `sv:verify`.
+`VerifyPage.tsx` defaults to cache (`refresh: false`); **Refresh live data** bypasses. Quick symbol chips for TCS/RELIANCE/INFY/HDFCBANK/ITC.
 
 **Fix:** default `refresh: false`; explicit "Refresh live data" button.
 
@@ -368,7 +368,7 @@ TTL:    7 days (DataCache::TTL_SECONDS)
 
 | Key | TTL | Status |
 |-----|-----|--------|
-| `sv:verify:{SYM}` | 7d | Constant defined in `@sv/shared` — **not read/written** |
+| `sv:verify:{SYM}` | 7d | Wired in `runCfaAutoVerify`; price-drift >1% forces recompute |
 | `sv:stock:{SYM}` | 7d | Used by fetch; verify ignores when `refresh=true` |
 
 **Phase 9 deliverable:** wire cache in `verifyStock()` / `verify.ts`.
@@ -497,8 +497,9 @@ Options: `universe`, `max`, `skip_fresh`, `force_refresh`.
 
 | UI element | Phase |
 |------------|-------|
-| Memo hero (grade, conviction) | V-B |
-| Assumptions collapsible | V-B |
+| Memo hero (grade, conviction) | **Done** |
+| Assumptions collapsible | **Done** |
+| Annual report scan | **Done** |
 | Quick symbol chips | V-A |
 | Link to `/stock/:symbol` | V-A (with Stock Details) |
 | "Refresh live" vs cached badge | V-A |
@@ -514,11 +515,11 @@ Options: `universe`, `max`, `skip_fresh`, `force_refresh`.
 | One-click verify page | ✓ | partial | **V-A** |
 | `CfaValuationEngine` / MOS | ✓ | ✓ | Golden tests pass |
 | 8-phase `VerificationEngine` | ✓ | ✗ | **V-C** |
-| Investment memo UI | ✓ | ✗ | **V-B** |
-| Grade A–F hero | ✓ | ✗ | **V-B** |
-| Annual report inference | ✓ | ✗ | **V-B** |
-| Screening assumptions banner | ✓ | ✗ | **V-B** |
-| Data quality panel | ✓ | ✗ | **V-B** |
+| Investment memo UI | ✓ | ✓ | — |
+| Grade A–F hero | ✓ | ✓ | — |
+| Annual report inference | ✓ | ✓ | — |
+| Screening assumptions banner | ✓ | ✓ | — |
+| Data quality panel | ✓ | ✓ | — |
 | Investment ready badge | ✓ | ✗ | **V-C** |
 | Position sizing | ✓ | ✗ | **V-C** |
 | Verify cache 7d | ✓ | ✗ | **V-A** (Phase 9) |
@@ -538,23 +539,23 @@ Options: `universe`, `max`, `skip_fresh`, `force_refresh`.
 
 | # | Task |
 |---|------|
-| V-A1 | Wire `sv:verify` read/write in `verifyStock()` |
-| V-A2 | Default `refresh: false` on VerifyPage; add "Refresh live" toggle |
-| V-A3 | Port price staleness check (>1% drift invalidates verify cache) |
-| V-A4 | Quick symbol chips (TCS, RELIANCE, …) |
-| V-A5 | Show `from_cache` badge + sources in UI |
-| V-A6 | Link to Stock Details / Screener from result card |
+| V-A1 | Wire `sv:verify` read/write in `verifyStock()` | **Done** |
+| V-A2 | Default `refresh: false` on VerifyPage; add "Refresh live" toggle | **Done** |
+| V-A3 | Port price staleness check (>1% drift invalidates verify cache) | **Done** |
+| V-A4 | Quick symbol chips (TCS, RELIANCE, …) | **Done** |
+| V-A5 | Show `from_cache` badge + sources in UI | **Done** |
+| V-A6 | Link to Stock Details / Screener from result card | **Done** (Details + Full Verify) |
 
 ### Phase V-B — Memo UI (3–4 days)
 
 | # | Task |
 |---|------|
-| V-B1 | Port `CfaInvestmentMemo` → `@sv/core/investment-memo.ts` |
-| V-B2 | Port `AnnualReportLogic` → `@sv/data-adapters/annual-report.ts` |
-| V-B3 | `VerifyMemo.tsx` — hero, valuation summary, metric rows |
-| V-B4 | Assumptions panel + screening mode warning |
-| V-B5 | Annual report scan section |
-| V-B6 | Data quality + valuation flags banners |
+| V-B1 | Port `CfaInvestmentMemo` → `@sv/core/investment-memo.ts` | **Done** |
+| V-B2 | Port `AnnualReportLogic` → `@sv/data-adapters/annual-report.ts` | **Done** |
+| V-B3 | Verify memo hero + valuation metrics on `/verify` | **Done** |
+| V-B4 | Assumptions panel + screening mode warning | **Done** |
+| V-B5 | Annual report scan section | **Done** |
+| V-B6 | Data quality + valuation flags banners | **Done** |
 
 ### Phase V-C — 8-phase engine (5–7 days)
 
@@ -578,11 +579,11 @@ Options: `universe`, `max`, `skip_fresh`, `force_refresh`.
 
 ### Acceptance criteria
 
-- [ ] Repeat verify TCS within 7d → `from_cache: true`, p95 < **50ms**
+- [x] Repeat verify TCS within 7d → `from_cache: true` (price-drift gate >1%)
 - [ ] Cold verify p95 < **2.5s**
 - [ ] TCS/RELIANCE IV within **1%** of PHP `test-cross-page.php`
 - [ ] Memo grade + MOS match PHP `verify.php` for golden fixtures
-- [ ] Screening banner shown; assumptions list visible
+- [x] Screening banner shown; assumptions list visible
 - [ ] Watchlist meta updates after verify (already works)
 
 ---

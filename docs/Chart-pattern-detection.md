@@ -412,6 +412,16 @@ Return structured data similar to:
 }
 ```
 
+## 13b. Feed UX (shipped)
+
+`/patterns` feed includes:
+
+* Status chips (forming / breakout / confirmed)
+* Click accuracy summary cards to filter by pattern kind
+* Sort by confidence (desc)
+* Reward:risk (**R:R**) from breakout → target vs stop
+* Row actions → CFA Verify + Stock Details chart
+
 ## 14. Historical Backtesting
 
 Include a backtesting mode.

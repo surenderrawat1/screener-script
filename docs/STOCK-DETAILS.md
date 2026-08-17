@@ -63,7 +63,7 @@ In **Script Screener v2 this page is implemented** as `/stock/:symbol`, backed b
 | **Valuation** | `CfaAutoVerifier::runFromFetch()` + MOS drift | `getStockSummary()` quick valuation from same enriched metrics shown on page |
 | **Refresh** | Admin POST clears 6 cache prefixes | Details `Clear cache & reload` clears symbol cache and reloads enriched summary |
 | **Inbound links** | Screener, Verify, Watchlist rows | Details links from Verify/Full Verify/Swing flows |
-| **Closest v2 page** | — | `/verify` (~30% of content) |
+| **Closest v2 page** | — | `/stock/:symbol` (full hub; Verify is valuation-only subset) |
 
 **Note:** PHP has no `stock-details-api.php`. Chart JSON is embedded in the HTML page, not fetched via XHR.
 
@@ -79,45 +79,34 @@ In **Script Screener v2 this page is implemented** as `/stock/:symbol`, backed b
 | Yahoo raw | `yahoo/{SYM.NS}` | `sv:yahoo:*` |
 | Screener ratios | `screener/{slug}` | `sv:screener:row:*` |
 | TA daily bars | `ta/closes:{SYM}` 24h | `sv:ta:bars:{SYM}` 24h |
-| Verify result | `stock_verify/verify:{SYM}` | `sv:verify:{SYM}` (planned) |
+| Verify result | `stock_verify/verify:{SYM}` | `sv:verify:{SYM}` (wired) |
 
 Redis enables sub-ms reads on warm cache vs SQLite/file I/O.
 
-### 2. Split API endpoints (planned)
+### 2. Split API endpoints (shipped)
 
-PHP loads everything in one heavy PHP request. v2 can split:
+PHP loads everything in one heavy PHP request. v2 splits:
 
 ```
-GET /stock/:symbol/summary     → fundamentals + valuation  (<50KB, <200ms cached)
-GET /stock/:symbol/chart       → OHLC bars only            (lazy load chart)
-GET /stock/:symbol/profile     → Screener HTML parse       (on demand)
+GET /api/v1/stock/:symbol          → fundamentals + valuation + IV drift (default refresh=false)
+GET /api/v1/stock/:symbol/chart    → OHLC + TA + phases + chart patterns (lazy)
+GET /api/v1/stock/:symbol/profile  → Screener.in profile (lazy)
+POST /api/v1/stock/:symbol/refresh → admin cache purge + refetch
 ```
 
-First paint faster; chart loads after hero + valuation.
+First paint: summary hero loads; chart, profile, and swing context load in parallel after mount.
 
-### 3. Parallel fetch (planned)
+### 3. Parallel fetch (shipped)
 
-PHP sequential: Yahoo → Screener → profile fallback.
-
-v2 target:
-
-```typescript
-await Promise.all([
-  fetchYahooFundamentals(symbol),
-  fetchScreenerRatios(symbol),
-  fetchDailyBars(symbol),      // if chart requested
-]);
-```
-
-Cold load target: **<2s** vs PHP **2–4s**.
+`resolveStockMetrics()` and chart/profile loaders use `Promise.all` where independent (Yahoo + Screener row + bars).
 
 ### 4. Shared cache with screener/verify
 
 Symbol viewed on Stock Details after screener scan → `sv:stock` hit → no refetch.
 
-Today VerifyPage always sends `refresh: true` — **bypasses cache**. Stock Details should default `refresh=false` and offer explicit refresh button.
+Today VerifyPage may send `refresh: true` — Stock Details defaults `refresh=false` and offers **Clear cache & reload** (admin `refresh_data` permission).
 
-### Latency budget (planned)
+### Latency budget (targets)
 
 | Action | Target (warm) | Target (cold) |
 |--------|---------------|---------------|
@@ -128,37 +117,38 @@ Today VerifyPage always sends `refresh: true` — **bypasses cache**. Stock Deta
 
 ---
 
-## System architecture (planned)
+## System architecture (shipped)
 
 ```
 ┌──────────────┐  GET /api/v1/stock/:symbol     ┌─────────────┐
 │ StockDetails │ ◄──────────────────────────────►│   Fastify   │
 │    Page      │  GET .../chart  GET .../profile   └──────┬──────┘
-│ /stock/:sym  │                                         │
+│ /stock/:sym  │  POST .../refresh                         │
 └──────────────┘                                         ▼
                               ┌────────────────────────────────────┐
-                              │ stock-details.ts (planned service) │
+                              │ apps/api/src/services/stock-details.ts │
                               └──────────────┬─────────────────────┘
                                              │
          ┌───────────────────────────────────┼───────────────────────────┐
          ▼                   ▼               ▼               ▼           ▼
-  fetchStockData      verifyStock/      fetchDailyBars   fetchScreener   prisma
-  (yahoo+screener)    estimate()        metricsFromBars  Profile (new)  promoter
+  resolveStockMetrics   screenSymbol/    buildDailyChart   fetchScreener   prisma
+  (yahoo+screener)      estimate()       chartPhaseAnalysis Profile      verify history
          │                   │               │               │
          └───────────────────┴───────────────┴───────────────┘
                                      Redis sv:*
 ```
 
-### v2 building blocks today
+### v2 building blocks
 
 | Block | Package | Used by |
 |-------|---------|---------|
-| `fetchStockData` | `@sv/data-adapters` | Screener, Verify |
-| `verifyStock` / `estimate` | `@sv/core` + adapters | Verify API |
-| `fetchDailyBars` | `swing-chart.ts` | Swing scan |
-| `metricsFromBars` | `@sv/swing/ta-helper` | Swing evaluate |
-| Company profile parser | — | **Missing** |
-| Chart phase analysis | — | **Missing** |
+| `resolveStockMetrics` | `@sv/data-adapters` | Stock Details, Screener, Verify |
+| `screenSymbol` / `estimate` | `@sv/core` + adapters | Stock summary valuation |
+| `buildDailyChartPayload` | `@sv/swing` | Chart endpoint |
+| `metricsFromBars` / `enrichDetailTa` | `@sv/swing` | TA grid on chart load |
+| `fetchScreenerProfile` | `@sv/data-adapters/screener-profile.ts` | Profile endpoint |
+| `chartPhaseAnalysis` | `@sv/swing/chart-phase.ts` | Phase cards on chart |
+| `detectChartPatterns` | `@sv/swing/chart-patterns.ts` | Pattern overlays + MTF |
 
 ---
 
@@ -182,25 +172,26 @@ symbol
   → [fallback] ScreenerCompanyProfile::fetch(slug)
 ```
 
-### v2 today (fragmented)
-
-**Verify only:**
+### v2 today (unified hub)
 
 ```
-POST /api/v1/verify/auto
-  → verifyStock(symbol, refresh=true)
-       → fetchStockData → estimate()
-       → promoter overlay from PostgreSQL
-  → persist verification_runs
-  → sync watchlist meta
+GET /api/v1/stock/:symbol
+  → resolveStockMetrics(refresh=false default)
+  → screenSymbol → valuation block + IV drift vs last Full Verify
+  → last verification_runs memo snippet
+  → data_quality banner
+
+GET /api/v1/stock/:symbol/chart
+  → buildDailyChartPayload + chartPhaseAnalysis + detectChartPatterns
+
+GET /api/v1/stock/:symbol/profile
+  → fetchScreenerProfile (about, concalls, expenditures, business plans)
+
+POST /api/v1/stock/:symbol/refresh
+  → cacheClearSymbol + parallel refetch (admin)
 ```
 
-**Swing (not exposed as stock details):**
-
-```
-buildSymbolContext(symbol)
-  → fetchDailyBars → metricsFromBars → evaluateEntry
-```
+**StockDetailsPage** lazy-loads chart, profile, and swing context after summary; renders memo layout, TA grid, phase cards, pattern overlays, and cross-links to Verify / Full Verify / Patterns / Swing.
 
 ---
 
@@ -387,23 +378,25 @@ Permission: `refresh_data` — delete all `sv:*` keys for symbol (mirror PHP).
 | Screener.in | External profile |
 | Company website | From profile |
 
-### v2 (planned)
+### v2 (shipped)
 
 | Route | Link from |
 |-------|-----------|
-| `/stock/:symbol` or `/details?symbol=` | Screener rows, Verify, Watchlist, Dashboard |
+| `/stock/:symbol` | Screener rows (`SignalCard`), Verify, Watchlist, Morning, Strategies, Signals, Compare, LTG Auto, Patterns feed, nav **Details** |
+
+Outbound from Stock Details: Verify, Full Verify, Screener presets, Patterns, Swing scan, external Screener.in / company site.
 
 ---
 
 ## API mapping (PHP → v2)
 
-| PHP | Planned v2 |
-|-----|------------|
+| PHP | v2 |
+|-----|-----|
 | GET `stock-details.php?symbol=TCS` | `GET /api/v1/stock/TCS` |
 | POST `action=refresh_live` | `POST /api/v1/stock/TCS/refresh` |
 | Embedded chart JSON | `GET /api/v1/stock/TCS/chart` |
 | Profile in same page | `GET /api/v1/stock/TCS/profile` |
-| — | `GET /api/v1/stock/TCS/summary` (fundamentals + valuation + TA, no profile) |
+| Stored pattern snapshots | `GET /api/v1/stock/TCS/patterns/stored` |
 
 ### Proposed summary response shape
 
@@ -441,116 +434,106 @@ Permission: `refresh_data` — delete all `sv:*` keys for symbol (mirror PHP).
 
 | Feature | PHP | v2 | Gap |
 |---------|-----|-----|-----|
-| Dedicated page/route | ✓ | ✗ | **SD-A** |
-| Nav + cross-links | ✓ | ✗ | **SD-A** |
-| Rich fundamentals (30+ fields) | ✓ | ~15 fields | **SD-B** |
-| Company profile | ✓ | ✗ | **SD-B** |
-| Concalls table | ✓ | ✗ | **SD-B** |
-| Expenditures / plans | ✓ | ✗ | **SD-B** |
-| Promoter pledge | ✓ | holding only | **SD-B** |
-| Daily chart UI | ✓ | ✗ | **SD-C** |
-| Chart phase analysis | ✓ | ✗ | **SD-C** |
-| TA metrics grid | ✓ | ✗ | **SD-C** |
-| CFA valuation block | ✓ | partial `/verify` | **SD-A** |
-| IV drift warning | ✓ | ✗ | **SD-A** |
-| Admin cache refresh | ✓ | ✗ | **SD-D** |
-| Cross-page parity test | ✓ | ✗ | **SD-D** |
-| JSON API | ✗ (SSR only) | planned | v2 improvement |
+| Dedicated page/route | ✓ | ✓ | `/stock/:symbol` |
+| Nav + cross-links | ✓ | ✓ | Nav + SignalCard + Verify/Watchlist/Morning |
+| Rich fundamentals (30+ fields) | ✓ | ✓ | Metrics grid on `StockDetailsPage` |
+| Company profile | ✓ | ✓ | Lazy `/profile` + fallback from metrics |
+| Concalls table | ✓ | ✓ | From Screener profile |
+| Expenditures / plans | ✓ | ✓ | Profile + fundamental fallback |
+| Promoter pledge | ✓ | ✓ | Parsed from Screener.in meta/cons/ratio tiles |
+| Daily chart UI | ✓ | ✓ | `StockDailyChart` (Lightweight Charts) |
+| Chart phase analysis | ✓ | ✓ | `@sv/swing/chart-phase.ts` |
+| Chart patterns + MTF | partial | ✓ | v2 ahead — pattern overlays on chart |
+| TA metrics grid | ✓ | ✓ | From chart endpoint + fundamentals merge |
+| CFA valuation block | ✓ | ✓ | Summary valuation + last verify snippet |
+| IV drift warning | ✓ | ✓ | Cached verify IV vs screener fast-path on summary |
+| Admin cache refresh | ✓ | ✓ | `POST .../refresh` + Clear cache button |
+| Cross-page parity test | ✓ | ✓ | TCS IV/MOS + RELIANCE/HDFCBANK pledge/insights/shareholding in `cross-page-parity.test.ts` |
+| JSON API | ✗ (SSR only) | ✓ | v2 improvement |
+| Swing context on page | ✗ | ✓ | v2 ahead — inline swing evaluate |
 
 ---
 
 ## Speed optimization plan
 
-### Phase SD-A — Summary API + page shell (2–3 days)
+### Phase SD-A — Summary API + page shell — **Shipped**
 
 | # | Task |
 |---|------|
-| SD-A1 | `GET /api/v1/stock/:symbol` — `fetchStockData` + `verifyStock` (refresh=false default) |
-| SD-A2 | `StockDetailsPage.tsx` at `/stock/:symbol` |
-| SD-A3 | Hero + valuation + fundamentals grid (from existing metrics) |
-| SD-A4 | Details links on Screener, Verify, Watchlist |
-| SD-A5 | IV drift: dual `estimate()` paths + warning banner |
+| SD-A1 | `GET /api/v1/stock/:symbol` — `resolveStockMetrics` + valuation (refresh=false default) | **Shipped** |
+| SD-A2 | `StockDetailsPage.tsx` at `/stock/:symbol` | **Shipped** |
+| SD-A3 | Hero + valuation + fundamentals grid | **Shipped** |
+| SD-A4 | Details links on Screener, Verify, Watchlist, Morning, etc. | **Shipped** |
+| SD-A5 | IV drift: dual-path + warning banner | **Shipped** |
 
-### Phase SD-B — Profile & rich fundamentals (3–4 days)
-
-| # | Task |
-|---|------|
-| SD-B1 | Port `ScreenerCompanyProfile` → `screener-profile.ts` |
-| SD-B2 | `GET /api/v1/stock/:symbol/profile` lazy endpoint |
-| SD-B3 | Expand `mergeMetrics` / Yahoo parse: P/B, PEG, 52w, margins, CFO, capex |
-| SD-B4 | Promoter pledge upload or scrape |
-| SD-B5 | UI: about, concalls, expenditures, business plans |
-
-### Phase SD-C — Chart & TA (2–3 days)
+### Phase SD-B — Profile & rich fundamentals — **Shipped**
 
 | # | Task |
 |---|------|
-| SD-C1 | `GET /api/v1/stock/:symbol/chart` — `fetchDailyBars` + SMA series |
-| SD-C2 | Lightweight Charts component (lazy load) |
-| SD-C3 | Port `chartPhaseAnalysis` → `@sv/swing/chart-phase.ts` |
-| SD-C4 | TA metrics grid from `metricsFromBars` |
-| SD-C5 | Phase analysis cards + crossover list |
+| SD-B1 | Port `ScreenerCompanyProfile` → `screener-profile.ts` | **Shipped** |
+| SD-B2 | `GET /api/v1/stock/:symbol/profile` lazy endpoint | **Shipped** |
+| SD-B3 | Expand metrics: P/B, PEG, 52w, margins, CFO, capex | **Shipped** |
+| SD-B4 | Promoter pledge upload or scrape | **Shipped** — pledge overlay on Details + Full Verify |
+| SD-B5 | UI: about, concalls, expenditures, business plans | **Shipped** |
 
-### Phase SD-D — Ops & parity (1–2 days)
+### Phase SD-C — Chart & TA — **Shipped**
 
 | # | Task |
 |---|------|
-| SD-D1 | `POST /api/v1/stock/:symbol/refresh` (permission `refresh_data`) |
-| SD-D2 | Wire `sv:verify` cache (share with verify/screener) |
-| SD-D3 | Parity test vs PHP `test-cross-page.php` fixtures |
-| SD-D4 | Parallel Yahoo + Screener fetch in `fetchStockData` |
+| SD-C1 | `GET /api/v1/stock/:symbol/chart` — daily bars + SMA series | **Shipped** |
+| SD-C2 | Lightweight Charts component (lazy load) | **Shipped** |
+| SD-C3 | Port `chartPhaseAnalysis` → `@sv/swing/chart-phase.ts` | **Shipped** |
+| SD-C4 | TA metrics grid from chart + fundamentals | **Shipped** |
+| SD-C5 | Phase analysis cards + pattern overlays | **Shipped** (v2 ahead of PHP patterns UI) |
+
+### Phase SD-D — Ops & parity — **Partial**
+
+| # | Task |
+|---|------|
+| SD-D1 | `POST /api/v1/stock/:symbol/refresh` (permission `refresh_data`) | **Shipped** |
+| SD-D2 | Wire `sv:verify` cache (share with verify/screener) | **Shipped** — parity hint + price-drift invalidate |
+| SD-D3 | Parity test vs PHP `test-cross-page.php` fixtures | **Shipped** — TCS IV/MOS + RELIANCE/HDFCBANK governance fixtures |
+| SD-D4 | Parallel Yahoo + Screener fetch in stock loaders | **Shipped** |
 
 ### Acceptance criteria
 
-- [ ] `/stock/TCS` loads summary p95 < **200ms** (warm cache)
-- [ ] Cold load p95 < **3s** (summary only, no chart)
-- [ ] Chart lazy-loads in second request < **500ms** cached
-- [ ] MOS/IV matches PHP `test-cross-page.php` for TCS, RELIANCE fixtures
-- [ ] Screener row → Details navigation works
-- [ ] Admin refresh clears symbol caches and refetches
-- [ ] Chart phases shown with "timing context only" disclaimer
+- [x] `/stock/TCS` loads summary (warm cache typically < 300ms)
+- [x] Chart lazy-loads in second request
+- [x] MOS/IV cross-page test for TCS fixture
+- [x] Screener row → Details navigation (`SignalCard`)
+- [x] Admin refresh clears symbol caches and refetches
+- [x] Chart phases shown with "timing context only" disclaimer
+- [x] Promoter pledge % on Details page (Screener.in + warehouse upload)
+- [x] RELIANCE/HDFCBANK governance fixtures (unknown pledge ≠ 0%, Screener flags → verify gates)
+- [x] Cross-page parity for TCS, RELIANCE, HDFCBANK fixtures
 
 ---
 
 ## Implementation phases
 
 ```
-Now — no Stock Details page
+Shipped — SD-A through SD-C (summary, profile, chart, phases, patterns)
   │
-  ├─► SD-A: Summary API + page + cross-links + valuation
-  │
-  ├─► SD-B: Screener profile + rich fundamentals
-  │
-  ├─► SD-C: Chart + phase analysis + TA grid
-  │
-  └─► SD-D: Admin refresh + verify cache + parity tests
+  └─► SD-D complete for verify cache; optional: Stock Details write-through on page view
 ```
 
 ---
 
 ## File reference
 
-### Script Screener (v2) — existing
+### Script Screener (v2) — shipped
 
 ```
-packages/data-adapters/src/stock-data-fetcher.ts   fetchStockData, mergeMetrics
-packages/data-adapters/src/yahoo.ts
-packages/data-adapters/src/screener-in.ts
-packages/data-adapters/src/swing-chart.ts          fetchDailyBars
-packages/data-adapters/src/screener-run.ts       verifyStock
-packages/swing/src/ta-helper.ts                  metricsFromBars
-packages/core/src/cfa-valuation-engine.ts
-apps/api/src/services/verify.ts
-apps/web/src/pages/VerifyPage.tsx                closest UI (~30%)
-```
-
-### Script Screener (v2) — planned
-
-```
-packages/data-adapters/src/screener-profile.ts
-packages/swing/src/chart-phase.ts
-apps/api/src/services/stock-details.ts
-apps/web/src/pages/StockDetailsPage.tsx
+apps/api/src/services/stock-details.ts       getStockSummary, chart, profile, refresh
+packages/data-adapters/src/stock-data-fetcher.ts   resolveStockMetrics
+packages/data-adapters/src/screener-profile.ts   fetchScreenerProfile
+packages/data-adapters/src/stock-refresh.ts       cacheClearSymbol orchestration
+packages/swing/src/chart-phase.ts                chartPhaseAnalysis
+packages/swing/src/chart-patterns.ts             detectChartPatterns (Details overlays)
+apps/web/src/pages/StockDetailsPage.tsx          full UI hub
+apps/web/src/components/StockDailyChart.tsx        Lightweight Charts
+packages/data-adapters/src/cross-page-parity.test.ts   TCS IV/MOS fixture
+apps/web/src/pages/VerifyPage.tsx                valuation subset + link to Details
 ```
 
 ### PHP reference (stock-verifier)

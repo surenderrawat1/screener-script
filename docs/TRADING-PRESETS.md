@@ -263,7 +263,7 @@ export function buildSwingScanBody(presetId: string): object | null;
 | 15m CFA precision | `nifty-15m.php?tf=15m` | `/intraday?interval=15m` | Same |
 | Intraday app (PWA) | `intraday-app.php` | `/intraday/app` + lite API | **Shipped** (I-D1/I-D3) |
 | Nifty positions | `nifty-positions.php` | `/nifty/positions` | **Not built** |
-| 60d backtest | `nifty-intraday-backtest.php` | — | Phase 12 |
+| 60d backtest | `nifty-intraday-backtest.php` | `/intraday/backtest` | **Shipped** |
 | Swing positions | `swing-positions.php` | `/positions` | ✅ |
 
 ### Conservative swing → v2 scan body (planned)

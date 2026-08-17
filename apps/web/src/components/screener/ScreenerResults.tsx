@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   badgeClass,
+  downloadJobPitchCsv,
   downloadPitchCsv,
   fmtNum,
   fmtPct,
+  defaultDirForSortKey,
   sortRows,
   type ScreenerRow,
   type SortKey,
@@ -11,7 +13,8 @@ import {
 import { ResearchRowActions } from '../ResearchRowActions';
 import { SignalCard } from '../research/SignalCard';
 import { ActiveFilterStrip } from './ActiveFilterStrip';
-import type { ScreenerCustomFilters, ScreenerTechFilters } from '../../lib/screener-filters';
+import { ScreenerRowDetail } from './ScreenerRowDetail';
+import type { ScreenerCustomFilters, ScreenerTaPresetFilters, ScreenerTechFilters } from '../../lib/screener-filters';
 
 function crossCell(active: boolean | null | undefined, bars: number | null | undefined): string {
   if (!active) return '—';
@@ -24,8 +27,14 @@ export function ScreenerResults({
   passed,
   restrictedSkipped,
   cacheHits,
+  tablePrefilterSkipped,
+  stockCacheHits,
+  fullAnalyzed,
   exchangeListAsOf,
+  jobId,
   filterStrip,
+  presetSort,
+  resultsKey,
   showEmaColumns = false,
   showHourlyEmaColumns = false,
 }: {
@@ -34,30 +43,56 @@ export function ScreenerResults({
   passed?: number;
   restrictedSkipped?: number;
   cacheHits?: number;
+  tablePrefilterSkipped?: number;
+  stockCacheHits?: number;
+  fullAnalyzed?: number;
   exchangeListAsOf?: string;
+  jobId?: string | null;
   filterStrip?: {
     universeName?: string;
     presetLabel?: string;
     custom?: ScreenerCustomFilters;
     tech?: ScreenerTechFilters;
+    taPreset?: ScreenerTaPresetFilters;
     showTa?: boolean;
     excludeRestricted?: boolean;
+    recommendationFilter?: string;
+    presetHasRecommendationTiers?: boolean;
   };
   showEmaColumns?: boolean;
+  presetSort?: { key: SortKey; dir: 'asc' | 'desc' };
+  resultsKey?: string;
   showHourlyEmaColumns?: boolean;
 }) {
-  const [sortKey, setSortKey] = useState<SortKey>('mos');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [sortKey, setSortKey] = useState<SortKey>(presetSort?.key ?? 'recommendation');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(presetSort?.dir ?? 'desc');
   const [actionMsg, setActionMsg] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!presetSort || !resultsKey) return;
+    setSortKey(presetSort.key);
+    setSortDir(presetSort.dir);
+  }, [resultsKey, presetSort?.key, presetSort?.dir]);
 
   const sorted = sortRows(rows, sortKey, sortDir);
   const showTa = rows.some((r) => r.ta_ready);
+  const detailColSpan = (() => {
+    let n = 12;
+    if (showTa) {
+      n += 7;
+      if (showEmaColumns) n += 2;
+      if (showHourlyEmaColumns) n += 2;
+    }
+    return n;
+  })();
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else {
       setSortKey(key);
-      setSortDir(key === 'symbol' ? 'asc' : 'desc');
+      setSortDir(defaultDirForSortKey(key));
     }
   }
 
@@ -75,7 +110,10 @@ export function ScreenerResults({
             <p className="muted screener-results-meta">
               Scanned {scanned} symbols · {passed ?? rows.length} passed
               {restrictedSkipped ? ` · ${restrictedSkipped} ASM/GSM/T2T skipped` : ''}
-              {cacheHits ? ` · ${cacheHits} cache hits` : ''}
+              {tablePrefilterSkipped ? ` · ${tablePrefilterSkipped} table prefilter skips` : ''}
+              {cacheHits ? ` · ${cacheHits} row cache hits` : ''}
+              {stockCacheHits ? ` · ${stockCacheHits} stock cache hits` : ''}
+              {fullAnalyzed ? ` · ${fullAnalyzed} full analyzed` : ''}
               {exchangeListAsOf ? ` · exchange lists as of ${exchangeListAsOf}` : ''}
             </p>
           )}
@@ -88,19 +126,57 @@ export function ScreenerResults({
               onChange={(e) => {
                 const k = e.target.value as SortKey;
                 setSortKey(k);
-                setSortDir(k === 'symbol' ? 'asc' : 'desc');
+                setSortDir(defaultDirForSortKey(k));
               }}
             >
+              <option value="recommendation">Recommendation</option>
               <option value="mos">MOS</option>
               <option value="composite_score">Quality score</option>
               <option value="roe">ROE</option>
               <option value="roce">ROCE</option>
               <option value="pe">P/E</option>
               <option value="symbol">Symbol</option>
+              <option value="sales_yoy">Sales YoY</option>
+              <option value="div_yield">Dividend yield</option>
+              <option value="moat_count">Moat count</option>
+              <option value="ta_rsi14">RSI (low first)</option>
+              <option value="ta_pct_52w">52w % (low first)</option>
+              <option value="ta_bb_pct_b">BB %B (low first)</option>
+              <option value="ta_macd_hist">MACD hist</option>
             </select>
           </label>
-          <button type="button" className="btn btn-secondary" onClick={() => downloadPitchCsv(sorted)}>
-            Export pitch CSV
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              if (expanded.size === sorted.length) setExpanded(new Set());
+              else setExpanded(new Set(sorted.map((r) => r.symbol)));
+            }}
+          >
+            {expanded.size === sorted.length && sorted.length > 0 ? 'Collapse all' : 'Expand all'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={exporting}
+            onClick={() => {
+              void (async () => {
+                setExporting(true);
+                try {
+                  if (jobId) {
+                    await downloadJobPitchCsv(jobId);
+                  } else {
+                    downloadPitchCsv(sorted);
+                  }
+                } catch (err) {
+                  setActionMsg(err instanceof Error ? err.message : 'Export failed');
+                } finally {
+                  setExporting(false);
+                }
+              })();
+            }}
+          >
+            {exporting ? 'Exporting…' : 'Export pitch CSV'}
           </button>
         </div>
       </div>
@@ -146,7 +222,12 @@ export function ScreenerResults({
                 </button>
               </th>
               <th>Zone</th>
-              <th>Quick verdict</th>
+              <th>
+                <button type="button" className="th-sort" onClick={() => toggleSort('recommendation')}>
+                  Quick verdict{sortIndicator('recommendation')}
+                </button>
+              </th>
+              <th title="Cached Full Verify scorecard when available">Verify</th>
               {showTa ? (
                 <>
                   <th>RSI</th>
@@ -174,8 +255,12 @@ export function ScreenerResults({
             </tr>
           </thead>
           <tbody>
-            {sorted.map((r) => (
-              <tr key={r.symbol}>
+            {sorted.map((r) => {
+              const isOpen = expanded.has(r.symbol);
+              const colSpan = detailColSpan;
+              return (
+              <>
+              <tr key={r.symbol} className={isOpen ? 'screener-row-expanded' : undefined}>
                 <td>
                   <SignalCard
                     variant="inline"
@@ -204,6 +289,25 @@ export function ScreenerResults({
                 </td>
                 <td className="screener-verdict">
                   <div>{r.recommendation}</div>
+                </td>
+                <td className="screener-verify-hint">
+                  {r.verify_cached && r.verify_score != null ? (
+                    <span
+                      title={
+                        r.verify_decision
+                          ? `Full Verify: ${r.verify_decision}` +
+                            (r.verify_iv && r.iv_delta_pct != null
+                              ? ` · IV Δ ${r.iv_delta_pct.toFixed(1)}%`
+                              : '')
+                          : 'Cached Full Verify scorecard'
+                      }
+                      className={r.iv_drift_warn ? 'neg' : undefined}
+                    >
+                      {r.verify_score}/56{r.iv_drift_warn ? ' ⚠' : ''}
+                    </span>
+                  ) : (
+                    '—'
+                  )}
                 </td>
                 {showTa ? (
                   <>
@@ -241,6 +345,22 @@ export function ScreenerResults({
                   </>
                 ) : null}
                 <td className="screener-actions">
+                  <button
+                    type="button"
+                    className="screener-expand-btn"
+                    aria-expanded={isOpen}
+                    aria-label={isOpen ? `Collapse ${r.symbol} CFA detail` : `Expand ${r.symbol} CFA detail`}
+                    onClick={() => {
+                      setExpanded((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(r.symbol)) next.delete(r.symbol);
+                        else next.add(r.symbol);
+                        return next;
+                      });
+                    }}
+                  >
+                    {isOpen ? '▾' : '▸'}
+                  </button>
                   <ResearchRowActions
                     symbol={r.symbol}
                     source="screener"
@@ -249,7 +369,16 @@ export function ScreenerResults({
                   />
                 </td>
               </tr>
-            ))}
+              {isOpen ? (
+                <tr key={`${r.symbol}-detail`} className="screener-detail-row">
+                  <td colSpan={colSpan}>
+                    <ScreenerRowDetail row={r} />
+                  </td>
+                </tr>
+              ) : null}
+              </>
+            );
+            })}
           </tbody>
         </table>
       </div>

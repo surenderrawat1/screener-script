@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import { EmptyState } from '../PageLayout';
@@ -99,6 +99,8 @@ export function IntradayOpenPanel({
   refreshedAt,
   onRefresh,
   onClosed,
+  heading,
+  footer,
 }: {
   positions: IntradayPositionRow[];
   portfolio?: {
@@ -109,6 +111,8 @@ export function IntradayOpenPanel({
   refreshedAt?: string | null;
   onRefresh?: () => void | Promise<void>;
   onClosed?: () => void | Promise<void>;
+  heading?: ReactNode;
+  footer?: ReactNode;
 }) {
   const [closeBusy, setCloseBusy] = useState<string | null>(null);
   const [editBusy, setEditBusy] = useState<string | null>(null);
@@ -197,6 +201,7 @@ export function IntradayOpenPanel({
 
   return (
     <section className="card nip-open-panel">
+      {heading}
       {urgent.length > 0 ? (
         <div className="nip-pos-alert" role="alert">
           {urgent.length} position(s) need exit:{' '}
@@ -436,6 +441,7 @@ export function IntradayOpenPanel({
           </table>
         </div>
       )}
+      {footer}
     </section>
   );
 }

@@ -1,10 +1,21 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { Page, PageHeader } from '../components/PageLayout';
 import { ScreenerResults } from '../components/screener/ScreenerResults';
-import type { ScreenerRow } from '../lib/screener-export';
-import { emaColumnsRelevant, hourlyEmaColumnsRelevant } from '../lib/screener-filters';
+import { sortConfigFromPreset, type ScreenerRow } from '../lib/screener-export';
+import { screenerDeepLink } from '../lib/screener-deep-link';
+import {
+  EMPTY_TA_PRESET,
+  buildTaPresetApiFilters,
+  emaColumnsRelevant,
+  hourlyEmaColumnsRelevant,
+  taPresetFiltersActive,
+  taPresetFromRecord,
+  RECOMMENDATION_FILTER_OPTIONS,
+  recommendationFilterFromPreset,
+  type ScreenerTaPresetFilters,
+} from '../lib/screener-filters';
 
 interface Universe {
   key: string;
@@ -18,6 +29,17 @@ interface ScreenerPreset {
   filters: Record<string, unknown>;
   description?: string;
   ta_preset?: boolean;
+  custom?: boolean;
+}
+
+const USER_PRESET_PREFIX = 'user_screener_preset:';
+
+function isUserPreset(id: string): boolean {
+  return id.startsWith(USER_PRESET_PREFIX);
+}
+
+function userPresetDbId(id: string): string {
+  return id.slice(USER_PRESET_PREFIX.length);
 }
 
 interface CustomFilters {
@@ -123,6 +145,51 @@ function buildApiFilters(custom: CustomFilters): Record<string, number> | undefi
   return Object.keys(out).length ? out : undefined;
 }
 
+function recommendationTiersForSave(filter: string): string[] | undefined {
+  switch (filter) {
+    case 'strong_buy':
+      return ['strong_buy'];
+    case 'buy':
+      return ['buy'];
+    case 'buy_staggered':
+      return ['buy_staggered'];
+    case 'buy_eligible':
+      return ['strong_buy', 'buy', 'buy_staggered'];
+    case 'watchlist':
+      return ['watchlist'];
+    case 'hold':
+      return ['hold'];
+    case 'avoid':
+      return ['avoid'];
+    default:
+      return undefined;
+  }
+}
+
+function buildFiltersSnapshot(
+  activePreset: ScreenerPreset | undefined,
+  customFilters: CustomFilters,
+  techFilters: TechFilters,
+  taPresetFilters: ScreenerTaPresetFilters,
+  showTa: boolean,
+  recommendationFilter: string,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...(activePreset?.filters ?? {}) };
+  Object.assign(out, buildApiFilters(customFilters) ?? {});
+  const tech = buildTechApiFilters(techFilters);
+  if (tech) Object.assign(out, tech);
+  const taPreset = buildTaPresetApiFilters(taPresetFilters);
+  if (taPreset) Object.assign(out, taPreset);
+  if (showTa || tech || taPreset) out.show_ta = true;
+  else delete out.show_ta;
+
+  const tiers = recommendationTiersForSave(recommendationFilter);
+  if (tiers) out.recommendation_tiers = tiers;
+  else if (recommendationFilter) delete out.recommendation_tiers;
+
+  return out;
+}
+
 function buildTechApiFilters(tech: TechFilters): Record<string, unknown> | undefined {
   const out: Record<string, unknown> = {};
   let anyCross = false;
@@ -160,20 +227,37 @@ const TECH_CROSS_OPTIONS: Array<{ key: keyof TechFilters; label: string }> = [
 
 export default function ScreenerPage() {
   const routeLocation = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const autorunDone = useRef(false);
   const initialParams = useMemo(() => new URLSearchParams(routeLocation.search), [routeLocation.search]);
   const [universes, setUniverses] = useState<Universe[]>([]);
   const [presets, setPresets] = useState<ScreenerPreset[]>([]);
+  const [customPresets, setCustomPresets] = useState<ScreenerPreset[]>([]);
+  const [customPresetName, setCustomPresetName] = useState('');
+  const [customPresetSaving, setCustomPresetSaving] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [universe, setUniverse] = useState(initialParams.get('universe') ?? 'nifty50');
   const [preset, setPreset] = useState(initialParams.get('preset') ?? 'quality');
   const [maxScan, setMaxScan] = useState(Number(initialParams.get('maxScan') ?? 200) || 200);
-  const [background, setBackground] = useState(false);
+  const [background, setBackground] = useState(initialParams.get('background') === '1');
   const [excludeRestricted, setExcludeRestricted] = useState(initialParams.get('exclude_restricted') !== '0');
   const [showTa, setShowTa] = useState(initialParams.get('show_ta') === '1');
   const [refresh, setRefresh] = useState(false);
   const [exchangeMeta, setExchangeMeta] = useState<{ as_of: string; total: number } | null>(null);
+  const [screenerHealth, setScreenerHealth] = useState<{
+    healthy: boolean;
+    pages: number;
+    failures: number;
+    empty_pages: number;
+    failure_rate: number;
+    empty_rate: number;
+    last_at: string;
+  } | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [customFilters, setCustomFilters] = useState<CustomFilters>({ ...EMPTY_FILTERS });
   const [techFilters, setTechFilters] = useState<TechFilters>({ ...EMPTY_TECH });
+  const [taPresetFilters, setTaPresetFilters] = useState<ScreenerTaPresetFilters>({ ...EMPTY_TA_PRESET });
+  const [recommendationFilter, setRecommendationFilter] = useState('');
   const [filtersTouched, setFiltersTouched] = useState(false);
   const [rows, setRows] = useState<ScreenerRow[]>([]);
   const [scanMeta, setScanMeta] = useState<{
@@ -182,6 +266,9 @@ export default function ScreenerPage() {
     passed: number;
     restricted_skipped?: number;
     cache_hits?: number;
+    table_prefilter_skipped?: number;
+    stock_cache_hits?: number;
+    full_analyzed?: number;
     exchange_list_as_of?: string;
   } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -199,10 +286,27 @@ export default function ScreenerPage() {
     | null
   >(null);
 
-  const activePreset = useMemo(() => presets.find((p) => p.id === preset), [presets, preset]);
+  const allPresets = useMemo(() => [...presets, ...customPresets], [presets, customPresets]);
+  const activePreset = useMemo(() => allPresets.find((p) => p.id === preset), [allPresets, preset]);
+  const presetSort = useMemo(() => sortConfigFromPreset(preset), [preset]);
   const activeUniverse = useMemo(() => universes.find((u) => u.key === universe), [universes, universe]);
   const showEmaCols = emaColumnsRelevant(techFilters, showTa);
   const showHourlyEmaCols = hourlyEmaColumnsRelevant(techFilters);
+
+
+  useEffect(() => {
+    if (searchParams.get('autorun') !== '1') return;
+    if (autorunDone.current) return;
+    if (loading) return;
+    if (presets.length === 0 && customPresets.length === 0) return;
+    if (!allPresets.some((p) => p.id === preset)) return;
+    autorunDone.current = true;
+    const form = document.querySelector('form.screener-form') as HTMLFormElement | null;
+    form?.requestSubmit();
+    const next = new URLSearchParams(searchParams);
+    next.delete('autorun');
+    setSearchParams(next, { replace: true });
+  }, [loading, presets.length, customPresets.length, allPresets, preset, searchParams, setSearchParams]);
 
   useEffect(() => {
     const params = new URLSearchParams(routeLocation.search);
@@ -223,18 +327,136 @@ export default function ScreenerPage() {
     api<{ presets: ScreenerPreset[] }>('/api/v1/screener/presets')
       .then((r) => setPresets(r.presets))
       .catch(() => {});
+    api<{ count: number; presets: ScreenerPreset[] }>('/api/v1/screener/custom-presets')
+      .then((r) => setCustomPresets(r.presets.map((p) => ({ ...p, custom: true }))))
+      .catch(() => {});
+
     api<{ exchange_lists: { as_of: string; total: number } }>('/api/v1/screener/exchange-lists')
       .then((r) => setExchangeMeta(r.exchange_lists))
+      .catch(() => {});
+    api<{
+      health: {
+        healthy: boolean;
+        pages: number;
+        failures: number;
+        empty_pages: number;
+        failure_rate: number;
+        empty_rate: number;
+        last_at: string;
+      };
+    }>('/api/v1/screener/health')
+      .then((r) => setScreenerHealth(r.health))
       .catch(() => {});
   }, []);
 
   useEffect(() => {
+    if (activePreset?.custom) {
+      setCustomPresetName(activePreset.label);
+    } else if (!isUserPreset(preset)) {
+      setCustomPresetName('');
+    }
+  }, [activePreset, preset]);
+
+  async function reloadCustomPresets() {
+    try {
+      const r = await api<{ presets: ScreenerPreset[] }>('/api/v1/screener/custom-presets');
+      setCustomPresets(r.presets.map((p) => ({ ...p, custom: true })));
+    } catch {
+      /* optional */
+    }
+  }
+
+  async function saveCustomPreset() {
+    if (!customPresetName.trim()) {
+      setError('Enter a name for the custom preset.');
+      return;
+    }
+    setCustomPresetSaving(true);
+    setError('');
+    try {
+      const filters = buildFiltersSnapshot(
+        activePreset,
+        customFilters,
+        techFilters,
+        taPresetFilters,
+        showTa,
+        recommendationFilter,
+      );
+      const res = await api<{ id: string; key: string; name: string }>('/api/v1/strategies', {
+        method: 'POST',
+        body: JSON.stringify({ name: customPresetName.trim(), filters }),
+      });
+      await reloadCustomPresets();
+      setPreset(res.key);
+      setFiltersTouched(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save preset failed');
+    } finally {
+      setCustomPresetSaving(false);
+    }
+  }
+
+  async function updateCustomPreset() {
+    if (!isUserPreset(preset)) return;
+    if (!customPresetName.trim()) {
+      setError('Enter a name for the custom preset.');
+      return;
+    }
+    setCustomPresetSaving(true);
+    setError('');
+    try {
+      const filters = buildFiltersSnapshot(
+        activePreset,
+        customFilters,
+        techFilters,
+        taPresetFilters,
+        showTa,
+        recommendationFilter,
+      );
+      const id = userPresetDbId(preset);
+      await api(`/api/v1/strategies/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name: customPresetName.trim(), filters }),
+      });
+      await reloadCustomPresets();
+      setFiltersTouched(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Update preset failed');
+    } finally {
+      setCustomPresetSaving(false);
+    }
+  }
+
+  async function deleteCustomPreset() {
+    if (!isUserPreset(preset)) return;
+    setCustomPresetSaving(true);
+    setError('');
+    try {
+      await api(`/api/v1/strategies/${encodeURIComponent(userPresetDbId(preset))}`, { method: 'DELETE' });
+      await reloadCustomPresets();
+      setPreset('quality');
+      setCustomPresetName('');
+      setFiltersTouched(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete preset failed');
+    } finally {
+      setCustomPresetSaving(false);
+    }
+  }
+
+  useEffect(() => {
     if (!filtersTouched && activePreset) {
       setCustomFilters(filtersFromPreset(activePreset));
-      if (activePreset.ta_preset || activePreset.id.startsWith('ta_')) {
+      setTaPresetFilters(taPresetFromRecord(activePreset.filters));
+      if (activePreset.ta_preset || activePreset.id.startsWith('ta_') || activePreset.filters?.show_ta) {
         setTechFilters(techFromPreset(activePreset));
         setShowTa(true);
+      } else {
+        setTechFilters({ ...EMPTY_TECH });
       }
+      setRecommendationFilter(
+        recommendationFilterFromPreset(activePreset.id, activePreset.filters),
+      );
     }
   }, [activePreset, filtersTouched]);
 
@@ -267,6 +489,9 @@ export default function ScreenerPage() {
             passed?: number;
             restricted_skipped?: number;
             cache_hits?: number;
+            table_prefilter_skipped?: number;
+            stock_cache_hits?: number;
+            full_analyzed?: number;
             exchange_list_as_of?: string;
           };
           progress?: typeof progress;
@@ -281,6 +506,9 @@ export default function ScreenerPage() {
           passed: res.job.result.passed ?? res.job.result.rows.length,
           restricted_skipped: res.job.result.restricted_skipped,
           cache_hits: res.job.result.cache_hits,
+          table_prefilter_skipped: res.job.result.table_prefilter_skipped,
+          stock_cache_hits: res.job.result.stock_cache_hits,
+          full_analyzed: res.job.result.full_analyzed,
           exchange_list_as_of: res.job.result.exchange_list_as_of,
         });
         setLoading(false);
@@ -306,8 +534,10 @@ export default function ScreenerPage() {
 
     const filters: Record<string, unknown> = { ...(buildApiFilters(customFilters) ?? {}) };
     const tech = buildTechApiFilters(techFilters);
+    const taPreset = buildTaPresetApiFilters(taPresetFilters);
     if (tech) Object.assign(filters, tech);
-    if (showTa || tech) filters.show_ta = true;
+    if (taPreset) Object.assign(filters, taPreset);
+    if (showTa || tech || taPreset) filters.show_ta = true;
     const filtersPayload = Object.keys(filters).length ? filters : undefined;
 
     try {
@@ -324,6 +554,7 @@ export default function ScreenerPage() {
           background: background || undefined,
           exclude_restricted: excludeRestricted,
           refresh: refresh || undefined,
+          recommendation_filter: recommendationFilter || undefined,
           filters: filtersPayload,
         }),
       });
@@ -356,6 +587,18 @@ export default function ScreenerPage() {
           </div>
         }
       />
+      {screenerHealth && !screenerHealth.healthy && screenerHealth.pages > 0 ? (
+        <div className="data-quality-banner data-quality-limited" role="alert">
+          <strong>Screener.in fetch stress</strong>
+          <span>
+            {screenerHealth.failures} fetch failures, {screenerHealth.empty_pages} empty pages (
+            {(screenerHealth.failure_rate * 100).toFixed(1)}% fail rate). Fundamentals may be incomplete — try
+            bypass cache or check Screener.in availability
+            {screenerHealth.last_at ? ` · last sample ${screenerHealth.last_at.slice(0, 19).replace('T', ' ')} UTC` : ''}.
+          </span>
+        </div>
+      ) : null}
+
       <p className="disclaimer">
         Screening is research assistance — run <Link to="/verify">Quick Verify</Link> or{' '}
         <Link to="/verify/full">Full Verify</Link> before allocating.
@@ -384,11 +627,24 @@ export default function ScreenerPage() {
               style={{ width: '100%' }}
             >
               {presets.length > 0 ? (
-                presets.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))
+                <>
+                  <optgroup label="System presets">
+                    {presets.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {customPresets.length > 0 ? (
+                    <optgroup label="My presets">
+                      {customPresets.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                </>
               ) : (
                 <option value="quality">Quality</option>
               )}
@@ -396,6 +652,23 @@ export default function ScreenerPage() {
             {activePreset?.description ? (
               <span className="muted screener-preset-hint">{activePreset.description}</span>
             ) : null}
+          </div>
+          <div className="form-group">
+            <label>Recommendation</label>
+            <select
+              value={recommendationFilter}
+              onChange={(e) => {
+                setFiltersTouched(true);
+                setRecommendationFilter(e.target.value);
+              }}
+              style={{ width: '100%' }}
+            >
+              {Object.entries(RECOMMENDATION_FILTER_OPTIONS).map(([value, label]) => (
+                <option key={value || 'all'} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="form-group">
             <label>Max scan</label>
@@ -516,13 +789,170 @@ export default function ScreenerPage() {
               onClick={() => {
                 setFiltersTouched(false);
                 setCustomFilters(filtersFromPreset(activePreset));
-                setTechFilters({ ...EMPTY_TECH });
+                setTechFilters(techFromPreset(activePreset));
+                setTaPresetFilters(taPresetFromRecord(activePreset?.filters));
               }}
             >
               Reset to preset
             </button>
           </div>
         )}
+
+        <details
+          className="screener-filters card nested"
+          style={{ marginTop: '0.75rem' }}
+          open={taPresetFiltersActive(taPresetFilters) || showTa}
+        >
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+            TA timing filters
+            <span className="muted" style={{ fontWeight: 400 }}>
+              {' '}
+              — RSI, 52w zone, SMA stack, MACD, Bollinger (not in CFA score)
+            </span>
+          </summary>
+          <p className="muted" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
+            Loaded from TA presets (e.g. Quality Pullback, Momentum). Override here or combine with cross filters
+            below.
+          </p>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Min RSI</label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={taPresetFilters.min_rsi}
+                onChange={(e) => {
+                  setFiltersTouched(true);
+                  setTaPresetFilters((f) => ({ ...f, min_rsi: e.target.value }));
+                }}
+              />
+            </div>
+            <div className="form-group">
+              <label>Max RSI</label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={taPresetFilters.max_rsi}
+                onChange={(e) => {
+                  setFiltersTouched(true);
+                  setTaPresetFilters((f) => ({ ...f, max_rsi: e.target.value }));
+                }}
+              />
+            </div>
+            <div className="form-group">
+              <label>Min 52w %</label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                title="Price position in 52-week range (0 = near low)"
+                value={taPresetFilters.min_pct_52w}
+                onChange={(e) => {
+                  setFiltersTouched(true);
+                  setTaPresetFilters((f) => ({ ...f, min_pct_52w: e.target.value }));
+                }}
+              />
+            </div>
+            <div className="form-group">
+              <label>Max 52w %</label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={taPresetFilters.max_pct_52w}
+                onChange={(e) => {
+                  setFiltersTouched(true);
+                  setTaPresetFilters((f) => ({ ...f, max_pct_52w: e.target.value }));
+                }}
+              />
+            </div>
+            <div className="form-group">
+              <label>Min BB %B</label>
+              <input
+                type="number"
+                step={1}
+                title="Bollinger %B: 0 = lower band, 100 = upper"
+                value={taPresetFilters.min_bb_pct_b}
+                onChange={(e) => {
+                  setFiltersTouched(true);
+                  setTaPresetFilters((f) => ({ ...f, min_bb_pct_b: e.target.value }));
+                }}
+              />
+            </div>
+            <div className="form-group">
+              <label>Max BB %B</label>
+              <input
+                type="number"
+                step={1}
+                value={taPresetFilters.max_bb_pct_b}
+                onChange={(e) => {
+                  setFiltersTouched(true);
+                  setTaPresetFilters((f) => ({ ...f, max_bb_pct_b: e.target.value }));
+                }}
+              />
+            </div>
+            <div className="form-group">
+              <label>52w chart zone</label>
+              <select
+                value={taPresetFilters.zone_52w || 'any'}
+                onChange={(e) => {
+                  setFiltersTouched(true);
+                  const v = e.target.value;
+                  setTaPresetFilters((f) => ({ ...f, zone_52w: v === 'any' ? '' : v }));
+                }}
+              >
+                <option value="any">Any position</option>
+                <option value="green">Green — pullback phase</option>
+                <option value="mid">Mid range (35–65%)</option>
+                <option value="red">Red — rally phase</option>
+              </select>
+            </div>
+          </div>
+          <div
+            className="screener-tech-grid"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: '0.35rem 1rem',
+              marginTop: '0.5rem',
+            }}
+          >
+            {(
+              [
+                ['above_sma20', 'Above SMA-20'],
+                ['above_sma50', 'Above SMA-50'],
+                ['above_sma200', 'Above SMA-200'],
+                ['macd_bullish', 'MACD histogram > 0'],
+                ['below_bb_lower', 'Below lower Bollinger'],
+                ['bottom_out_hint', 'Bottom-out hint (≥3/5)'],
+                ['golden_cross_50_200', 'Golden cross SMA-50/200'],
+                ['death_cross_50_200', 'Death cross SMA-50/200'],
+                ['golden_cross_9_50', 'Golden cross SMA-9/50'],
+                ['death_cross_9_50', 'Death cross SMA-9/50'],
+                ['bull_ma_stack', 'Bull MA stack (9>50>200)'],
+                ['bear_ma_stack', 'Bear MA stack (9<50<200)'],
+              ] as const
+            ).map(([key, label]) => (
+              <label key={key} className="morning-live-toggle">
+                <input
+                  type="checkbox"
+                  checked={Boolean(taPresetFilters[key])}
+                  onChange={(e) => {
+                    setFiltersTouched(true);
+                    setTaPresetFilters((f) => ({ ...f, [key]: e.target.checked }));
+                  }}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </details>
 
         <div className="screener-filters card nested" style={{ marginTop: '0.75rem' }}>
           <p style={{ marginTop: 0, marginBottom: '0.5rem' }}>
@@ -572,6 +1002,64 @@ export default function ScreenerPage() {
           </p>
         </div>
 
+
+        <div className="card screener-filters nested" style={{ marginTop: '1rem' }}>
+          <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Save custom preset</h3>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Save the current universe filters, TA gates, and recommendation tier as a reusable preset.
+          </p>
+          <div className="form-row" style={{ alignItems: 'end' }}>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label>Preset name</label>
+              <input
+                type="text"
+                value={customPresetName}
+                onChange={(e) => setCustomPresetName(e.target.value)}
+                placeholder="e.g. Quality + TA pullback"
+                style={{ width: '100%' }}
+              />
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={customPresetSaving}
+              onClick={() => void (isUserPreset(preset) ? updateCustomPreset() : saveCustomPreset())}
+            >
+              {customPresetSaving ? 'Saving…' : isUserPreset(preset) ? 'Update preset' : 'Save preset'}
+            </button>
+            {isUserPreset(preset) ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={customPresetSaving}
+                onClick={() => void deleteCustomPreset()}
+              >
+                Delete
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                const url = `${window.location.origin}${screenerDeepLink({
+                  preset,
+                  universe,
+                  maxScan,
+                  showTa,
+                  excludeRestricted,
+                  background,
+                })}`;
+                void navigator.clipboard.writeText(url).then(() => {
+                  setCopiedLink(true);
+                  window.setTimeout(() => setCopiedLink(false), 2000);
+                }).catch(() => {});
+              }}
+            >
+              {copiedLink ? 'Copied!' : 'Copy link'}
+            </button>
+          </div>
+        </div>
+
         <button type="submit" className="btn" disabled={loading}>
           {loading ? 'Running…' : 'Run screener'}
         </button>
@@ -610,7 +1098,13 @@ export default function ScreenerPage() {
           passed={scanMeta?.passed}
           restrictedSkipped={scanMeta?.restricted_skipped}
           cacheHits={scanMeta?.cache_hits}
+          tablePrefilterSkipped={scanMeta?.table_prefilter_skipped}
+          stockCacheHits={scanMeta?.stock_cache_hits}
+          fullAnalyzed={scanMeta?.full_analyzed}
           exchangeListAsOf={scanMeta?.exchange_list_as_of}
+          jobId={jobId}
+          presetSort={presetSort}
+          resultsKey={jobId ?? String(rows.length)}
           showEmaColumns={showEmaCols}
           showHourlyEmaColumns={showHourlyEmaCols}
           filterStrip={{
@@ -618,8 +1112,14 @@ export default function ScreenerPage() {
             presetLabel: activePreset?.label ?? preset,
             custom: customFilters,
             tech: techFilters,
+            taPreset: taPresetFilters,
             showTa,
             excludeRestricted,
+            recommendationFilter,
+            presetHasRecommendationTiers:
+              !recommendationFilter &&
+              Array.isArray(activePreset?.filters?.recommendation_tiers) &&
+              (activePreset?.filters?.recommendation_tiers?.length ?? 0) > 0,
           }}
         />
       )}

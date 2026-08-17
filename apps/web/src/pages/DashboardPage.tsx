@@ -33,6 +33,8 @@ export default function DashboardPage() {
   const [ready, setReady] = useState<Record<string, unknown> | null>(null);
   const [presetChips, setPresetChips] = useState<PresetChip[]>([]);
   const [ops, setOps] = useState<OpsAlertsResponse | null>(null);
+  const [opsLoading, setOpsLoading] = useState(true);
+  const [opsError, setOpsError] = useState('');
   const [paperSample, setPaperSample] = useState<{
     total_trades: number;
     min_trades: number;
@@ -55,8 +57,15 @@ export default function DashboardPage() {
       .then((r) => setPresetChips(r.chips ?? []))
       .catch(() => setPresetChips([]));
     api<OpsAlertsResponse>('/api/v1/ops/alerts')
-      .then(setOps)
-      .catch(() => setOps(null));
+      .then((r) => {
+        setOps(r);
+        setOpsError('');
+      })
+      .catch((err) => {
+        setOps(null);
+        setOpsError(err instanceof Error ? err.message : 'Failed to load ops alerts');
+      })
+      .finally(() => setOpsLoading(false));
     api<{ sample?: typeof paperSample }>('/api/v1/swing/paper/state')
       .then((r) => setPaperSample(r.sample ?? null))
       .catch(() => setPaperSample(null));
@@ -102,8 +111,12 @@ export default function DashboardPage() {
           Stale quotes · worker downtime · rejected paper writes · abnormal price gaps
           {ops?.nse ? ` · NSE ${ops.nse.label} ${ops.nse.ist_time}` : ''}
         </p>
-        {!ops ? (
-          <p className="muted">Sign in to load ops alerts.</p>
+        {opsLoading ? (
+          <p className="muted">Loading ops alerts…</p>
+        ) : opsError ? (
+          <p className="error">{opsError}</p>
+        ) : !ops ? (
+          <p className="muted">Ops alerts unavailable.</p>
         ) : ops.alerts.length === 0 ? (
           <p className="success">No active ops alerts.</p>
         ) : (

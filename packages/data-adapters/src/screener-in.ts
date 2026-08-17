@@ -1,6 +1,7 @@
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
 import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
-import { httpGet, normalizeDebtToEquity } from './http.js';
+import { fetchScreenerCompanyHtml } from './screener-company-page.js';
+import { normalizeDebtToEquity } from './http.js';
 
 export interface ScreenerRatios {
   roce: number;
@@ -48,6 +49,12 @@ export function ratiosToMetrics(ratios: Record<string, string>): ScreenerRatios 
   };
 }
 
+export function parseScreenerRatiosFromHtml(html: string): ScreenerRatios | null {
+  const metrics = ratiosToMetrics(parseRatios(html));
+  if (metrics.roce <= 0 && metrics.roe <= 0) return null;
+  return metrics;
+}
+
 export async function fetchScreenerRatios(symbol: string, refresh = false): Promise<ScreenerRatios | null> {
   const slug = symbol.toLowerCase().replace(/\.(ns|bo)$/, '');
   const cacheKeyStr = cacheKey(CACHE_PREFIX.SCREENER_TABLE, slug);
@@ -56,12 +63,11 @@ export async function fetchScreenerRatios(symbol: string, refresh = false): Prom
     if (cached) return cached;
   }
 
-  const url = `https://www.screener.in/company/${encodeURIComponent(slug)}/consolidated/`;
-  const html = await httpGet(url);
+  const html = await fetchScreenerCompanyHtml(symbol, refresh);
   if (!html) return null;
 
-  const metrics = ratiosToMetrics(parseRatios(html));
-  if (metrics.roce <= 0 && metrics.roe <= 0) return null;
+  const metrics = parseScreenerRatiosFromHtml(html);
+  if (!metrics) return null;
 
   await cacheSetJson(cacheKeyStr, metrics, getCacheTtl().screener_table);
   return metrics;

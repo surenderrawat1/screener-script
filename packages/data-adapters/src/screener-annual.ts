@@ -1,8 +1,10 @@
 import type { StockMetrics } from '@sv/shared';
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
 import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
-import { httpGet } from './http.js';
+import { parseScreenerProsCons } from './screener-insights.js';
+import { fetchScreenerCompanyHtml } from './screener-company-page.js';
 import { parseSectionTable } from './screener-financials.js';
+import { parseScreenerShareholding, type ScreenerShareholding } from './screener-shareholding.js';
 
 export interface ScreenerAnnualFinancials {
   revenue_history: number[];
@@ -13,6 +15,8 @@ export interface ScreenerAnnualFinancials {
   sector_label?: string;
   industry?: string;
   promoter_holding_pct?: number;
+  promoter_pledge_pct?: number;
+  promoter_pledge_as_of?: string;
   market_cap_cr?: number;
   revenue_cr?: number;
   eps_consolidated?: number;
@@ -28,6 +32,9 @@ export interface ScreenerAnnualFinancials {
   operating_margin_pct?: number;
   roa_pct?: number;
   debt_to_equity?: number;
+  pros?: string[];
+  cons?: string[];
+  shareholding?: ScreenerShareholding | null;
 }
 
 function rowValues(rows: Record<string, Record<string, number | null>>, labels: string[]): number[] {
@@ -97,6 +104,54 @@ function parsePromoterHoldingPct(html: string): number {
   return Number.isFinite(n) && n > 0 && n <= 100 ? Math.round(n * 100) / 100 : 0;
 }
 
+/** Parse promoter pledge from Screener.in company HTML (meta, cons, ratio tiles). */
+export function parsePromoterPledgeFromScreenerHtml(html: string): {
+  pct: number;
+  as_of: string;
+  source: string;
+} | null {
+  const desc = html.match(/<meta name="description" content="([^"]+)"/i)?.[1] ?? '';
+  const metaMatch =
+    desc.match(/Promoters have pledged ([0-9.]+)% of their holding/i) ??
+    desc.match(/Promoter Pledge:\s*([0-9.]+)\s*%/i);
+  if (metaMatch) {
+    const pct = parseFloat(metaMatch[1]);
+    if (Number.isFinite(pct) && pct >= 0 && pct <= 100) {
+      return { pct: Math.round(pct * 100) / 100, as_of: '', source: 'screener.in (meta)' };
+    }
+  }
+
+  const consMatch = html.match(/Promoters have pledged ([0-9.]+)% of their holding/i);
+  if (consMatch) {
+    const pct = parseFloat(consMatch[1]);
+    if (Number.isFinite(pct) && pct >= 0 && pct <= 100) {
+      return { pct: Math.round(pct * 100) / 100, as_of: '', source: 'screener.in (cons)' };
+    }
+  }
+
+  const releaseMatch =
+    html.match(/pledge released on ([A-Za-z]+ \d{1,2}, \d{4})/i) ??
+    html.match(/pledge released on (\d{4}-\d{2}-\d{2})/i);
+  const asOf = releaseMatch?.[1]?.trim() ?? '';
+
+  const ratios: Record<string, string> = {};
+  const ratioRe = /<span class="name">\s*([^<]+?)\s*<\/span>.*?<span class="number">([^<]+)/gs;
+  let m: RegExpExecArray | null;
+  while ((m = ratioRe.exec(html)) !== null) {
+    ratios[m[1].trim().replace(/\s+/g, ' ')] = m[2].trim().replace(/,/g, '');
+  }
+  for (const label of ['Pledged percentage', 'Pledged %', 'Promoter pledged']) {
+    const raw = ratios[label];
+    if (!raw) continue;
+    const pct = parseFloat(raw.replace(/[^0-9.-]/g, ''));
+    if (Number.isFinite(pct) && pct >= 0 && pct <= 100) {
+      return { pct: Math.round(pct * 100) / 100, as_of: asOf, source: 'screener.in (ratio)' };
+    }
+  }
+
+  return null;
+}
+
 function parseDescriptionNumber(html: string, label: string): number {
   const desc = html.match(/<meta name="description" content="([^"]+)"/i);
   if (!desc) return 0;
@@ -136,7 +191,10 @@ export function parseScreenerAnnualFinancials(html: string): ScreenerAnnualFinan
   const borrowings = latestRowValue(bs.rows, ['Borrowings', 'Total Debt']);
   const totalCash = latestCashCr(bs.rows);
   const promoterHoldingPct = parsePromoterHoldingPct(html);
+  const promoterPledge = parsePromoterPledgeFromScreenerHtml(html);
   const marketCapCr = parseDescriptionNumber(html, 'Mkt Cap');
+  const { pros, cons } = parseScreenerProsCons(html);
+  const shareholding = parseScreenerShareholding(html);
 
   let summary = '';
   const desc = html.match(/<meta name="description" content="([^"]+)"/i);
@@ -179,6 +237,8 @@ export function parseScreenerAnnualFinancials(html: string): ScreenerAnnualFinan
     sector_label: sectorLabel || undefined,
     industry: industry || undefined,
     promoter_holding_pct: promoterHoldingPct > 0 ? promoterHoldingPct : undefined,
+    promoter_pledge_pct: promoterPledge?.pct,
+    promoter_pledge_as_of: promoterPledge?.as_of || undefined,
     market_cap_cr: marketCapCr > 0 ? marketCapCr : undefined,
     revenue_cr: revLatest > 0 ? revLatest : undefined,
     eps_consolidated: epsConsolidated > 0 ? epsConsolidated : undefined,
@@ -194,6 +254,9 @@ export function parseScreenerAnnualFinancials(html: string): ScreenerAnnualFinan
     operating_margin_pct: ebitdaMargin > 0 ? ebitdaMargin : undefined,
     roa_pct: roaPct > 0 ? roaPct : undefined,
     debt_to_equity: debtToEquity > 0 ? debtToEquity : undefined,
+    pros: pros.length ? pros : undefined,
+    cons: cons.length ? cons : undefined,
+    shareholding: shareholding ?? undefined,
   };
 }
 
@@ -272,8 +335,7 @@ export async function fetchScreenerAnnualFinancials(
     if (cached?.revenue_history) return cached;
   }
 
-  const url = `https://www.screener.in/company/${encodeURIComponent(slug)}/consolidated/`;
-  const html = await httpGet(url);
+  const html = await fetchScreenerCompanyHtml(symbol, refresh);
   if (!html) return null;
 
   const parsed = parseScreenerAnnualFinancials(html);

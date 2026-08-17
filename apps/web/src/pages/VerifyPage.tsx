@@ -26,11 +26,37 @@ interface InvestmentMemo {
     fcf_yield: number;
     model: string;
     sector: string;
+    valuation_flags?: string[];
   };
   quality: { score: number };
   score: number;
   score_max: number;
   score_pct: number;
+}
+
+interface AnnualReportCheck {
+  ok: boolean;
+  note: string;
+}
+
+interface AnnualReportScan {
+  score: number;
+  status: 'pass' | 'warn' | 'fail';
+  checks: {
+    chairman: AnnualReportCheck;
+    auditor: AnnualReportCheck;
+    contingent: AnnualReportCheck;
+    accounting: AnnualReportCheck;
+  };
+  inferred: boolean;
+  profile_loaded: boolean;
+}
+
+interface DataQualityGate {
+  id: string;
+  label: string;
+  pass: boolean;
+  note: string;
 }
 
 interface VerifyResult {
@@ -40,6 +66,14 @@ interface VerifyResult {
   sources?: string[];
   from_cache?: boolean;
   assumptions?: string[];
+  screening_mode?: boolean;
+  annual_report?: AnnualReportScan;
+  data_quality?: {
+    passed: boolean;
+    pass_count: number;
+    total_count: number;
+    gates: DataQualityGate[];
+  };
   analysis: {
     intrinsic: number;
     mos: number | null;
@@ -77,6 +111,8 @@ function normalizeSymbolInput(value: string): string {
   return value.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
 }
 
+const QUICK_SYMBOLS = ['TCS', 'RELIANCE', 'INFY', 'HDFCBANK', 'ITC'] as const;
+
 export default function VerifyPage() {
   const location = useLocation();
   const initialSymbol =
@@ -111,8 +147,8 @@ export default function VerifyPage() {
     }
   }, [location.search]);
 
-  async function runVerify(refresh = false) {
-    const normalized = normalizeSymbolInput(symbol);
+  async function runVerify(refresh = false, symbolOverride?: string) {
+    const normalized = normalizeSymbolInput(symbolOverride ?? symbol);
     if (!normalized) {
       setError('Enter a valid NSE/BSE symbol.');
       return;
@@ -171,6 +207,19 @@ export default function VerifyPage() {
             />
           </div>
           <div className="verify-command-actions">
+            <div className="quick-symbol-chips" aria-label="Quick symbols">
+              {QUICK_SYMBOLS.map((sym) => (
+                <button
+                  key={sym}
+                  type="button"
+                  className={`btn btn-secondary btn-sm${normalizeSymbolInput(symbol) === sym ? ' is-active' : ''}`}
+                  disabled={loading}
+                  onClick={() => void runVerify(false, sym)}
+                >
+                  {sym}
+                </button>
+              ))}
+            </div>
             <button type="submit" className="btn" disabled={loading}>
               {loading ? 'Analyzing…' : 'Auto verify'}
             </button>
@@ -226,11 +275,58 @@ export default function VerifyPage() {
             </div>
           </div>
 
-          {result.sources && result.sources.length > 0 && (
-            <p className="muted cfa-meta">
-              Sources: {result.sources.join(' · ')}
-              {result.from_cache ? ' (cached)' : ''}
-            </p>
+          <p className="muted cfa-meta">
+            {result.from_cache ? (
+              <span className="verify-cache-badge" title="Served from sv:verify (invalidates if price drifts &gt;1%)">
+                From verify cache
+              </span>
+            ) : (
+              <span className="verify-cache-badge verify-cache-live">Live compute</span>
+            )}
+            {result.sources && result.sources.length > 0
+              ? ` · Sources: ${result.sources.join(' · ')}`
+              : null}
+          </p>
+
+          {result.screening_mode !== false && (
+            <div className="data-quality-banner data-quality-estimated" role="status">
+              <strong>Screening mode</strong>
+              <span>
+                Phase 0 and portfolio gates are assumed — confirm with Full Verify before allocating capital.
+              </span>
+            </div>
+          )}
+
+          {(memo.valuation.valuation_flags?.length ?? 0) > 0 && (
+            <div className="data-quality-banner data-quality-estimated" role="status">
+              <strong>Valuation flags</strong>
+              <span>{memo.valuation.valuation_flags!.join(' · ')}</span>
+            </div>
+          )}
+
+          {result.data_quality && (
+            <div
+              className={`data-quality-banner data-quality-${result.data_quality.passed ? 'reported' : 'limited'}`}
+              role="status"
+            >
+              <strong>
+                Data quality {result.data_quality.pass_count}/{result.data_quality.total_count}
+              </strong>
+              <span>
+                {result.data_quality.passed
+                  ? 'Quality gates passed for screening.'
+                  : 'Review failed gates before relying on IV/MOS.'}
+              </span>
+              {result.data_quality.gates?.length > 0 && (
+                <ul className="verify-dq-list">
+                  {result.data_quality.gates.map((g) => (
+                    <li key={g.id} className={g.pass ? 'ok' : 'fail'}>
+                      {g.id} {g.label}: {g.note}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
 
           <div className="cfa-metrics-grid">
@@ -305,6 +401,36 @@ export default function VerifyPage() {
 
           {verdict?.summary && (
             <p className="cfa-verdict-summary">{verdict.summary}</p>
+          )}
+
+          {result.annual_report && (
+            <div className={`cfa-memo-section annual-report-scan ar-${result.annual_report.status}`}>
+              <h3>
+                Annual report scan{' '}
+                <span className={`ar-status ar-status-${result.annual_report.status}`}>
+                  {result.annual_report.score}/4 · {result.annual_report.status}
+                </span>
+              </h3>
+              <p className="muted">
+                Inferred from fundamentals
+                {result.annual_report.profile_loaded ? ' + Screener profile text' : ' (profile not loaded)'}{' '}
+                — confirm in the latest annual report.
+              </p>
+              <ul className="ar-checks">
+                {(
+                  [
+                    ['Chairman narrative', result.annual_report.checks.chairman],
+                    ['Auditor clean', result.annual_report.checks.auditor],
+                    ['Contingent liabilities', result.annual_report.checks.contingent],
+                    ['Accounting quality', result.annual_report.checks.accounting],
+                  ] as const
+                ).map(([label, check]) => (
+                  <li key={label} className={check.ok ? 'ok' : 'fail'}>
+                    <strong>{check.ok ? 'Pass' : 'Flag'}</strong> {label}: {check.note}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {result.assumptions && result.assumptions.length > 0 && (

@@ -5,6 +5,16 @@ import { ivDeltaPercent, ivDriftHint, IV_DRIFT_WARN_PCT } from './live-parity.js
 import { mergeMetrics } from './stock-data-fetcher.js';
 import type { YahooFundamentals } from './yahoo.js';
 import type { ScreenerRatios } from './screener-in.js';
+import type { ScreenerAnnualFinancials } from './screener-annual.js';
+import { enrichStockMetrics } from './stock-metrics-enrich.js';
+import {
+  applyScreenerWarningsToVerifierAutofill,
+  classifyScreenerCons,
+} from './screener-insights.js';
+import {
+  applyShareholdingVerifierPatches,
+  parseScreenerShareholding,
+} from './screener-shareholding.js';
 
 const TCS_YAHOO: YahooFundamentals = {
   symbol: 'TCS.NS',
@@ -88,10 +98,52 @@ const RELIANCE_SCREENER: ScreenerRatios = {
   market_cap_cr: 1700000,
 };
 
+const HDFCBANK_SCREENER: ScreenerRatios = {
+  roce: 18,
+  roe: 16,
+  pe: 18,
+  book_value: 380,
+  sales_yoy: 22,
+  profit_yoy: 18,
+  debt_to_equity: 0,
+  market_cap_cr: 1200000,
+};
+
+const HDFCBANK_YAHOO: YahooFundamentals = {
+  symbol: 'HDFCBANK.NS',
+  company_name: 'HDFC Bank',
+  sector: 'Financial Services',
+  industry: 'Banks',
+  price: 1650,
+  eps: 92,
+  book_value: 380,
+  pe: 18,
+  pb_ratio: 4.3,
+  peg_ratio: 1.1,
+  roe: 16,
+  roa: 1.8,
+  market_cap_cr: 1200000,
+  div_yield: 1.1,
+  debt_to_equity: 0,
+  revenue_growth: 22,
+  eps_growth: 18,
+  fcf_cr: 0,
+  cfo_cr: 85000,
+  high_52w: 1850,
+  low_52w: 1400,
+  gross_margin: 0,
+  ebitda_margin: 0,
+  operating_margin: 0,
+  interest_coverage: 0,
+  total_debt_cr: 0,
+  total_cash_cr: 120000,
+};
+
 describe('cross-page parity — stock / screener / verify surfaces', () => {
   for (const [sym, yahoo, screener] of [
     ['TCS', TCS_YAHOO, TCS_SCREENER],
     ['RELIANCE', RELIANCE_YAHOO, RELIANCE_SCREENER],
+    ['HDFCBANK', HDFCBANK_YAHOO, HDFCBANK_SCREENER],
   ] as const) {
     it(`${sym}: screener row IV matches verify estimate IV`, () => {
       const metrics = mergeMetrics(sym, yahoo, screener);
@@ -241,5 +293,144 @@ describe('full verify ↔ screener ↔ verify cross-page', () => {
     const stand = runVerificationEngine({ ...base, eps_mode: 'standalone' });
     expect(stand.metrics.eps_mode).toBe('standalone');
     expect(stand.metrics.margin_of_safety).not.toBe(cons.metrics.margin_of_safety);
+  });
+});
+
+
+const RELIANCE_ANNUAL: ScreenerAnnualFinancials = {
+  revenue_history: [],
+  pat_history: [],
+  shareholders_equity_cr: 0,
+  summary: '',
+  company_name: 'Reliance Industries',
+  industry: 'Oil & Gas',
+  promoter_holding_pct: 50.0,
+  promoter_pledge_pct: undefined,
+  pros: [],
+  cons: [
+    'Company has a low return on equity of 8.77% over last 3 years.',
+    'Dividend payout has been low at 10.2% of profits over last 3 years',
+  ],
+  shareholding: parseScreenerShareholding(`
+<section id="shareholding"><table><thead><tr>
+  <th></th><th>Dec 2024</th><th>Mar 2025</th><th>Jun 2025</th><th>Sep 2025</th>
+</tr></thead><tbody>
+  <tr><td class="text">Promoters+</td><td>50.90</td><td>50.70</td><td>50.60</td><td>50.00</td></tr>
+  <tr><td class="text">FIIs+</td><td>22.10</td><td>22.40</td><td>22.80</td><td>23.50</td></tr>
+  <tr><td class="text">DIIs+</td><td>16.00</td><td>15.90</td><td>15.70</td><td>15.40</td></tr>
+</tbody></table></section>
+`) ?? undefined,
+};
+
+const HDFCBANK_ANNUAL: ScreenerAnnualFinancials = {
+  revenue_history: [],
+  pat_history: [],
+  shareholders_equity_cr: 0,
+  summary: '',
+  company_name: 'HDFC Bank',
+  industry: 'Banks',
+  promoter_holding_pct: 0,
+  promoter_pledge_pct: 0,
+  promoter_pledge_as_of: '2025-09-30',
+  pros: ['Company has delivered good profit growth of 18.9% CAGR over last 5 years'],
+  cons: [
+    'Company has low interest coverage ratio.',
+    'Contingent liabilities of Rs.35,61,957 Cr.',
+    'Earnings include an other income of Rs.1,43,700 Cr.',
+  ],
+  shareholding: parseScreenerShareholding(`
+<section id="shareholding"><table><thead><tr>
+  <th></th><th>Dec 2024</th><th>Mar 2025</th><th>Jun 2025</th><th>Sep 2025</th>
+</tr></thead><tbody>
+  <tr><td class="text">Promoters+</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+  <tr><td class="text">FIIs+</td><td>48.00</td><td>49.00</td><td>50.00</td><td>52.10</td></tr>
+  <tr><td class="text">DIIs+</td><td>30.00</td><td>29.50</td><td>29.00</td><td>28.20</td></tr>
+</tbody></table></section>
+`) ?? undefined,
+};
+
+describe('cross-page governance fixtures — RELIANCE / HDFCBANK', () => {
+  it('RELIANCE: unknown pledge stays unset (not false 0% pass)', () => {
+    const metrics = enrichStockMetrics(
+      mergeMetrics('RELIANCE', RELIANCE_YAHOO, RELIANCE_SCREENER),
+      RELIANCE_ANNUAL,
+      { symbol: 'RELIANCE' },
+    );
+    expect(metrics.promoter_pledge).toBeUndefined();
+    expect(metrics.screener_has_watch).toBe(true);
+    expect(metrics.screener_has_critical).toBe(false);
+
+    const row = screenSymbol('RELIANCE', metrics);
+    expect(row.promoter_pledge).toBeUndefined();
+    expect(row.screener_has_watch).toBe(true);
+    expect(row.screener_warnings?.some((w) => w.label === 'Low ROE')).toBe(true);
+  });
+
+  it('RELIANCE: declining promoter holding patches Full Verify Phase 1.5', () => {
+    const metrics = enrichStockMetrics(
+      mergeMetrics('RELIANCE', RELIANCE_YAHOO, RELIANCE_SCREENER),
+      RELIANCE_ANNUAL,
+      { symbol: 'RELIANCE' },
+    );
+    expect(metrics.promoter_holding_trend).toBe('declining');
+    const { input, adjustments } = applyShareholdingVerifierPatches({}, [], metrics.shareholding as never);
+    expect(input.p1_promoter_stable).toBe('no');
+    expect(adjustments.some((a) => a.field === 'p1_promoter_stable')).toBe(true);
+  });
+
+  it('HDFCBANK: pledge 0% from Screener is known zero, not unknown', () => {
+    const metrics = enrichStockMetrics(
+      mergeMetrics('HDFCBANK', HDFCBANK_YAHOO, HDFCBANK_SCREENER),
+      HDFCBANK_ANNUAL,
+      { symbol: 'HDFCBANK' },
+    );
+    expect(metrics.promoter_pledge).toBe(0);
+    expect(metrics.promoter_pledge_source).toBe('screener.in');
+
+    const row = screenSymbol('HDFCBANK', metrics);
+    expect(row.promoter_pledge).toBe(0);
+  });
+
+  it('HDFCBANK: Screener cons → Full Verify soft gates (contingent / coverage / earnings)', () => {
+    const warnings = classifyScreenerCons(HDFCBANK_ANNUAL.cons ?? []);
+    const base = {
+      p2_contingent_ok: '1',
+      p2_accounting_ok: '1',
+      p2_pat_quality: 'yes',
+      interest_coverage: 8,
+    };
+    const { input, adjustments } = applyScreenerWarningsToVerifierAutofill(base, [], warnings);
+    expect(input.p2_contingent_ok).toBe('0');
+    expect(input.interest_coverage).toBe(2);
+    expect(input.p2_pat_quality).toBe('no');
+    expect(adjustments.length).toBeGreaterThanOrEqual(3);
+
+    const metrics = enrichStockMetrics(
+      mergeMetrics('HDFCBANK', HDFCBANK_YAHOO, HDFCBANK_SCREENER),
+      HDFCBANK_ANNUAL,
+      { symbol: 'HDFCBANK' },
+    );
+    const row = screenSymbol('HDFCBANK', metrics);
+    const verify = estimate(metrics);
+    expect(row.intrinsic).toBeCloseTo(verify.intrinsic, 0);
+    expect(row.screener_has_watch).toBe(true);
+  });
+
+  it('critical pledge cons escalate screener_has_critical on row', () => {
+    const metrics = enrichStockMetrics(
+      mergeMetrics('RELIANCE', RELIANCE_YAHOO, RELIANCE_SCREENER),
+      {
+        ...RELIANCE_ANNUAL,
+        cons: ['Promoters have pledged 100% of their holding.'],
+        promoter_pledge_pct: 100,
+        promoter_pledge_as_of: '2025-09-30',
+      },
+      { symbol: 'RELIANCE' },
+    );
+    expect(metrics.screener_has_critical).toBe(true);
+    expect(metrics.promoter_pledge).toBe(100);
+    const row = screenSymbol('RELIANCE', metrics);
+    expect(row.screener_has_critical).toBe(true);
+    expect(row.promoter_pledge).toBe(100);
   });
 });

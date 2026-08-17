@@ -1,12 +1,14 @@
 import {
   fetchScreenerProfile,
+  ivDriftHint,
   resolveStockMetrics,
   type ScreenerProfile,
   detectSymbolChartPatterns,
   persistChartPatternsAsync,
 } from '@sv/data-adapters';
-import { cacheClearSymbol } from '@sv/cache';
+import { cacheClearSymbol, cacheGetJson, cacheKey } from '@sv/cache';
 import { prisma } from '@sv/db';
+import { CACHE_PREFIX } from '@sv/shared';
 import { screenSymbol, screeningScoreFromQuality } from '@sv/core';
 import {
   buildDailyChartPayload,
@@ -88,26 +90,93 @@ function hasCoreFundamentals(metrics: Record<string, unknown>): boolean {
 
 function dataQuality(metrics: Record<string, unknown>, sources: string[]) {
   const usesFallback = sources.some((source) => source.toLowerCase().includes('sample_fallback'));
+  const screenerCritical = Boolean(metrics.screener_has_critical);
+  const screenerWatch = Boolean(metrics.screener_has_watch);
+  const warnings = (metrics.screener_warnings as Array<{ severity: string; text: string }> | undefined) ?? [];
+
   if (usesFallback) {
     return {
-      level: 'estimated',
+      level: 'estimated' as const,
       label: 'Estimated fundamentals',
       message:
         'Live source returned incomplete fundamentals. Price is live when available; valuation ratios, cash-flow and expenditure fields may use fallback estimates. Re-run Full Verify before sizing.',
     };
   }
+  if (screenerCritical) {
+    const top = warnings.find((w) => w.severity === 'critical');
+    return {
+      level: 'limited' as const,
+      label: 'Critical Screener flags',
+      message:
+        top?.text ??
+        'Screener.in reports a critical governance or quality flag. Do not size until Full Verify and pledge/holding are confirmed.',
+    };
+  }
   if (!hasCoreFundamentals(metrics)) {
     return {
-      level: 'limited',
+      level: 'limited' as const,
       label: 'Limited fundamentals',
       message:
         'Core valuation inputs are incomplete. Treat intrinsic value, MOS and quality score as provisional until reported fundamentals are refreshed.',
     };
   }
+  if (screenerWatch) {
+    return {
+      level: 'limited' as const,
+      label: 'Quality watch flags',
+      message:
+        'Screener.in machine checklist raised profitability, leverage, or growth concerns. Cross-check with Full Verify before acting on MOS alone.',
+    };
+  }
   return {
-    level: 'reported',
+    level: 'reported' as const,
     label: 'Reported fundamentals',
     message: 'Core valuation inputs are populated from live/cached market and fundamentals sources.',
+  };
+}
+
+function shareholdingForApi(metrics: Record<string, unknown>) {
+  const sh = metrics.shareholding as
+    | {
+        latest_period?: string;
+        source?: string;
+        promoter?: { latest_pct: number; change_pp: number | null; trend: string } | null;
+        fii?: { latest_pct: number; change_pp: number | null; trend: string } | null;
+        dii?: { latest_pct: number; change_pp: number | null; trend: string } | null;
+      }
+    | undefined;
+  if (!sh?.promoter && !sh?.fii && !sh?.dii) return null;
+  const pick = (cat: typeof sh.promoter) =>
+    cat
+      ? {
+          latest_pct: cat.latest_pct,
+          change_pp: cat.change_pp,
+          trend: cat.trend,
+        }
+      : null;
+  return {
+    latest_period: String(sh.latest_period ?? ''),
+    promoter: pick(sh.promoter ?? null),
+    fii: pick(sh.fii ?? null),
+    dii: pick(sh.dii ?? null),
+    source: String(sh.source ?? 'screener.in'),
+  };
+}
+
+function screenerInsightsFromMetrics(metrics: Record<string, unknown>) {
+  const warnings = metrics.screener_warnings as
+    | Array<{ text: string; severity: string; category: string; label: string }>
+    | undefined;
+  if (!warnings?.length && !(metrics.screener_pros as string[] | undefined)?.length) {
+    return null;
+  }
+  return {
+    pros: (metrics.screener_pros as string[] | undefined) ?? [],
+    cons: (metrics.screener_cons as string[] | undefined) ?? [],
+    warnings: warnings ?? [],
+    has_critical: Boolean(metrics.screener_has_critical),
+    has_watch: Boolean(metrics.screener_has_watch),
+    source: String(metrics.screener_insights_source ?? 'screener.in'),
   };
 }
 
@@ -183,6 +252,34 @@ async function lastVerifyForSymbol(symbol: string) {
   };
 }
 
+async function resolveIvDrift(symbol: string, screenerIv: number) {
+  if (screenerIv <= 0) return null;
+
+  const verifyKey = cacheKey(CACHE_PREFIX.VERIFY, symbol);
+  const cached = await cacheGetJson<{
+    result?: { success?: boolean; analysis?: { intrinsic?: number } };
+  }>(verifyKey);
+  if (cached?.result?.success) {
+    const fullIv = Number(cached.result.analysis?.intrinsic ?? 0);
+    if (fullIv > 0) return ivDriftHint(screenerIv, fullIv);
+  }
+
+  try {
+    const lastFull = await prisma.verificationRun.findFirst({
+      where: { symbol, mode: 'full' },
+      orderBy: { createdAt: 'desc' },
+      select: { result: true },
+    });
+    const metrics = (lastFull?.result as { metrics?: { intrinsic_value?: number } } | undefined)?.metrics;
+    const fullIv = Number(metrics?.intrinsic_value ?? 0);
+    if (fullIv > 0) return ivDriftHint(screenerIv, fullIv);
+  } catch {
+    /* DB optional in dev */
+  }
+
+  return null;
+}
+
 export async function getStockSummary(symbol: string, refresh = false) {
   const normalized = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/, '');
   const metricsResult = await resolveStockMetrics(normalized, refresh);
@@ -196,6 +293,7 @@ export async function getStockSummary(symbol: string, refresh = false) {
   const screenerRow = screenSymbol(String(metrics.symbol ?? symbol), metrics);
   const valuation = valuationFromScreenerRow(screenerRow);
   const lastVerify = await lastVerifyForSymbol(normalized).catch(() => null);
+  const iv_drift = await resolveIvDrift(normalized, Number(screenerRow.intrinsic ?? 0));
 
   return {
     symbol: String(metrics.symbol ?? normalized),
@@ -207,7 +305,9 @@ export async function getStockSummary(symbol: string, refresh = false) {
     sources,
     from_cache,
     data_quality: dataQuality(metrics as Record<string, unknown>, sources),
-    iv_drift: null,
+    screener_insights: screenerInsightsFromMetrics(metrics as Record<string, unknown>),
+    shareholding: shareholdingForApi(metrics as Record<string, unknown>),
+    iv_drift,
     educational_only: true,
     disclaimer: DISCLAIMER,
   };

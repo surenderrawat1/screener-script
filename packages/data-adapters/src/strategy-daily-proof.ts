@@ -94,10 +94,20 @@ function resolveStrategyKeys(configured?: string[]): string[] {
 }
 
 export async function hasStrategyDailyProofToday(timezone = getConfigTimezone()): Promise<boolean> {
+  const dateKey = dateKeyInTimezone(timezone);
   const meta = await cacheGetJson<{ date_key?: string; status?: string }>(
     cacheKey(CACHE_PREFIX.MORNING, PROOF_META_KEY),
   );
-  return meta?.date_key === dateKeyInTimezone(timezone) && meta.status === 'done';
+  if (meta?.date_key === dateKey && meta.status === 'done') return true;
+
+  const row = await prisma.strategyDailyRun.findFirst({
+    where: {
+      runDate: dateKey,
+      status: { in: ['ok', 'done'] },
+    },
+    select: { id: true },
+  });
+  return row != null;
 }
 
 async function markProofMeta(dateKey: string, status: 'running' | 'done', extra?: Record<string, unknown>) {

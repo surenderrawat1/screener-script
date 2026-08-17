@@ -9,3 +9,5 @@ export * from './verify-full/index.js';
 export * from './verification-engine.js';
 export * from './cfa-screening-defaults.js';
 export * from './investment-memo.js';
+export * from './ltg-auto-decision.js';
+export * from './screener-recommendation-filter.js';

@@ -18,6 +18,14 @@ function fmtPct(n: number | null | undefined): string {
   return `${Math.round(n)}%`;
 }
 
+function fmtSignedPct(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—';
+  const sign = n >= 0 ? '+' : '';
+  return `${sign}${n.toFixed(2)}%`;
+}
+
+type DirectionSignal = { key?: string; label: string; side?: string };
+
 function activePreset(presets: Array<Record<string, unknown>>, recommended: string) {
   return presets.find((p) => p.id === recommended) ?? null;
 }
@@ -125,6 +133,76 @@ export function IntradayDecisionCockpit({
         <strong>{presetPass ? 'Gate clear:' : 'Gate blocked:'}</strong> {reasons.slice(0, 3).join(' · ')}
         {reasons.length > 3 ? '…' : ''}
       </div>
+    </section>
+  );
+}
+
+export function IntradaySignalsPanel({
+  analysis,
+  interval,
+  trigger,
+}: {
+  analysis?: Record<string, unknown>;
+  interval: '5m' | '15m';
+  trigger?: Record<string, unknown>;
+}) {
+  const ok = Boolean(analysis?.ok);
+  const signals = (analysis?.signals as DirectionSignal[] | undefined) ?? [];
+  const summary = String(analysis?.summary ?? '').trim();
+  const asOf = String(analysis?.as_of ?? '').trim();
+  const triggerLabel = trigger ? String(trigger.label ?? trigger.status ?? '').trim() : '';
+
+  return (
+    <section className="card intraday-signals-panel">
+      <div className="intraday-signals-head">
+        <h2 style={{ margin: 0 }}>Direction signals ({interval})</h2>
+        {asOf ? <span className="muted">As of {asOf}</span> : null}
+      </div>
+
+      {!ok ? (
+        <p className="muted">{String(analysis?.message ?? 'Data unavailable')}</p>
+      ) : (
+        <>
+          <div className="intraday-analysis-kpi">
+            <span>
+              Last <strong>{fmtRs(Number(analysis?.price))}</strong>
+            </span>
+            <span>
+              Bar Δ <strong>{fmtSignedPct(Number(analysis?.bar_change_pct))}</strong>
+            </span>
+            <span>
+              Session <strong>{fmtSignedPct(Number(analysis?.session_change_pct))}</strong>
+            </span>
+            <span>
+              EMA-9 <strong>{analysis?.ema9 != null ? fmtRs(Number(analysis.ema9)) : '—'}</strong>
+            </span>
+            <span>
+              EMA-21 <strong>{analysis?.ema21 != null ? fmtRs(Number(analysis.ema21)) : '—'}</strong>
+            </span>
+            <span>
+              RSI-14 <strong>{analysis?.rsi14 != null ? String(analysis.rsi14) : '—'}</strong>
+            </span>
+          </div>
+          {summary ? <p className="intraday-signals-summary muted">{summary}</p> : null}
+          {signals.length === 0 ? (
+            <p className="muted">No directional signals on this bar.</p>
+          ) : (
+            <ul className="intraday-signals-list">
+              {signals.map((sig, i) => (
+                <li key={sig.key ?? `${sig.label}-${i}`} className={sig.side === 'bear' ? 'is-bear' : 'is-bull'}>
+                  {sig.label}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+
+      {triggerLabel ? (
+        <p className={`intraday-signals-trigger ${trigger?.actionable ? 'is-ready' : 'is-wait'}`}>
+          <strong>Trigger:</strong> {triggerLabel}
+        </p>
+      ) : null}
     </section>
   );
 }

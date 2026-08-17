@@ -57,6 +57,25 @@ export interface VerifyFullFetchResponse {
   };
   phases: typeof VERIFY_FULL_PHASES;
   sectors: typeof VERIFY_SECTOR_OPTIONS;
+  screener_insights?: {
+    pros: string[];
+    cons: string[];
+    warnings: Array<{
+      text: string;
+      severity: string;
+      category: string;
+      label: string;
+    }>;
+    has_critical: boolean;
+    has_watch: boolean;
+    source: string;
+  } | null;
+  screener_gate_adjustments?: Array<{
+    field: string;
+    value: string | number;
+    reason: string;
+    severity: string;
+  }>;
 }
 
 export async function fetchVerifyFull(
@@ -132,6 +151,8 @@ export async function fetchVerifyFull(
     },
     phases: VERIFY_FULL_PHASES,
     sectors: VERIFY_SECTOR_OPTIONS,
+    screener_insights: fetched.screener_insights ?? null,
+    screener_gate_adjustments: fetched.screener_gate_adjustments ?? [],
   };
 }
 

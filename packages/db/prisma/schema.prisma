@@ -145,6 +145,18 @@ model PromoterHolding {
   @@map("promoter_holdings")
 }
 
+model PromoterPledge {
+  id         String   @id @default(cuid())
+  symbol     String
+  pledgePct  Float    @map("pledge_pct")
+  asOf       DateTime @map("as_of")
+  source     String   @default("upload")
+  uploadedBy String?  @map("uploaded_by")
+
+  @@unique([symbol])
+  @@map("promoter_pledges")
+}
+
 model Job {
   id         String    @id @default(cuid())
   type       JobType

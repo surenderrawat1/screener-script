@@ -464,6 +464,13 @@ export function screenSymbol(symbol: string, metrics?: Partial<StockMetrics>): S
     roe: Number(stock.roe ?? 0),
     roce: Number(stock.roce ?? 0),
     promoter_holding: Number(stock.promoter_holding ?? 0),
+    promoter_pledge:
+      stock.promoter_pledge != null && Number.isFinite(Number(stock.promoter_pledge))
+        ? Number(stock.promoter_pledge)
+        : undefined,
+    promoter_pledge_as_of: stock.promoter_pledge_as_of
+      ? String(stock.promoter_pledge_as_of)
+      : undefined,
     intrinsic: analysis.intrinsic,
     mos: analysis.mos,
     zone: analysis.zone,
@@ -482,6 +489,33 @@ export function screenSymbol(symbol: string, metrics?: Partial<StockMetrics>): S
     market_cap_cr: Number(stock.market_cap_cr ?? 0),
     sales_yoy: Number(stock.sales_yoy ?? 0),
     div_yield: Number(stock.div_yield ?? 0),
+    final_rating: String(analysis.final_rating ?? ''),
+    dcf_value: Number((analysis as { dcf_value?: number }).dcf_value ?? 0),
+    pe_intrinsic: Number((analysis as { intrinsic_pe?: number }).intrinsic_pe ?? 0),
+    graham_mos: analysis.graham_mos,
+    graham_credible: analysis.graham_credible,
+    altman_z: Number(analysis.altman_z ?? 0),
+    altman_zone: String(analysis.altman_zone ?? ''),
+    z_score_source: String(analysis.z_score_source ?? ''),
+    altman_skip: Boolean(analysis.altman_skip),
+    sector_key: String((analysis.cfa_report as { sector_key?: string })?.sector_key ?? 'general'),
+    screener_warnings: Array.isArray(stock.screener_warnings)
+      ? (stock.screener_warnings as Array<{
+          text: string;
+          severity: 'critical' | 'watch' | 'info';
+          category: string;
+          label: string;
+        }>)
+      : undefined,
+    screener_has_critical: Boolean(stock.screener_has_critical),
+    screener_has_watch: Boolean(stock.screener_has_watch),
+    promoter_holding_trend: stock.promoter_holding_trend
+      ? String(stock.promoter_holding_trend)
+      : undefined,
+    promoter_holding_change_pp:
+      stock.promoter_holding_change_pp != null
+        ? Number(stock.promoter_holding_change_pp)
+        : undefined,
   };
 }
 
@@ -491,11 +525,89 @@ export interface TableGateInput {
   roe?: number;
   pe?: number;
   sales_yoy?: number;
+  profit_yoy?: number;
   market_cap_cr?: number;
   div_yield?: number;
+  symbol?: string;
+}
+
+
+/** Whether Screener.in bulk table may fill gaps on a ratio row (PHP parity). */
+export function rowNeedsBulkEnrichment(row: TableGateInput | null | undefined): boolean {
+  if (!row) return false;
+  if ((row.sales_yoy ?? 0) === 0 && (row.profit_yoy ?? 0) === 0) return true;
+  return (row.market_cap_cr ?? 0) <= 0 || (row.pe ?? 0) <= 0;
+}
+
+export function hasFundamentalTableFloor(filters: ScreenerFilters = {}): boolean {
+  return (
+    (filters.min_roce ?? 0) > 0 ||
+    (filters.min_roe ?? 0) > 0 ||
+    (filters.min_mcap_cr ?? 0) > 0 ||
+    (filters.min_div_yield ?? 0) > 0
+  );
+}
+
+/** Minimal TA-active check for table-gate bypass (mirrors PHP NseStockScreener). */
+export function screenerTaFiltersActive(filters: ScreenerFilters = {}): boolean {
+  if (filters.technical_only || filters.show_ta || filters.ta_preset) return true;
+  if (filters.above_sma20 || filters.above_sma50 || filters.above_sma200 || filters.green_zone_52w) {
+    return true;
+  }
+  if (filters.macd_bullish || filters.below_bb_lower || filters.bottom_out_hint) return true;
+  if (filters.zone_52w && filters.zone_52w !== 'any') return true;
+  for (const key of [
+    'min_rsi',
+    'max_rsi',
+    'min_pct_52w',
+    'max_pct_52w',
+    'min_bb_pct_b',
+    'max_bb_pct_b',
+    'cross_above_sma20',
+    'cross_below_sma20',
+    'cross_above_sma50',
+    'cross_below_sma50',
+    'golden_cross_50_200',
+    'death_cross_50_200',
+  ] as const) {
+    const v = filters[key];
+    if (v === true) return true;
+    if (typeof v === 'number' && Number.isFinite(v)) return true;
+  }
+  return false;
+}
+
+export function shouldBypassTableGatesForTa(filters: ScreenerFilters = {}): boolean {
+  if (filters.technical_only) return true;
+  if (
+    screenerTaFiltersActive(filters) &&
+    !hasFundamentalTableFloor(filters) &&
+    (filters.max_pe ?? 999) >= 500
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function tablePriorityScore(stock: TableGateInput): number {
+  const roce = stock.roce ?? 0;
+  const roe = stock.roe ?? 0;
+  const sales = stock.sales_yoy ?? 0;
+  const mcap = stock.market_cap_cr ?? 0;
+  return roce * 2 + sales + roe * 0.5 + Math.log10(Math.max(100, mcap));
+}
+
+export function prioritizeUniverseTable<T extends TableGateInput>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => {
+    const cmp = tablePriorityScore(b) - tablePriorityScore(a);
+    if (cmp !== 0) return cmp;
+    return String(a.symbol ?? '').localeCompare(String(b.symbol ?? ''));
+  });
 }
 
 export function passesTableGates(stock: TableGateInput, filters: ScreenerFilters = {}): boolean {
+  if (shouldBypassTableGatesForTa(filters)) return true;
+
   const roce = stock.roce ?? 0;
   const roe = stock.roe ?? 0;
   const pe = stock.pe ?? 0;

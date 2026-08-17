@@ -15,6 +15,7 @@ import {
   tickEveningGttSignals,
   tickStrategyDailyProof,
   tickOpenPositionExitAlerts,
+  tickFundamentalAutoScan,
   tickConfigReload,
   bootstrapAppConfig,
   readConfigGeneration,
@@ -28,6 +29,7 @@ import {
 } from '@sv/cache';
 import { createScreenerWorker, createSwingScanWorker, createVerifyBatchWorker } from '@sv/jobs';
 import { getSchedules } from '@sv/shared';
+import type { ScreenerFilters } from '@sv/core';
 
 import type { VerifyBatchJobPayload } from '@sv/jobs';
 
@@ -73,14 +75,18 @@ async function processScreenerJob(data: {
     filters?: Record<string, unknown>;
     exclude_restricted?: boolean;
     refresh?: boolean;
+    recommendation_filter?: string;
   };
   symbols: string[];
 }) {
   const { jobId, input, symbols } = data;
-  const filters = (input.filters ?? {}) as Record<string, number>;
+  const job = await prisma.job.findUnique({ where: { id: jobId }, select: { createdBy: true } });
+  const filters = (input.filters ?? {}) as ScreenerFilters;
   const options = {
     exclude_restricted: input.exclude_restricted !== false,
     refresh: Boolean(input.refresh),
+    recommendation_filter: input.recommendation_filter,
+    user_id: job?.createdBy ?? undefined,
   };
   await executeScreenerJob(jobId, symbols, input.preset, filters, options);
 }
@@ -459,6 +465,22 @@ async function main() {
   setInterval(() => {
     runIfLeader('Swing auto-scan tick', () => tickSwingAutoScan());
   }, AUTO_SCAN_TICK_MS);
+
+  const ltgAuto = schedules.intraday.ltg_auto_scan;
+  if (ltgAuto?.enabled !== false) {
+    setInterval(() => {
+      runIfLeader('LTG auto-scan tick', () =>
+        tickFundamentalAutoScan().then((result) => {
+          if (result) {
+            console.log(
+              `LTG auto scan — ${result.scanned} scanned, ${result.buy_eligible} buy-eligible (${result.duration_ms}ms)`,
+            );
+          }
+        }),
+      );
+    }, AUTO_SCAN_TICK_MS);
+  }
+
 
   setInterval(() => {
     runIfLeader('Daily sync tick', () =>

@@ -37,6 +37,20 @@ describe('routineSteps', () => {
     expect(steps[0]?.status).toBe('ok');
   });
 
+  it('warns when intraday exit count > 0', () => {
+    const steps = routineSteps(
+      session,
+      { open: 0 },
+      { open: 1, exit_count: 1 },
+      { hits: [] },
+      { available: false },
+    );
+    const intraStep = steps.find((s) => s.step === 'Intraday positions');
+    expect(intraStep?.status).toBe('warn');
+    expect(intraStep?.href).toBe('/intraday/positions');
+    expect(intraStep?.detail).toContain('exit signal');
+  });
+
   it('uses nifty panel in checklist detail when ok', () => {
     const steps = routineSteps(
       session,

@@ -22,9 +22,11 @@
     "test": "pnpm -r run test",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
-    "deploy:check": "bash scripts/deploy-check.sh"
+    "deploy:check": "bash scripts/deploy-check.sh",
+    "screener:acceptance": "pnpm --filter @sv/data-adapters run screener:acceptance"
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "version": "0.1.0-beta.0"
 }

@@ -61,10 +61,11 @@ import {
   type ScreenerRow,
 } from '@sv/shared';
 import { toPitchCsv } from '@sv/core';
+import { getScreenerHealthSummary } from '@sv/data-adapters';
 import { requirePermission } from './lib/auth.js';
 import { listUniverses, createCustomUniverse } from './services/universe.js';
 import { createScreenerJob, getJob } from './services/screener.js';
-import { listScreenerPresets } from './services/screener-presets.js';
+import { listScreenerPresets, listUserScreenerPresets } from './services/screener-presets.js';
 import { createStrategyRun, getJob as getStrategyJob, getTradingStrategy, listTradingStrategies, listStrategyDailyProof, runStrategyDailyProofBatch } from './services/strategies.js';
 import { exchangeListSummary, runScreenerPitBacktest } from '@sv/data-adapters';
 import { createSwingScanJob } from './services/swing.js';
@@ -72,7 +73,7 @@ import { runSwingBacktestJob } from './services/swing-backtest.js';
 import { verifySymbol } from './services/verify.js';
 import { createVerifyBatchJob, getJob as getVerifyBatchJob } from './services/verify-batch.js';
 import { getVerifyFullPrefill, fetchVerifyFull, runVerifyFull, getVerifyFullDraft, saveVerifyFullDraft } from './services/verify-full.js';
-import { getAdminStats, importEtfCsv, importIndexCsv, importNseEquityCsv, importPromoterHoldingCsv, getIndexStatus, syncIndicesFromDisk } from './services/admin.js';
+import { getAdminStats, importEtfCsv, importIndexCsv, importNseEquityCsv, importPromoterHoldingCsv, importPromoterPledgeCsv, getIndexStatus, syncIndicesFromDisk } from './services/admin.js';
 import {
   cfaTermCategories,
   deleteCfaTerm,
@@ -101,6 +102,7 @@ import {
   queryChartPatternFeed,
   listChartPatternScanRuns,
   listChartPatternScanDates,
+  getChartPatternBacktestSummary,
 } from '@sv/data-adapters';
 import { getFundamentalAutoState, startFundamentalAutoScan } from './services/fundamental-auto.js';
 import { getTradingPresetById, listTradingPresets } from './services/trading-presets.js';
@@ -132,7 +134,7 @@ import {
   validateSwingAddPosition,
   startSwingAutoScan,
 } from './services/swing-auto.js';
-import { getNiftyIntradayState, getNiftyIntradayLite, getIntradayInstruments, getIntradayChart } from './services/intraday.js';
+import { getNiftyIntradayState, getNiftyIntradayLite, getIntradayInstruments, getIntradayChart, intradayIncludeFlag } from './services/intraday.js';
 import { runIntradayBacktestJob } from './services/intraday-backtest.js';
 import {
   listIntradayPositions,
@@ -599,10 +601,38 @@ export async function buildApp() {
     return { job: { ...job, progress } };
   });
 
+
+  app.get('/api/v1/screener/jobs/:id/export.csv', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const { id } = request.params as { id: string };
+    const job = await getJob(id);
+    if (!job) return reply.status(404).send({ error: 'Job not found' });
+    if (job.status !== 'done') {
+      return reply.status(409).send({ error: 'Job not complete' });
+    }
+    const result = job.result as { rows?: ScreenerRow[] } | null;
+    const rows = result?.rows ?? [];
+    const csv = toPitchCsv(rows);
+    reply.header('Content-Type', 'text/csv; charset=utf-8');
+    reply.header('Content-Disposition', `attachment; filename="screener-${id}.csv"`);
+    return csv;
+  });
+
+
+  app.get('/api/v1/screener/custom-presets', { preHandler: [authPreHandler] }, async (request) => {
+    const user = requirePermission(request, PERMISSIONS.VIEW);
+    const presets = await listUserScreenerPresets(user.sub);
+    return { count: presets.length, presets };
+  });
+
   app.get('/api/v1/screener/presets', async () => ({
     presets: listScreenerPresets(),
   }));
 
+
+  app.get('/api/v1/screener/health', async () => ({
+    health: await getScreenerHealthSummary(),
+  }));
   app.get('/api/v1/screener/exchange-lists', async () => ({
     exchange_lists: exchangeListSummary(),
   }));
@@ -957,6 +987,12 @@ export async function buildApp() {
     const limit = Number((request.query as { limit?: string }).limit ?? 30);
     const dates = await listChartPatternScanDates(limit);
     return { count: dates.length, dates };
+  });
+
+  app.get('/api/v1/chart-patterns/backtest-summary', { preHandler: [authPreHandler] }, async (request) => {
+    requirePermission(request, PERMISSIONS.VIEW);
+    const scanDate = (request.query as { scan_date?: string }).scan_date;
+    return getChartPatternBacktestSummary(scanDate);
   });
 
   app.post('/api/v1/admin/intraday/repair-closed-books', { preHandler: [authPreHandler] }, async (request, reply) => {
@@ -1468,13 +1504,18 @@ export async function buildApp() {
       instrument?: string;
       index?: string;
       symbol?: string;
+      positions?: string;
     };
     const interval = query.interval === '5m' ? '5m' : '15m';
     const refresh = query.refresh === '1';
     const instrument = (query.symbol ?? query.instrument ?? query.index ?? 'nifty50').trim() || 'nifty50';
     const state = await getNiftyIntradayState(interval, refresh, instrument);
     if ('unknown_instrument' in state && state.unknown_instrument) return reply.status(404).send(state);
-    return state;
+    return {
+      ...state,
+      positions_included: false,
+      positions_skipped: query.positions === '0' || query.positions === 'false',
+    };
   });
 
   app.get('/api/v1/intraday/nifty/lite', { preHandler: [authPreHandler] }, async (request, reply) => {
@@ -1486,12 +1527,17 @@ export async function buildApp() {
       index?: string;
       symbol?: string;
       tf?: string;
+      positions?: string;
+      journal?: string;
     };
     const iv = query.interval ?? query.tf;
     const interval = iv === '15m' ? '15m' : '5m';
     const refresh = query.refresh === '1';
     const instrument = (query.symbol ?? query.instrument ?? query.index ?? 'nifty50').trim() || 'nifty50';
-    const lite = await getNiftyIntradayLite(user.sub, interval, instrument, refresh);
+    const lite = await getNiftyIntradayLite(user.sub, interval, instrument, refresh, {
+      includePositions: intradayIncludeFlag(query.positions),
+      includeJournal: intradayIncludeFlag(query.journal),
+    });
     if ('unknown_instrument' in lite && lite.unknown_instrument) return reply.status(404).send(lite);
     return lite;
   });
@@ -1882,6 +1928,16 @@ export async function buildApp() {
     if (!file) return reply.status(400).send({ error: 'CSV file required' });
     const csv = (await file.toBuffer()).toString('utf8');
     const result = await importPromoterHoldingCsv(csv);
+    if (!result.success) return reply.status(400).send(result);
+    return result;
+  });
+
+  app.post('/api/v1/admin/uploads/promoter-pledge', { preHandler: [authPreHandler] }, async (request, reply) => {
+    requirePermission(request, PERMISSIONS.MANAGE_CACHE);
+    const file = await request.file();
+    if (!file) return reply.status(400).send({ error: 'CSV file required' });
+    const csv = (await file.toBuffer()).toString('utf8');
+    const result = await importPromoterPledgeCsv(csv);
     if (!result.success) return reply.status(400).send(result);
     return result;
   });

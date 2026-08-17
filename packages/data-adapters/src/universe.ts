@@ -2,6 +2,7 @@ import { prisma } from '@sv/db';
 import { cacheGetJson, cacheKey } from '@sv/cache';
 import { CACHE_PREFIX } from '@sv/shared';
 import { ETF_UNIVERSE_ID, etfSymbols, resolvePresetUniverseSymbols } from '@sv/swing';
+import { fetchBulkUniverseSymbols } from './screener-bulk-table.js';
 
 const DEV_FALLBACK: Record<string, string[]> = {
   nifty50: ['TCS', 'INFY', 'RELIANCE', 'HDFCBANK', 'ITC', 'BHARTIARTL', 'ICICIBANK', 'SBIN', 'LT', 'AXISBANK'],
@@ -47,6 +48,11 @@ export async function resolveUniverseSymbols(universeKey: string, maxScan: numbe
   const nseRows = await prisma.nseEquity.findMany(limit ? { take: limit } : undefined);
   if (universeKey === 'total_nse' && nseRows.length > 0) {
     return nseRows.map((r) => r.symbol);
+  }
+
+  if (universeKey === 'total_nse') {
+    const bulk = await fetchBulkUniverseSymbols(limit ?? 200, 4);
+    if (bulk.length > 0) return bulk;
   }
 
   if (process.env.NODE_ENV === 'production') {

@@ -15,6 +15,7 @@ type AdminTab = 'overview' | 'jobs' | 'notifications' | 'data' | 'cache' | 'cont
 interface AdminStats {
   nse_equity_count: number;
   promoter_holding_count: number;
+  promoter_pledge_count?: number;
   universes: { key: string; name: string; symbolCount: number }[];
 }
 
@@ -168,6 +169,8 @@ export default function AdminPage() {
   const [syncStatus, setSyncStatus] = useState<DailySyncStatus | null>(null);
   const [ready, setReady] = useState<ReadyStatus | null>(null);
   const [ops, setOps] = useState<OpsAlertsPayload | null>(null);
+  const [opsLoading, setOpsLoading] = useState(true);
+  const [opsError, setOpsError] = useState('');
   const [smtp, setSmtp] = useState<SmtpStatus | null>(null);
   const [whatsapp, setWhatsapp] = useState<WhatsAppStatus | null>(null);
   const [riskPolicy, setRiskPolicy] = useState<RiskPolicy | null>(null);
@@ -177,6 +180,7 @@ export default function AdminPage() {
   const [showCachePreview, setShowCachePreview] = useState(false);
   const [nseFile, setNseFile] = useState<File | null>(null);
   const [holdingFile, setHoldingFile] = useState<File | null>(null);
+  const [pledgeFile, setPledgeFile] = useState<File | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -248,10 +252,15 @@ export default function AdminPage() {
   }, []);
 
   const loadOps = useCallback(async () => {
+    setOpsLoading(true);
     try {
       setOps(await api<OpsAlertsPayload>('/api/v1/ops/alerts'));
-    } catch {
+      setOpsError('');
+    } catch (err) {
       setOps(null);
+      setOpsError(err instanceof Error ? err.message : 'Ops alerts unavailable');
+    } finally {
+      setOpsLoading(false);
     }
   }, []);
 
@@ -734,8 +743,16 @@ export default function AdminPage() {
           }
         />
         <StatusPill
-          ok={opsCount === 0 ? true : opsCritical > 0 ? false : null}
-          label={opsCount === 0 ? 'Ops clear' : `${opsCount} ops alert(s)`}
+          ok={opsError ? false : opsLoading ? null : opsCount === 0 ? true : opsCritical > 0 ? false : null}
+          label={
+            opsError
+              ? 'Ops unavailable'
+              : opsLoading
+                ? 'Ops loading…'
+                : opsCount === 0
+                  ? 'Ops clear'
+                  : `${opsCount} ops alert(s)`
+          }
         />
       </div>
 
@@ -765,7 +782,11 @@ export default function AdminPage() {
                   : ' · all clear'}
               </span>
             </div>
-            {ops?.alerts?.length ? (
+            {opsError ? (
+              <p className="error">{opsError}</p>
+            ) : opsLoading ? (
+              <p className="muted">Loading ops alerts…</p>
+            ) : ops?.alerts?.length ? (
               <ul className="admin-ops-alerts">
                 {ops.alerts.slice(0, 8).map((a) => (
                   <li key={a.id} className={`admin-ops-alert admin-ops-alert-${a.severity}`}>
@@ -890,6 +911,10 @@ export default function AdminPage() {
                   <div className="admin-metric">
                     <span>Promoter holdings</span>
                     <strong>{stats.promoter_holding_count}</strong>
+                  </div>
+                  <div className="admin-metric">
+                    <span>Promoter pledges</span>
+                    <strong>{stats.promoter_pledge_count ?? 0}</strong>
                   </div>
                   <div className="admin-metric">
                     <span>Universes</span>
@@ -1161,6 +1186,10 @@ export default function AdminPage() {
                     <td>Promoter holdings</td>
                     <td>{stats.promoter_holding_count} symbols</td>
                   </tr>
+                  <tr>
+                    <td>Promoter pledges</td>
+                    <td>{stats.promoter_pledge_count ?? 0} symbols</td>
+                  </tr>
                   {stats.universes.map((u) => (
                     <tr key={u.key}>
                       <td>{u.name}</td>
@@ -1207,6 +1236,28 @@ export default function AdminPage() {
             />
             <button type="submit" className="btn" disabled={loading} style={{ marginTop: '0.75rem' }}>
               Upload promoter holdings
+            </button>
+          </form>
+
+          <form
+            className="card"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void upload('/api/v1/admin/uploads/promoter-pledge', pledgeFile);
+            }}
+          >
+            <h2 style={{ marginTop: 0 }}>Promoter pledge CSV</h2>
+            <p className="muted">
+              No free pledge API — upload bulk CSV for Full Verify Phase 1.6 and screener expand.
+              Columns: <code>symbol,promoter_pledge_pct,as_of</code>
+            </p>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(e) => setPledgeFile(e.target.files?.[0] ?? null)}
+            />
+            <button type="submit" className="btn" disabled={loading} style={{ marginTop: '0.75rem' }}>
+              Upload promoter pledges
             </button>
           </form>
         </>

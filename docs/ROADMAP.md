@@ -29,7 +29,7 @@ Development phases for Script Screener. Phases 1–8 are **complete**. Phases 9+
 - Golden parity tests vs PHP `validate-logic.php`
 - Admin CSV uploads (NSE equity, promoter holdings)
 - Admin web page
-- **Docs:** [SCREENER.md](SCREENER.md) (valuation path); [CFA-VERIFY.md](CFA-VERIFY.md) (screening memo); [FULL-VERIFY.md](FULL-VERIFY.md) (allocation gate planned); [STOCK-DETAILS.md](STOCK-DETAILS.md) (symbol hub planned); one-click memo → [CFA-VERIFY.md](CFA-VERIFY.md)
+- **Docs:** [SCREENER.md](SCREENER.md) (valuation path); [CFA-VERIFY.md](CFA-VERIFY.md) (screening memo); [FULL-VERIFY.md](FULL-VERIFY.md) (allocation gate planned); [STOCK-DETAILS.md](STOCK-DETAILS.md) (symbol hub shipped); one-click memo → [CFA-VERIFY.md](CFA-VERIFY.md)
 
 ### Phase 4 — User data & PHP migration
 
@@ -112,36 +112,38 @@ Reference data in PostgreSQL; market cache warmed once at **06:00 IST**. Phases 
 
 Full one-click memo UI + `VerificationEngine` port. Phases **V-B** through **V-D**.
 
-- [ ] Investment memo hero, assumptions, annual report scan
-- [ ] Port `VerificationEngine` + optional `/verify/full`
-- [ ] Batch verify BullMQ job
+- [x] Investment memo hero, assumptions, annual report scan (V-B)
+- [x] Port `VerificationEngine` + `/verify/full` (see Full Verify track)
+- [ ] Batch verify BullMQ job polish (V-D)
 - **Docs:** [CFA-VERIFY.md](CFA-VERIFY.md) · [FULL-VERIFY.md](FULL-VERIFY.md)
 
 ### Stock Details (parallel track)
 
-Single-symbol research hub — fundamentals, valuation, chart, Screener profile, TA grid. **SD-A shipped** (summary API + page); SD-B–SD-D planned.
+Single-symbol research hub — fundamentals, valuation, chart, Screener profile, TA grid, chart patterns. **SD-A through SD-C shipped**; SD-D partial (pledge on page, expanded parity).
 
 - [x] `GET /api/v1/stock/:symbol` summary API + `/stock/:symbol` page (SD-A)
-- [ ] Port `ScreenerCompanyProfile` + chart phase analysis
-- [ ] Lazy chart endpoint + Lightweight Charts UI
-- [ ] Admin per-symbol cache refresh + cross-page Details links
+- [x] Screener profile + lazy chart/profile endpoints (SD-B, SD-C)
+- [x] Chart phases, TA grid, pattern overlays, IV drift banner
+- [x] Admin per-symbol cache refresh + cross-page Details links
+- [x] Promoter pledge on Details page (Screener.in + warehouse upload)
+- [x] RELIANCE/HDFCBANK cross-page governance fixtures (pledge honesty, Screener flags, shareholding → Full Verify)
 - **Doc:** [STOCK-DETAILS.md](STOCK-DETAILS.md)
 
 ### Phase 10 — Morning dashboard & LTG auto
 
-- [ ] Morning briefing dashboard (regime, top hits, position alerts)
-- [ ] LTG (long-term growth) auto-screener pipeline
+- [x] Morning briefing dashboard (regime, top hits, position alerts)
+- [x] LTG (long-term growth) auto-screener pipeline (`/ltg/auto`, scheduler, Morning panel)
 - [x] Email/webhook notifications for tier changes (optional)
-- **Doc:** [MORNING-ROUTINE.md](MORNING-ROUTINE.md) (morning cockpit); LTG auto TBD
+- **Doc:** [MORNING-ROUTINE.md](MORNING-ROUTINE.md) (morning cockpit); LTG auto via [API.md](API.md#ltg-auto-fundamental--technical-gate)
 
 ### Morning Routine (parallel track)
 
-Pre-market one-screen cockpit — `morning-dashboard.php` parity. Phases **MR-A** through **MR-F**.
+Pre-market one-screen cockpit — `morning-dashboard.php` parity. Phases **MR-A** through **MR-F** shipped.
 
-- [ ] `GET /api/v1/morning` + `/morning` page
-- [ ] NSE session, checklist, regime hero, alert banner
-- [ ] Swing + nifty + auto panels; ETF SETUP+ scan (MR-D)
-- [ ] Trading preset chips (MR-E) — see [TRADING-PRESETS.md](TRADING-PRESETS.md) TP-E
+- [x] `GET /api/v1/morning` + `/morning` page
+- [x] NSE session, checklist, regime hero, alert banner
+- [x] Swing + nifty + intraday + auto panels; ETF SETUP+ scan (MR-D)
+- [x] Trading preset chips (MR-E) — see [TRADING-PRESETS.md](TRADING-PRESETS.md) TP-E
 - **Doc:** [MORNING-ROUTINE.md](MORNING-ROUTINE.md)
 
 ### Trading Strategies (parallel track)
@@ -157,7 +159,7 @@ Curated 21-strategy runner — `strategies.php` parity. Phases **TS-A** through 
 
 ### Phase 11 — Strategy builder
 
-- [ ] User-defined screener filter presets (persist to `screener_presets`)
+- [x] User-defined screener filter presets (persist to `screener_presets`)
 - [ ] Custom swing rule profiles
 - [ ] Strategy backtest runner (historical bars)
 - **System presets (read-only):** [TRADING-PRESETS.md](TRADING-PRESETS.md) — conservative / ETF / intraday hub

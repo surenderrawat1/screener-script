@@ -2,7 +2,9 @@ import { hasActiveWorker } from '@sv/cache';
 import { PaperOrderStatus, PaperPositionStatus, prisma } from '@sv/db';
 import {
   evaluateOpsAlerts,
+  getSchedules,
   nseSession,
+  NSE_PHASE,
   summarizeOpsAlerts,
   type OpsAlert,
   OPS_PRICE_GAP_PCT,
@@ -39,6 +41,40 @@ export async function collectOpsAlerts(userId: string): Promise<{
   checked_at: string;
 }> {
   const nse = nseSession();
+  try {
+    return await collectOpsAlertsForUser(userId, nse);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown collector error';
+    const alerts: OpsAlert[] = [
+      {
+        id: 'ops_collect_failed',
+        severity: 'critical',
+        category: 'worker',
+        title: 'Ops alert collector failed',
+        detail,
+        at: new Date().toISOString(),
+      },
+    ];
+    return {
+      ok: false,
+      alerts,
+      summary: summarizeOpsAlerts(alerts),
+      nse,
+      checked_at: new Date().toISOString(),
+    };
+  }
+}
+
+async function collectOpsAlertsForUser(
+  userId: string,
+  nse: ReturnType<typeof nseSession>,
+): Promise<{
+  ok: boolean;
+  alerts: OpsAlert[];
+  summary: ReturnType<typeof summarizeOpsAlerts>;
+  nse: ReturnType<typeof nseSession>;
+  checked_at: string;
+}> {
   const workerOk = await hasActiveWorker();
   const snapshot = await getSwingAutoSnapshotDurable().catch(() => null);
 
@@ -118,12 +154,16 @@ export async function collectOpsAlerts(userId: string): Promise<{
     price_gaps: priceGaps,
   });
 
-  // Post-close schedule health (weekday only) — evening GTT + strategy daily proof.
-  if (nse.phase === 'post') {
+  // Post-close schedule health (weekday post only) — evening GTT + strategy daily proof.
+  if (nse.phase === NSE_PHASE.POST) {
+    const schedules = getSchedules();
     const [hh, mm] = nse.ist_time.split(':').map((x) => Number(x));
     const mins = hh * 60 + mm;
     const at = new Date().toISOString();
-    if (mins >= 16 * 60 + 30) {
+    const eveningCfg = schedules.intraday?.evening_gtt;
+    const proofCfg = schedules.intraday?.strategy_daily_proof;
+
+    if (eveningCfg?.enabled !== false && mins >= 16 * 60 + 30) {
       const digest = await getEveningGttDigest(nse.ist_date).catch(() => null);
       if (!digest) {
         alerts.push({
@@ -131,12 +171,12 @@ export async function collectOpsAlerts(userId: string): Promise<{
           severity: 'warn',
           category: 'worker',
           title: 'Evening GTT digest missing',
-          detail: `No evening_gtt:${nse.ist_date} after 16:30 IST — check worker schedule leader.`,
+          detail: `No evening_gtt:${nse.ist_date} after 16:30 IST — Admin → Send evening GTT or check worker schedule leader.`,
           at,
         });
       }
     }
-    if (mins >= 17 * 60) {
+    if (proofCfg?.enabled !== false && mins >= 17 * 60) {
       const proofDone = await hasStrategyDailyProofToday().catch(() => false);
       if (!proofDone) {
         alerts.push({
@@ -144,12 +184,17 @@ export async function collectOpsAlerts(userId: string): Promise<{
           severity: 'warn',
           category: 'worker',
           title: 'Strategy daily proof missing',
-          detail: `No strategy daily proof for ${nse.ist_date} after 17:00 IST — check worker / cron.`,
+          detail: `No strategy daily proof for ${nse.ist_date} after 17:00 IST — run from Strategies scoreboard or check worker / cron.`,
           at,
         });
       }
     }
   }
+
+  alerts.sort((a, b) => {
+    const rank = { critical: 0, warn: 1, info: 2 };
+    return rank[a.severity] - rank[b.severity] || a.id.localeCompare(b.id);
+  });
 
   return {
     ok: true,

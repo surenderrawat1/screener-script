@@ -12,6 +12,13 @@ import { CACHE_PREFIX, getCacheTtl } from '@sv/shared';
 import { cacheGetJson, cacheKey, cacheSetJson } from '@sv/cache';
 import type { VerifierFetchBlob } from './verifier-autofill.js';
 import { fetchVerifierData } from './verifier-fetch.js';
+import { isVerifyCachePriceStale } from './verify-cache-freshness.js';
+import {
+  inferAnnualReportGates,
+  mergeAnnualReportGates,
+  type AnnualReportScan,
+} from './annual-report.js';
+import { fetchScreenerProfile } from './screener-profile.js';
 
 export interface CfaVerifyAnalysis {
   intrinsic: number;
@@ -49,6 +56,8 @@ export interface CfaVerifyResult {
   screening_mode: boolean;
   sources: string[];
   from_cache?: boolean;
+  annual_report?: AnnualReportScan;
+  data_quality?: VerificationResult['data_quality'];
 }
 
 interface VerifyCachePayload {
@@ -153,7 +162,15 @@ export async function runCfaAutoVerify(symbol: string, refresh = false): Promise
   if (!refresh) {
     const cached = await cacheGetJson<VerifyCachePayload>(verifyKey);
     if (cached?.result?.success) {
-      return { ...cached.result, from_cache: true };
+      const cachedPrice = Number(cached.result.metrics?.price ?? 0);
+      const stockCached = await cacheGetJson<{ metrics?: { price?: number } }>(
+        cacheKey(CACHE_PREFIX.STOCK, baseSymbol),
+      );
+      const livePrice = Number(stockCached?.metrics?.price ?? 0);
+      if (!isVerifyCachePriceStale(cachedPrice, livePrice)) {
+        return { ...cached.result, from_cache: true };
+      }
+      // Price moved >1% vs verify snapshot — recompute IV/MOS for cross-page parity.
     }
   }
 
@@ -163,7 +180,24 @@ export async function runCfaAutoVerify(symbol: string, refresh = false): Promise
   }
 
   const blob = fetched.blob;
-  const input = applyCfaScreeningDefaults(fetched.auto.input, {
+
+  const profile = await fetchScreenerProfile(baseSymbol, 'consolidated', refresh).catch(() => null);
+  const annual = inferAnnualReportGates(
+    {
+      cfo_cr: blob.cfo_cr,
+      pat_cr: blob.pat_cr,
+      revenue_history: blob.revenue_history,
+      revenue_growth: blob.revenue_growth,
+      summary: blob.summary,
+    },
+    profile,
+  );
+  const withAnnual = mergeAnnualReportGates(
+    fetched.auto.input as Record<string, string | number | boolean>,
+    annual.gates,
+  );
+
+  const input = applyCfaScreeningDefaults(withAnnual, {
     sector: blob.sector,
     market_cap_cr: blob.market_cap_cr,
     revenue_growth: blob.revenue_growth,
@@ -189,6 +223,9 @@ export async function runCfaAutoVerify(symbol: string, refresh = false): Promise
   const metrics = blobToStockMetrics(blob);
   const analysis = buildAnalysis(result, memo);
 
+  const sources = [...fetched.sources];
+  if (profile) sources.push('Screener.in (company profile)');
+
   const payload: CfaVerifyResult = {
     symbol: baseSymbol,
     success: true,
@@ -198,8 +235,10 @@ export async function runCfaAutoVerify(symbol: string, refresh = false): Promise
     memo,
     assumptions: [...CFA_SCREENING_ASSUMPTIONS],
     screening_mode: true,
-    sources: fetched.sources,
+    sources: [...new Set(sources)],
     from_cache: fetched.from_cache,
+    annual_report: annual.annual_report,
+    data_quality: result.data_quality,
   };
 
   await cacheSetJson(

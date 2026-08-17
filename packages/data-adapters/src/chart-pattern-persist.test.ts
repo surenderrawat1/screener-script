@@ -4,6 +4,7 @@ import {
   buildChartPatternsMorningPanel,
   scanRunToApi,
   inboxSignalsFromChartPatterns,
+  aggregatePatternBacktestStats,
 } from './chart-pattern-persist.js';
 import type { DetectedPattern } from '@sv/swing';
 
@@ -157,5 +158,64 @@ describe('chart pattern persistence', () => {
       urgency: 'info',
     });
     expect(signals[0]?.source_href).toContain('TCS');
+  });
+
+  it('aggregates per-symbol backtest stats by pattern kind', () => {
+    const kinds = aggregatePatternBacktestStats([
+      {
+        kind: 'ascending_triangle',
+        label: 'Ascending Triangle',
+        timeframe: '1D',
+        occurrences: 4,
+        confirmed_breakouts: 2,
+        target_hits: 1,
+        stop_hits: 1,
+        unresolved: 0,
+        success_rate_pct: 50,
+        avg_return_pct: 2.5,
+        avg_mfe_pct: 4,
+        avg_mae_pct: -2,
+      },
+      {
+        kind: 'ascending_triangle',
+        label: 'Ascending Triangle',
+        timeframe: '1D',
+        occurrences: 2,
+        confirmed_breakouts: 1,
+        target_hits: 1,
+        stop_hits: 0,
+        unresolved: 0,
+        success_rate_pct: 100,
+        avg_return_pct: 5,
+        avg_mfe_pct: 6,
+        avg_mae_pct: -1,
+      },
+      {
+        kind: 'rectangle',
+        label: 'Rectangle',
+        timeframe: '1D',
+        occurrences: 3,
+        confirmed_breakouts: 1,
+        target_hits: 0,
+        stop_hits: 1,
+        unresolved: 1,
+        success_rate_pct: 0,
+        avg_return_pct: -1.5,
+        avg_mfe_pct: 2,
+        avg_mae_pct: -3,
+      },
+    ]);
+
+    expect(kinds).toHaveLength(2);
+    const tri = kinds.find((k) => k.kind === 'ascending_triangle');
+    expect(tri).toMatchObject({
+      symbol_samples: 2,
+      occurrences: 6,
+      confirmed_breakouts: 3,
+      target_hits: 2,
+      stop_hits: 1,
+      success_rate_pct: 66.7,
+    });
+    expect(tri?.avg_return_pct).toBeCloseTo(3.3, 1);
   });
 });

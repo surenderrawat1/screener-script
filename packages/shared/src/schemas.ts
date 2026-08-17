@@ -23,6 +23,7 @@ export const screenerRunSchema = z.object({
   background: z.boolean().optional(),
   refresh: z.boolean().optional(),
   exclude_restricted: z.boolean().optional(),
+  recommendation_filter: z.string().optional(),
   filters: z.record(z.unknown()).optional(),
 });
 
@@ -363,6 +364,13 @@ export interface MosEstimate {
   final_rating?: string;
 }
 
+export interface ScreenerInsightWarning {
+  text: string;
+  severity: 'critical' | 'watch' | 'info';
+  category: string;
+  label: string;
+}
+
 export interface ScreenerRow extends MosEstimate {
   symbol: string;
   name: string;
@@ -377,6 +385,8 @@ export interface ScreenerRow extends MosEstimate {
   recommendation: string;
   passed: boolean;
   promoter_holding?: number;
+  promoter_pledge?: number;
+  promoter_pledge_as_of?: string;
   moat_tier?: string;
   moat_count?: number;
   market_cap_cr?: number;
@@ -416,6 +426,26 @@ export interface ScreenerRow extends MosEstimate {
   ta_h_cross_above_sma50_bars?: number | null;
   ta_h_cross_above_ema20_bars?: number | null;
   ta_h_cross_above_ema50_bars?: number | null;
+  dcf_value?: number;
+  pe_intrinsic?: number;
+  graham_mos?: number | null;
+  graham_credible?: boolean;
+  altman_z?: number;
+  altman_zone?: string;
+  z_score_source?: string;
+  altman_skip?: boolean;
+  sector_key?: string;
+  verify_decision?: string;
+  verify_cached?: boolean;
+  verify_iv?: number;
+  iv_delta_pct?: number;
+  iv_drift_warn?: boolean;
+  parity_from_cache?: boolean;
+  screener_warnings?: ScreenerInsightWarning[];
+  screener_has_critical?: boolean;
+  screener_has_watch?: boolean;
+  promoter_holding_trend?: string;
+  promoter_holding_change_pp?: number;
 }
 
 export interface JobProgress {

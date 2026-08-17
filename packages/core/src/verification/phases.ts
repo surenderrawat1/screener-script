@@ -39,8 +39,13 @@ export function evaluatePhase1(
   ctx: GateContext,
 ): PhaseResult {
   let pledgeNote = 'Pledge > 25% = CRITICAL FAIL';
-  if (String(input.pledge_data_as_of ?? '') === '' && Number(input.p1_promoter_pledge ?? 0) === 0) {
-    pledgeNote += ' · Upload pledge CSV on Cache page or enter manually';
+  const pledgeVal = input.p1_promoter_pledge;
+  const pledgeKnown =
+    pledgeVal !== '' && pledgeVal !== null && pledgeVal !== undefined && !Number.isNaN(Number(pledgeVal));
+  if (!pledgeKnown) {
+    pledgeNote += ' · Confirm on Screener.in (ratio tile / shareholding) or enter manually';
+  } else if (String(input.pledge_data_as_of ?? '') === '' && Number(pledgeVal ?? 0) === 0) {
+    pledgeNote += ' · Zero reported — verify against latest shareholding pattern';
   }
 
   const gates = [
@@ -70,15 +75,29 @@ export function evaluatePhase1(
     ),
     yesNoGate(ctx, '1.4', 'Inside circle of competence', input.p1_circle_competence as boolean | null),
     yesNoGate(ctx, '1.5', 'Promoter holding stable', input.p1_promoter_stable as boolean | null),
-    gate(
-      ctx,
-      '1.6',
-      'Promoter pledge ≤ 10%',
-      Number(input.p1_promoter_pledge ?? 0) <= 10,
-      1,
-      Number(input.p1_promoter_pledge ?? 0) > 25,
-      pledgeNote,
-    ),
+    ...(pledgeKnown
+      ? [
+          gate(
+            ctx,
+            '1.6',
+            'Promoter pledge ≤ 10%',
+            Number(pledgeVal) <= 10,
+            1,
+            Number(pledgeVal) > 25,
+            pledgeNote,
+          ),
+        ]
+      : [
+          {
+            id: '1.6',
+            label: 'Promoter pledge ≤ 10%',
+            status: 'warn' as const,
+            points: 0,
+            max: 1,
+            critical: false,
+            note: pledgeNote,
+          },
+        ]),
     yesNoGate(
       ctx,
       '1.7',

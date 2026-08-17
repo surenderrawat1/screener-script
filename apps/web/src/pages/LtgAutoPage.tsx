@@ -26,6 +26,8 @@ type LtgAutoState = {
   universe: string;
   max_scan: number;
   tiers: Record<LtgTierKey, LtgAutoTierHit[]>;
+  summary?: { scanned: number; passed: number; buy_eligible: number };
+  guidance?: { tone: string; title: string; message: string; deploy_pct: number };
 };
 
 const TIER_LABELS: Record<LtgTierKey, string> = {
@@ -96,7 +98,7 @@ export default function LtgAutoPage() {
     <Page>
       <PageHeader
         title="LTG Auto (fundamental + technical gate)"
-        subtitle="Minimal viable LTG pipeline: fundamental preset + TA gate + tier partition"
+        subtitle="cfa_ltg_auto preset · buy-eligible filter · CFA decision score · TA tier gates"
         actions={
           <button type="button" className="btn btn-secondary" onClick={() => void start()} disabled={running}>
             {running ? 'Scanning…' : 'Run LTG auto scan'}
@@ -118,6 +120,22 @@ export default function LtgAutoPage() {
 
       {state?.available ? (
         <>
+
+      {state?.guidance ? (
+        <div
+          className={`data-quality-banner ${state.guidance.tone === 'success' ? 'data-quality-estimated' : 'data-quality-limited'}`}
+          role="status"
+        >
+          <strong>{state.guidance.title}</strong>
+          <span>{state.guidance.message}</span>
+          {state.summary ? (
+            <span className="muted">
+              Scanned {state.summary.scanned} · {state.summary.passed} passed preset ·{' '}
+              {state.summary.buy_eligible} buy-eligible · deploy hint {state.guidance.deploy_pct}%
+            </span>
+          ) : null}
+        </div>
+      ) : null}
           <p className="muted">
             Universe {state.universe} · maxScan {state.max_scan} · saved{' '}
             {state.saved_at ? new Date(state.saved_at).toLocaleString('en-IN') : '—'}

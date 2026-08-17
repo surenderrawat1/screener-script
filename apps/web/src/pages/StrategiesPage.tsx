@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
+import { canOpenStrategyInScreener, screenerDeepLinkFromStrategy } from '../lib/screener-deep-link';
 import { Page, PageHeader } from '../components/PageLayout';
 import { ResearchRowActions } from '../components/ResearchRowActions';
 
@@ -22,6 +23,8 @@ interface StrategyDef {
   icon: string;
   ready: boolean;
   blocked_reason?: string;
+  preset?: string;
+  screener_preset?: string;
 }
 
 interface ScreenerPresetInfo {
@@ -856,6 +859,34 @@ export default function StrategiesPage() {
                 {active.icon} {active.label}
               </h2>
               <p className="muted">{active.description}</p>
+              {canOpenStrategyInScreener(active) && (
+                <p style={{ marginTop: 0 }}>
+                  <Link
+                    className="btn btn-secondary btn-sm"
+                    to={screenerDeepLinkFromStrategy(active, {
+                      universe: universe || active.universe_default,
+                      maxScan: maxScan > 0 ? maxScan : active.max_scan_default,
+                      background,
+                    })}
+                  >
+                    {active.engine === 'hybrid' ? 'Open screener leg' : 'Open in Screener'}
+                  </Link>
+                  {' '}
+                  <Link
+                    className="btn btn-secondary btn-sm"
+                    to={screenerDeepLinkFromStrategy(active, {
+                      universe: universe || active.universe_default,
+                      maxScan: maxScan > 0 ? maxScan : active.max_scan_default,
+                      background,
+                      autorun: true,
+                    })}
+                  >
+                    {active.engine === 'hybrid' ? 'Open screener leg & run' : 'Open & run'}
+                  </Link>
+                </p>
+              )}
+
+
               {isSystemStrategyKey(active.key) ? (
                 <p className="muted" style={{ marginTop: 0 }}>
                   System strategy — read-only. Save a custom preset or swing profile to edit filters.

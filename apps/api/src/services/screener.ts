@@ -3,6 +3,7 @@ import { prisma, JobStatus, JobType } from '@sv/db';
 import { enqueueScreenerJob, shouldRunInBackground } from '@sv/jobs';
 import { executeScreenerJob } from '@sv/data-adapters';
 import type { ScreenerRunInput } from '@sv/shared';
+import type { ScreenerFilters } from '@sv/core';
 import { resolveUniverseSymbols } from './universe.js';
 
 export async function createScreenerJob(
@@ -12,10 +13,12 @@ export async function createScreenerJob(
   const symbols = await resolveUniverseSymbols(input.universe, input.maxScan);
   const taActive = Boolean(input.filters?.show_ta);
   const useQueue = input.background ?? shouldRunInBackground(input.maxScan, taActive);
-  const filters = (input.filters ?? {}) as Record<string, number>;
+  const filters = (input.filters ?? {}) as ScreenerFilters;
   const runOptions = {
     exclude_restricted: input.exclude_restricted !== false,
     refresh: Boolean(input.refresh),
+    recommendation_filter: input.recommendation_filter,
+    user_id: userId,
   };
 
   const job = await prisma.job.create({

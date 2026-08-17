@@ -40,7 +40,7 @@ export interface VerifierFetchBlob {
   pat_cr: number;
   total_debt_cr: number;
   shareholders_equity_cr: number;
-  promoter_pledge: number;
+  promoter_pledge?: number;
   promoter_pledge_as_of: string;
   interest_coverage: number;
   ebitda_margin: number;
@@ -206,7 +206,7 @@ export function mapToVerifierInput(m: VerifierFetchBlob): VerifyFullInput {
     review_date: reviewDateDefault(),
 
     p1_industry_outlook: m.revenue_growth > 5 ? 'growing' : m.revenue_growth >= -2 ? 'stable' : 'declining',
-    p1_promoter_pledge: m.promoter_pledge,
+    ...(m.promoter_pledge != null ? { p1_promoter_pledge: m.promoter_pledge } : {}),
     pledge_data_as_of: m.promoter_pledge_as_of,
     p1_promoter_stable: 'yes',
     p1_auditor_clean: 'yes',
@@ -427,7 +427,7 @@ export function metricsToVerifierBlob(
     pat_cr: pat,
     total_debt_cr: Number(metrics.total_debt_cr ?? 0),
     shareholders_equity_cr: equityCr,
-    promoter_pledge: extras.promoter_pledge ?? 0,
+    promoter_pledge: extras.promoter_pledge,
     promoter_pledge_as_of: extras.promoter_pledge_as_of ?? '',
     interest_coverage: interestCoverage,
     ebitda_margin: Number(metrics.ebitda_margin ?? 0),

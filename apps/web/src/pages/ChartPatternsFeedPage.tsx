@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState, Page, PageHeader, PageLoading } from '../components/PageLayout';
 import { fmtMoney } from '../components/swing/format';
+import { formatRewardRisk, patternRewardRisk } from '../lib/pattern-feed-utils';
 
 interface PatternRow {
   pattern_key: string;
@@ -33,6 +34,28 @@ interface FeedResponse {
   patterns: PatternRow[];
 }
 
+interface BacktestKindStat {
+  kind: string;
+  label: string;
+  timeframe: string;
+  symbol_samples: number;
+  occurrences: number;
+  confirmed_breakouts: number;
+  target_hits: number;
+  stop_hits: number;
+  unresolved: number;
+  success_rate_pct: number | null;
+  avg_return_pct: number | null;
+  avg_mfe_pct: number | null;
+  avg_mae_pct: number | null;
+}
+
+interface BacktestSummaryResponse {
+  scan_date: string | null;
+  symbol_count: number;
+  kinds: BacktestKindStat[];
+}
+
 interface ScanRun {
   run_date: string;
   trigger: string;
@@ -45,6 +68,12 @@ interface ScanRun {
   error: string | null;
   created_at: string;
 }
+
+const STATUS_CHIPS = [
+  { value: 'forming', label: 'Forming' },
+  { value: 'breakout', label: 'Breakout' },
+  { value: 'confirmed', label: 'Confirmed' },
+] as const;
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All statuses' },
@@ -114,6 +143,7 @@ export default function ChartPatternsFeedPage() {
   const [data, setData] = useState<FeedResponse | null>(null);
   const [scanDates, setScanDates] = useState<string[]>([]);
   const [scanRuns, setScanRuns] = useState<ScanRun[]>([]);
+  const [backtestSummary, setBacktestSummary] = useState<BacktestSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -126,27 +156,33 @@ export default function ChartPatternsFeedPage() {
   const limit = searchParams.get('limit') ?? '100';
 
   const queryPath = useMemo(() => `/api/v1/chart-patterns/feed${buildQuery(searchParams)}`, [searchParams]);
+  const backtestQuery = useMemo(() => {
+    const q = scanDate ? `?scan_date=${encodeURIComponent(scanDate)}` : '';
+    return `/api/v1/chart-patterns/backtest-summary${q}`;
+  }, [scanDate]);
   const latestRun = scanRuns[0] ?? null;
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [feed, datesRes, runsRes] = await Promise.all([
+      const [feed, datesRes, runsRes, backtestRes] = await Promise.all([
         api<FeedResponse>(queryPath),
         api<{ dates: string[] }>('/api/v1/chart-patterns/scan-dates'),
         api<{ runs: ScanRun[] }>('/api/v1/chart-patterns/scan-runs?limit=5'),
+        api<BacktestSummaryResponse>(backtestQuery),
       ]);
       setData(feed);
       setScanDates(datesRes.dates);
       setScanRuns(runsRes.runs);
+      setBacktestSummary(backtestRes);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load pattern feed');
       setData(null);
     } finally {
       setLoading(false);
     }
-  }, [queryPath]);
+  }, [queryPath, backtestQuery]);
 
   useEffect(() => {
     void load();
@@ -158,6 +194,23 @@ export default function ChartPatternsFeedPage() {
     else next.delete(key);
     setSearchParams(next, { replace: true });
   };
+
+  const clearFilters = () => {
+    const next = new URLSearchParams();
+    if (scanDate) next.set('scan_date', scanDate);
+    setSearchParams(next, { replace: true });
+  };
+
+  const toggleKindFilter = (nextKind: string) => {
+    setFilter('kind', kind === nextKind ? '' : nextKind);
+  };
+
+  const sortedPatterns = useMemo(() => {
+    const rows = data?.patterns ?? [];
+    return [...rows].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
+  }, [data?.patterns]);
+
+  const filtersActive = Boolean(kind || status || type || symbol || minConfidence);
 
   if (loading && !data) return <PageLoading label="Loading chart patterns…" />;
 
@@ -264,8 +317,94 @@ export default function ChartPatternsFeedPage() {
               ))}
             </select>
           </label>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={clearFilters} disabled={!filtersActive}>
+            Clear filters
+          </button>
+        </div>
+        <div className="pattern-status-chips" style={{ marginTop: '0.65rem' }}>
+          {STATUS_CHIPS.map((chip) => (
+            <button
+              key={chip.value}
+              type="button"
+              className={`btn btn-secondary btn-sm${status === chip.value ? ' is-active' : ''}`}
+              onClick={() => setFilter('status', status === chip.value ? '' : chip.value)}
+            >
+              {chip.label}
+            </button>
+          ))}
+          <span className="muted" style={{ fontSize: '0.82rem', marginLeft: '0.35rem' }}>
+            Tip: click an accuracy card below to filter by pattern kind
+          </span>
         </div>
       </div>
+
+      {backtestSummary && backtestSummary.kinds.length > 0 && (
+        <div className="card" style={{ marginBottom: '1rem' }}>
+          <div className="pattern-backtest">
+            <h3 className="admin-subhead">Pattern accuracy summary</h3>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Walk-forward stats aggregated across {backtestSummary.symbol_count} symbol
+              {backtestSummary.symbol_count === 1 ? '' : 's'}
+              {backtestSummary.scan_date ? ` · scan ${backtestSummary.scan_date}` : ''}. No look-ahead.
+            </p>
+            <div className="pattern-backtest-grid">
+              {backtestSummary.kinds.map((bt) => (
+                <article
+                  key={bt.kind}
+                  className={`pattern-backtest-card${kind === bt.kind ? ' is-active' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => toggleKindFilter(bt.kind)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      toggleKindFilter(bt.kind);
+                    }
+                  }}
+                  title={kind === bt.kind ? 'Clear kind filter' : `Filter feed to ${bt.label}`}
+                >
+                  <div className="pattern-backtest-head">
+                    <strong>{bt.label}</strong>
+                    <span className="muted">
+                      {bt.timeframe} · {bt.symbol_samples} sym
+                    </span>
+                  </div>
+                  <dl className="pattern-backtest-stats">
+                    <div>
+                      <dt>Detected</dt>
+                      <dd>{bt.occurrences}</dd>
+                    </div>
+                    <div>
+                      <dt>Breakouts</dt>
+                      <dd>{bt.confirmed_breakouts}</dd>
+                    </div>
+                    <div>
+                      <dt>Target hit</dt>
+                      <dd>{bt.target_hits}</dd>
+                    </div>
+                    <div>
+                      <dt>Stop hit</dt>
+                      <dd>{bt.stop_hits}</dd>
+                    </div>
+                    <div>
+                      <dt>Success rate</dt>
+                      <dd>{bt.success_rate_pct != null ? `${bt.success_rate_pct}%` : '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Avg return</dt>
+                      <dd>
+                        {bt.avg_return_pct != null
+                          ? `${bt.avg_return_pct > 0 ? '+' : ''}${bt.avg_return_pct}%`
+                          : '—'}
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && <p className="error">{error}</p>}
 
@@ -277,7 +416,7 @@ export default function ChartPatternsFeedPage() {
         </EmptyState>
       )}
 
-      {data && data.patterns.length > 0 && (
+      {data && sortedPatterns.length > 0 && (
         <div className="card table-scroll">
           <table className="data-table">
             <thead>
@@ -291,14 +430,18 @@ export default function ChartPatternsFeedPage() {
                 <th>Breakout</th>
                 <th>Target</th>
                 <th>Stop</th>
+                <th title="Reward / risk from breakout">R:R</th>
                 <th>Confirm</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {data.patterns.map((p) => (
+              {sortedPatterns.map((p) => {
+                const rr = patternRewardRisk(p.breakout, p.target, p.stop_loss);
+                return (
                 <tr key={`${p.symbol}-${p.pattern_key}`}>
                   <td>
-                    <Link to={`/stock/${p.symbol}`}>{p.symbol}</Link>
+                    <Link to={`/stock/${encodeURIComponent(p.symbol)}`}>{p.symbol}</Link>
                   </td>
                   <td>
                     <div>{p.pattern}</div>
@@ -322,13 +465,29 @@ export default function ChartPatternsFeedPage() {
                   <td>{p.breakout != null ? fmtMoney(p.breakout) : '—'}</td>
                   <td>{p.target != null ? fmtMoney(p.target) : '—'}</td>
                   <td>{p.stop_loss != null ? fmtMoney(p.stop_loss) : '—'}</td>
+                  <td className={rr != null && rr >= 2 ? 'pos' : undefined}>{formatRewardRisk(rr)}</td>
                   <td className="muted" style={{ fontSize: '0.85em' }}>
                     {[p.volume_confirmed && 'Vol', p.rsi_confirmed && 'RSI', p.macd_confirmed && 'MACD']
                       .filter(Boolean)
                       .join(' · ') || '—'}
                   </td>
+                  <td className="pattern-row-actions">
+                    <Link
+                      to={`/verify?symbol=${encodeURIComponent(p.symbol)}`}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      Verify
+                    </Link>
+                    <Link
+                      to={`/stock/${encodeURIComponent(p.symbol)}`}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      Chart
+                    </Link>
+                  </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

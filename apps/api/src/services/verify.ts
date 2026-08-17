@@ -12,6 +12,8 @@ export async function verifySymbol(symbol: string, refresh = false, userId?: str
     sources,
     from_cache,
     company_name,
+    annual_report,
+    data_quality,
   } = await verifyStock(symbol, refresh);
 
   const result = {
@@ -25,6 +27,8 @@ export async function verifySymbol(symbol: string, refresh = false, userId?: str
     screening_mode,
     sources,
     from_cache,
+    annual_report,
+    data_quality,
     educational_only: true,
     disclaimer: 'Research tool only — not SEBI-registered investment advice.',
   };

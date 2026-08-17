@@ -13,12 +13,29 @@ import {
   IntradayLedgerLink,
   IntradayPresetTable,
   IntradayScalpSetupCard,
+  IntradaySignalsPanel,
   IntradayTradePlanCard,
   type ProductMode,
 } from '../components/intraday/IntradayFnoPanels';
 import { IntradayPriceChart } from '../components/intraday/IntradayPriceChart';
+import {
+  IntradayOpenPanel,
+  type IntradayPositionRow,
+} from '../components/intraday/IntradayPositionsPanels';
 
 type Interval = '5m' | '15m';
+
+interface PositionsPollResponse {
+  positions: IntradayPositionRow[];
+  live?: {
+    refreshed_at?: string;
+    portfolio?: {
+      exit_count?: number;
+      urgent_count?: number;
+      net_pnl_inr?: number | null;
+    };
+  } | null;
+}
 
 interface InstrumentTab {
   id: string;
@@ -51,6 +68,9 @@ export default function IntradayPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [econBooks, setEconBooks] = useState<EconomicGateBook[]>([]);
+  const [positionsData, setPositionsData] = useState<PositionsPollResponse | null>(null);
+
+  const REFRESH_MS = 60_000;
 
   useEffect(() => {
     void api<{ books: EconomicGateBook[] }>('/api/v1/trading/economic-gates')
@@ -86,7 +106,7 @@ export default function IntradayPage() {
       setError('');
       setLoading(true);
       try {
-        const q = new URLSearchParams({ interval, instrument });
+        const q = new URLSearchParams({ interval, instrument, positions: '0' });
         if (refresh) q.set('refresh', '1');
         const data = await api<Record<string, unknown>>(`/api/v1/intraday/nifty/state?${q}`);
         const resolved = data.instrument as { id?: string } | undefined;
@@ -104,11 +124,26 @@ export default function IntradayPage() {
     [interval, instrument],
   );
 
+  const loadPositions = useCallback(async () => {
+    try {
+      const data = await api<PositionsPollResponse>('/api/v1/intraday/positions?status=open&live=1');
+      setPositionsData(data);
+    } catch {
+      /* positions poll is best-effort */
+    }
+  }, []);
+
   useEffect(() => {
     void load();
-    const id = window.setInterval(() => void load(), 60_000);
+    const id = window.setInterval(() => void load(false), REFRESH_MS);
     return () => window.clearInterval(id);
   }, [load]);
+
+  useEffect(() => {
+    void loadPositions();
+    const id = window.setInterval(() => void loadPositions(), REFRESH_MS);
+    return () => window.clearInterval(id);
+  }, [loadPositions]);
 
   const allTabs = [...indexTabs, ...stockTabs, ...etfTabs];
   const activeTab = allTabs.find((t) => t.id === instrument);
@@ -357,7 +392,36 @@ export default function IntradayPage() {
         fnoSupported={fnoSupported}
         econStatus={stratzyGate?.status}
       />
+      <IntradaySignalsPanel
+        analysis={analysis}
+        interval={interval}
+        trigger={(plan?.trigger as Record<string, unknown> | undefined) ?? undefined}
+      />
       <IntradayScalpSetupCard setup={scalpSetup} instrumentId={instrument} interval={interval} />
+
+      <IntradayOpenPanel
+        heading={
+          <div className="nip-panel-head">
+            <h2 style={{ margin: 0 }}>Open positions</h2>
+            <span className="muted">Live · 60s</span>
+          </div>
+        }
+        footer={
+          <p className="muted nip-panel-foot">
+            <Link to="/intraday/positions">Full ledger</Link>
+            {' · '}
+            <Link to={`/intraday/app?instrument=${encodeURIComponent(instrument)}&interval=${interval}`}>
+              Mobile app
+            </Link>
+          </p>
+        }
+        positions={positionsData?.positions ?? []}
+        portfolio={positionsData?.live?.portfolio}
+        refreshedAt={positionsData?.live?.refreshed_at}
+        onRefresh={loadPositions}
+        onClosed={loadPositions}
+      />
+
       {expiry?.label ? (
         <p className={`intraday-expiry-note ${expiry.is_today ? 'is-today' : ''}`}>
           {expiry.is_today ? 'Expiry today · ' : 'Next expiry · '}

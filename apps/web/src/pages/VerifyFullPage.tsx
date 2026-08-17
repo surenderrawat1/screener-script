@@ -59,6 +59,25 @@ interface FetchResponse extends PrefillResponse {
     expires_at?: number;
     from_cache?: boolean;
   };
+  screener_insights?: {
+    pros: string[];
+    cons: string[];
+    warnings: Array<{
+      text: string;
+      severity: 'critical' | 'watch' | 'info';
+      category: string;
+      label: string;
+    }>;
+    has_critical: boolean;
+    has_watch: boolean;
+    source: string;
+  } | null;
+  screener_gate_adjustments?: Array<{
+    field: string;
+    value: string | number;
+    reason: string;
+    severity: string;
+  }>;
 }
 
 interface RunResponse {
@@ -109,6 +128,12 @@ export default function VerifyFullPage() {
     expires_at?: number;
     from_cache?: boolean;
   } | null>(null);
+  const [screenerInsights, setScreenerInsights] = useState<
+    FetchResponse['screener_insights'] | null
+  >(null);
+  const [screenerGateAdjustments, setScreenerGateAdjustments] = useState<
+    NonNullable<FetchResponse['screener_gate_adjustments']>
+  >([]);
   const [runResult, setRunResult] = useState<VerifyFullResultData | null>(null);
   const [watchlistSaved, setWatchlistSaved] = useState(false);
   const [running, setRunning] = useState(false);
@@ -137,6 +162,8 @@ export default function VerifyFullPage() {
     setError('');
     setDraftMessage('');
     setFetchMeta(null);
+    setScreenerInsights(null);
+    setScreenerGateAdjustments([]);
     setRunResult(null);
     setWatchlistSaved(false);
     try {
@@ -212,6 +239,8 @@ export default function VerifyFullPage() {
     setError('');
     setDraftMessage('');
     setFetchMeta(null);
+    setScreenerInsights(null);
+    setScreenerGateAdjustments([]);
     setRunResult(null);
     setWatchlistSaved(false);
     skipUrlPrefillRef.current = true;
@@ -237,6 +266,8 @@ export default function VerifyFullPage() {
       setAutoKeys(new Set(res.auto_keys));
       setFetchMeta(res.fetch_meta);
       setCacheMeta(res.cache_meta ?? null);
+      setScreenerInsights(res.screener_insights ?? null);
+      setScreenerGateAdjustments(res.screener_gate_adjustments ?? []);
       setSymbol(res.symbol);
       setActivePhase(0);
       setLoading(false);
@@ -428,6 +459,30 @@ export default function VerifyFullPage() {
           Review <AutoBadge /> tags and complete manual gates below.
         </div>
       )}
+
+      {screenerGateAdjustments.length > 0 ? (
+        <div
+          className={`verify-screener-gates${screenerInsights?.has_critical ? ' verify-screener-gates-critical' : ''}`}
+          role="alert"
+        >
+          <strong>Screener checklist → Full Verify gates</strong>
+          <p className="muted" style={{ margin: '0.35rem 0 0.5rem' }}>
+            {screenerGateAdjustments.length} field(s) adjusted from Screener.in cons — review Phase 1–2
+            before running verification.
+          </p>
+          <ul className="screener-insights-list">
+            {screenerGateAdjustments.map((adj) => (
+              <li
+                key={`${adj.field}-${adj.reason.slice(0, 40)}`}
+                className={`screener-insight screener-insight-${adj.severity}`}
+              >
+                <span className="screener-insight-label">{adj.field}</span>
+                <span>{adj.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {draftMessage && <div className="verify-fetch-success">{draftMessage}</div>}
 

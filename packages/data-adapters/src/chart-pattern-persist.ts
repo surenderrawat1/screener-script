@@ -520,6 +520,179 @@ export function scanRunToApi(row: {
   };
 }
 
+
+export interface AggregatedPatternBacktestStat {
+  kind: string;
+  label: string;
+  timeframe: string;
+  symbol_samples: number;
+  occurrences: number;
+  confirmed_breakouts: number;
+  target_hits: number;
+  stop_hits: number;
+  unresolved: number;
+  success_rate_pct: number | null;
+  avg_return_pct: number | null;
+  avg_mfe_pct: number | null;
+  avg_mae_pct: number | null;
+}
+
+/** Sum per-symbol walk-forward stats into universe-level pattern accuracy (doc §14). */
+export function aggregatePatternBacktestStats(
+  stats: Array<{
+    kind: string;
+    label: string;
+    timeframe: string;
+    occurrences: number;
+    confirmed_breakouts: number;
+    target_hits: number;
+    stop_hits: number;
+    unresolved: number;
+    success_rate_pct: number | null;
+    avg_return_pct: number | null;
+    avg_mfe_pct: number | null;
+    avg_mae_pct: number | null;
+  }>,
+): AggregatedPatternBacktestStat[] {
+  const byKind = new Map<string, AggregatedPatternBacktestStat & { _returnWeight: number; _mfeWeight: number; _maeWeight: number }>();
+
+  for (const stat of stats) {
+    const resolved = stat.target_hits + stat.stop_hits;
+    const cur =
+      byKind.get(stat.kind) ??
+      {
+        kind: stat.kind,
+        label: stat.label,
+        timeframe: stat.timeframe,
+        symbol_samples: 0,
+        occurrences: 0,
+        confirmed_breakouts: 0,
+        target_hits: 0,
+        stop_hits: 0,
+        unresolved: 0,
+        success_rate_pct: null,
+        avg_return_pct: null,
+        avg_mfe_pct: null,
+        avg_mae_pct: null,
+        _returnWeight: 0,
+        _mfeWeight: 0,
+        _maeWeight: 0,
+      };
+
+    cur.symbol_samples += 1;
+    cur.occurrences += stat.occurrences;
+    cur.confirmed_breakouts += stat.confirmed_breakouts;
+    cur.target_hits += stat.target_hits;
+    cur.stop_hits += stat.stop_hits;
+    cur.unresolved += stat.unresolved;
+
+    if (resolved > 0 && stat.avg_return_pct != null) {
+      cur._returnWeight += resolved;
+      cur.avg_return_pct = (cur.avg_return_pct ?? 0) + stat.avg_return_pct * resolved;
+    }
+    if (stat.occurrences > 0 && stat.avg_mfe_pct != null) {
+      cur._mfeWeight += stat.occurrences;
+      cur.avg_mfe_pct = (cur.avg_mfe_pct ?? 0) + stat.avg_mfe_pct * stat.occurrences;
+    }
+    if (stat.occurrences > 0 && stat.avg_mae_pct != null) {
+      cur._maeWeight += stat.occurrences;
+      cur.avg_mae_pct = (cur.avg_mae_pct ?? 0) + stat.avg_mae_pct * stat.occurrences;
+    }
+
+    byKind.set(stat.kind, cur);
+  }
+
+  return [...byKind.values()]
+    .map(({ _returnWeight, _mfeWeight, _maeWeight, ...row }) => {
+      const resolved = row.target_hits + row.stop_hits;
+      return {
+        ...row,
+        success_rate_pct: resolved > 0 ? Math.round((row.target_hits / resolved) * 1000) / 10 : null,
+        avg_return_pct:
+          _returnWeight > 0 && row.avg_return_pct != null
+            ? Math.round((row.avg_return_pct / _returnWeight) * 10) / 10
+            : null,
+        avg_mfe_pct:
+          _mfeWeight > 0 && row.avg_mfe_pct != null
+            ? Math.round((row.avg_mfe_pct / _mfeWeight) * 10) / 10
+            : null,
+        avg_mae_pct:
+          _maeWeight > 0 && row.avg_mae_pct != null
+            ? Math.round((row.avg_mae_pct / _maeWeight) * 10) / 10
+            : null,
+      };
+    })
+    .sort((a, b) => (b.success_rate_pct ?? -1) - (a.success_rate_pct ?? -1) || b.occurrences - a.occurrences);
+}
+
+export async function getChartPatternBacktestSummary(scanDate?: string) {
+  let date = scanDate;
+  if (!date) {
+    const latest = await prisma.chartPatternSnapshot.findFirst({
+      orderBy: { scanDate: 'desc' },
+      select: { scanDate: true },
+    });
+    date = latest?.scanDate;
+  }
+
+  if (!date) {
+    return { scan_date: null as string | null, symbol_count: 0, kinds: [] as AggregatedPatternBacktestStat[] };
+  }
+
+  const snapshots = await prisma.chartPatternSnapshot.findMany({
+    where: { scanDate: date },
+    select: { symbol: true, backtest: true },
+  });
+
+  const flat: Array<{
+    kind: string;
+    label: string;
+    timeframe: string;
+    occurrences: number;
+    confirmed_breakouts: number;
+    target_hits: number;
+    stop_hits: number;
+    unresolved: number;
+    success_rate_pct: number | null;
+    avg_return_pct: number | null;
+    avg_mfe_pct: number | null;
+    avg_mae_pct: number | null;
+  }> = [];
+
+  for (const row of snapshots) {
+    const bt = row.backtest as unknown;
+    if (!Array.isArray(bt)) continue;
+    for (const item of bt) {
+      if (!item || typeof item !== 'object') continue;
+      const s = item as Record<string, unknown>;
+      if (typeof s.kind !== 'string') continue;
+      flat.push({
+        kind: s.kind,
+        label: String(s.label ?? s.kind),
+        timeframe: String(s.timeframe ?? '1D'),
+        occurrences: Number(s.occurrences ?? 0),
+        confirmed_breakouts: Number(s.confirmed_breakouts ?? 0),
+        target_hits: Number(s.target_hits ?? 0),
+        stop_hits: Number(s.stop_hits ?? 0),
+        unresolved: Number(s.unresolved ?? 0),
+        success_rate_pct: typeof s.success_rate_pct === 'number' ? s.success_rate_pct : null,
+        avg_return_pct: typeof s.avg_return_pct === 'number' ? s.avg_return_pct : null,
+        avg_mfe_pct: typeof s.avg_mfe_pct === 'number' ? s.avg_mfe_pct : null,
+        avg_mae_pct: typeof s.avg_mae_pct === 'number' ? s.avg_mae_pct : null,
+      });
+    }
+  }
+
+  const withBacktest = snapshots.filter((s) => Array.isArray(s.backtest) && (s.backtest as unknown[]).length > 0);
+
+  return {
+    scan_date: date,
+    symbol_count: withBacktest.length,
+    kinds: aggregatePatternBacktestStats(flat),
+  };
+}
+
+
 export async function listChartPatternScanRuns(limit = 10): Promise<ChartPatternScanRunView[]> {
   const take = Math.min(Math.max(limit, 1), 50);
   const rows = await prisma.chartPatternScanRun.findMany({

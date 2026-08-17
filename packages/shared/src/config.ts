@@ -55,6 +55,12 @@ export interface SchedulesConfig {
     steps: ScheduleStep[];
   };
   intraday: {
+    ltg_auto_scan?: {
+      enabled: boolean;
+      interval_sec: number;
+      universe?: string;
+      max_scan?: number;
+    };
     swing_auto_scan: { enabled: boolean; interval_sec: number };
     regime_refresh: { enabled: boolean; interval_sec: number };
     morning_prewarm?: {
@@ -233,6 +239,12 @@ const DEFAULT_SCHEDULES: SchedulesConfig = {
     steps: [],
   },
   intraday: {
+    ltg_auto_scan: {
+      enabled: true,
+      interval_sec: 900,
+      universe: 'nifty250',
+      max_scan: 250,
+    },
     swing_auto_scan: { enabled: true, interval_sec: 300 },
     regime_refresh: { enabled: true, interval_sec: 900 },
     morning_prewarm: {

@@ -29,7 +29,7 @@ All routes except `/login` require authentication.
 | `/swing` | SwingScanPage | Manual swing TA scan |
 | `/swing/auto` | SwingAutoPage | Auto-radar tiers + manual scan trigger |
 | `/intraday` | IntradayPage | Nifty intraday direction (5m/15m) |
-| `/stock/:symbol` | StockDetailsPage | Summary — [STOCK-DETAILS.md](STOCK-DETAILS.md) (SD-A) |
+| `/stock/:symbol` | StockDetailsPage | Full symbol hub — [STOCK-DETAILS.md](STOCK-DETAILS.md) |
 | `/admin` | AdminPage | Data uploads, index sync |
 | `/admin/settings` | SettingsPage | **Planned** — [DATA-RULES.md](DATA-RULES.md) |
 
@@ -78,19 +78,20 @@ See **[SCREENER.md](SCREENER.md)** for full architecture, presets, and speed pla
 - Choose preset (7 implemented; PHP has 30+)
 - Max scan count
 - Sync or background run with WebSocket job progress
-- Results table: symbol, price, P/E, ROE, MOS, recommendation
-- **Planned:** Details link per row → `/stock/:symbol` ([STOCK-DETAILS.md](STOCK-DETAILS.md)); TA presets, filter form, CSV export, incremental progress bar
+- Results table: symbol (links to `/stock/:symbol` via `SignalCard`), price, P/E, ROE, MOS, recommendation
+- **Planned:** TA presets, filter form, CSV export, incremental progress bar
 
 ### Verify (`/verify`)
 
 See **[CFA-VERIFY.md](CFA-VERIFY.md)** for full architecture, PHP 8-phase parity, memo UI, and speed plan (V-A–V-D).
 
-See also **[STOCK-DETAILS.md](STOCK-DETAILS.md)** — full symbol hub (chart, profile) planned separately.
+See also **[STOCK-DETAILS.md](STOCK-DETAILS.md)** — full symbol hub at `/stock/:symbol`.
 
 - Enter symbol → `POST /api/v1/verify/auto`
 - Displays DCF, MOS, verdict, key ratios (valuation subset today)
 - Recent verification history sidebar
-- **Planned:** investment memo hero, verify cache, link to `/stock/:symbol` and `/verify/full`
+- Link to `/stock/:symbol` for chart, profile, phases
+- **Planned:** investment memo hero, verify cache default-off, `/verify/full` integration
 
 ### Full Verify (`/verify/full`)
 
@@ -104,7 +105,7 @@ See **[FULL-VERIFY.md](FULL-VERIFY.md)** for 8-phase wizard, scorecard, investme
 - View/add/remove symbols
 - Thesis and review metadata
 - Linked to verify snapshots
-- **Planned:** symbol link → `/stock/:symbol` ([STOCK-DETAILS.md](STOCK-DETAILS.md))
+- Symbol links → `/stock/:symbol`
 
 ### Positions (`/positions`)
 
@@ -143,6 +144,16 @@ See **[INTRADAY.md](INTRADAY.md)** (5m/15m radar) and **[NIFTY-POSITIONS.md](NIF
 - Direction, MTF confluence, live playbook steps
 - 60s auto-poll; manual refresh bypasses chart cache
 - Scalp gate banner (`scalp_setup`) with log-to-ledger link (`nifty_scalp_5m`)
+
+### Stock Details (`/stock/:symbol`)
+
+See **[STOCK-DETAILS.md](STOCK-DETAILS.md)** for API split, cache layers, and parity matrix.
+
+- Summary hero: valuation, MOS, quality score, IV drift, fundamentals grid, data-quality banner
+- Lazy chart: daily candles, SMA overlays, phase analysis, chart pattern overlays + MTF
+- Lazy profile: Screener.in about, concalls, expenditures, business plans
+- Swing context card, cross-links to Verify, Full Verify, Patterns, Swing
+- Admin **Clear cache & reload** (`POST /api/v1/stock/:symbol/refresh`)
 
 ### Admin (`/admin`)
 

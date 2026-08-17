@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { enrichMetricsFromScreenerAnnual, parseScreenerAnnualFinancials } from './screener-annual.js';
+import {
+  enrichMetricsFromScreenerAnnual,
+  parsePromoterPledgeFromScreenerHtml,
+  parseScreenerAnnualFinancials,
+} from './screener-annual.js';
 import { buildStockMetrics } from '@sv/core';
 
 const TCS_HTML_SNIPPET = `
@@ -52,6 +56,32 @@ describe('parseScreenerAnnualFinancials', () => {
     expect(parsed.operating_margin_pct).toBe(27);
     expect(parsed.roa_pct).toBe(24.73);
     expect(parsed.debt_to_equity).toBe(0.0711);
+  });
+});
+
+const THYROCARE_PLEDGE_SNIPPET = `
+<meta name="description" content="Thyrocare · Mkt Cap: 8,594 Crore · Promoters have pledged 100% of their holding. · Promoter Holding: 60.9%">
+<ul class="cons"><li>Promoters have pledged 100% of their holding.</li></ul>
+`;
+
+describe('parsePromoterPledgeFromScreenerHtml', () => {
+  it('parses pledge from Screener meta and cons copy', () => {
+    const parsed = parsePromoterPledgeFromScreenerHtml(THYROCARE_PLEDGE_SNIPPET);
+    expect(parsed?.pct).toBe(100);
+    expect(parsed?.source).toContain('screener.in');
+  });
+
+  it('parses pledge from ratio tile when present', () => {
+    const html = `
+      <span class="name">Pledged percentage</span><span class="number">9.44</span>
+    `;
+    const parsed = parsePromoterPledgeFromScreenerHtml(html);
+    expect(parsed?.pct).toBe(9.44);
+    expect(parsed?.source).toBe('screener.in (ratio)');
+  });
+
+  it('returns null when Screener page has no pledge signal', () => {
+    expect(parsePromoterPledgeFromScreenerHtml(TCS_HTML_SNIPPET)).toBeNull();
   });
 });
 

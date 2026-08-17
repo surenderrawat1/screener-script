@@ -316,14 +316,14 @@ apps/web/src/pages/IntradayAppPage.tsx      mobile layout (optional)
 | NP-B1 | Port `NiftyIntradayPositionTracker` | Action labels match PHP |
 | NP-B2 | `liveQuoteForSymbol` in data-adapters | Intraday mark price |
 | NP-B3 | Parallel refresh ≤10 positions | p95 < **2s** |
-| NP-B4 | `GET /intraday/nifty/state?positions=0` | Analysis p95 < **200ms** |
+| NP-B4 | `GET /intraday/nifty/state?positions=0` | **Shipped** — state/lite skip flags; app splits polls |
 
 ### Phase NP-C — Radar + App integration (2–3 days)
 
 | # | Task |
 |---|------|
-| NP-C1 | Log trade from `/intraday` playbook (POST positions) |
-| NP-C2 | Positions block on IntradayPage (60s poll) |
+| NP-C1 | Log trade from `/intraday` playbook (POST positions) | **Shipped** — trade plan → ledger prefill |
+| NP-C2 | Positions block on IntradayPage (60s poll) | **Shipped** — live panel on `/intraday` |
 | NP-C3 | `lite` API for mobile | **Shipped** with I-D1 |
 | NP-C4 | Closed journal stats + CSV export | **Shipped** — `GET /api/v1/intraday/positions/export` + Export CSV on ledger |
 
@@ -331,9 +331,9 @@ apps/web/src/pages/IntradayAppPage.tsx      mobile layout (optional)
 
 - [ ] PHP JSON migrates without data loss
 - [ ] Live action labels match PHP on same fixture
-- [ ] Log from 15m playbook pre-fills stop/T1/T2/T3
-- [ ] State API with `positions=0` does not load position tracker
-- [ ] 60s position poll independent of full analysis refresh
+- [x] Log from 15m playbook pre-fills stop/T1/T2/T3 — ledger link from trade plan
+- [x] State API with `positions=0` does not load position tracker (lite respects skip flags)
+- [x] 60s position poll independent of full analysis refresh — `/intraday` + `/intraday/app`
 
 ---
 
@@ -359,17 +359,18 @@ Manual workaround: keep using PHP `nifty-positions.php` against JSON file until 
 
 ## Parity matrix
 
-| Feature | PHP | v2 planned |
-|---------|-----|------------|
-| JSON / DB storage | ✓ | NP-A |
-| Multi-instrument | ✓ | NP-A + instrument resolver |
-| Live T1/T2/T3 tracking | ✓ | NP-B |
-| Session time exit | ✓ | NP-B |
-| Radar log trade | ✓ | NP-C |
-| Intraday App | ✓ | NP-C / I-D |
-| Closed journal + CSV | ✓ | NP-C |
-| 60s positions poll | ✓ | NP-B |
-| `positions=0` fast state | ✓ | NP-B (with INTRADAY I-A) |
+| Feature | PHP | v2 |
+|---------|-----|-----|
+| JSON / DB storage | ✓ | ✓ PostgreSQL + `migrate:php` |
+| Multi-instrument | ✓ | ✓ index + stocks + ETFs + free-text |
+| Live T1/T2/T3 tracking | ✓ | ✓ |
+| Session time exit | ✓ | ✓ 14:30 IST |
+| Radar log trade | ✓ | ✓ prefill → `/intraday/positions` |
+| Intraday App | ✓ | ✓ `/intraday/app` |
+| Closed journal + CSV | ✓ | ✓ export API + button |
+| 60s positions poll | ✓ | ✓ radar + app split polls |
+| `positions=0` fast state | ✓ | ✓ state/lite skip flags |
+| Morning panel | ✓ | ✓ `/morning` top 5 + alerts |
 
 ---
 
@@ -404,7 +405,7 @@ docs/SWING-POSITIONS.md              different ledger
 
 ## Related docs
 
-- [Morning Routine](MORNING-ROUTINE.md) — intraday positions panel (MR-C; blocked until this feature ships)
+- [Morning Routine](MORNING-ROUTINE.md) — intraday positions panel on `/morning` (MR-C shipped)
 - [Nifty Intraday 5m/15m](INTRADAY.md) — radar analysis engine
 - [Swing Positions](SWING-POSITIONS.md) — multi-day equity ledger
 - [Swing Auto](SWING-AUTO.md) — separate swing universe

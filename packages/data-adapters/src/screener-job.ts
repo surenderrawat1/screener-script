@@ -39,6 +39,9 @@ export async function executeScreenerJob(
     passed: run.rows.length,
     restricted_skipped: run.restricted_skipped,
     cache_hits: run.cache_hits,
+    table_prefilter_skipped: run.table_prefilter_skipped,
+    stock_cache_hits: run.stock_cache_hits,
+    full_analyzed: run.full_analyzed,
     exchange_list_as_of: run.exchange_list_as_of,
   };
 
